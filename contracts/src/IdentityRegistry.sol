@@ -124,7 +124,7 @@ contract IdentityRegistry {
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         if (nullifierOwner[nullifier] != address(0)) revert AlreadyRegistered(nullifier);
-        if (verifiedUntil[msg.sender] > block.timestamp) revert UserAlreadyVerified(msg.sender);
+        if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
         nullifierOwner[nullifier] = msg.sender;
         verifiedUntil[msg.sender] = notAfter;
@@ -133,13 +133,17 @@ contract IdentityRegistry {
     }
 
     /// @notice Re-register: move an existing nullifier slot to a new wallet address.
+    /// @dev No admin required. User proves ownership of the same certificate with a new wallet.
+    ///      The old wallet's verification is cleared and the new wallet takes over.
+    ///      WARNING: If certificate files are compromised, an attacker could re-register
+    ///      to their own wallet. This is by design — the certificate is the identity anchor.
     function reRegister(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
         (bytes32 nullifier,, uint64 notAfter) = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         address oldOwner = nullifierOwner[nullifier];
         if (oldOwner == address(0)) revert NullifierNotRegistered(nullifier);
-        if (verifiedUntil[msg.sender] > block.timestamp) revert UserAlreadyVerified(msg.sender);
+        if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
         if (oldOwner != msg.sender) {
             verifiedUntil[oldOwner] = 0;
@@ -154,7 +158,7 @@ contract IdentityRegistry {
     /// @param user The wallet address to check.
     /// @return True if the user is verified and certificate has not expired.
     function isVerified(address user) external view returns (bool) {
-        return verifiedUntil[user] > block.timestamp;
+        return verifiedUntil[user] >= block.timestamp;
     }
 
     // ============ Admin Functions ============

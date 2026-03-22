@@ -421,7 +421,7 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_VerifiedBeforeExpiry() public {
         vm.warp(1700000000);
         // Cert expires in 1 year
-        uint64 notAfter = uint64(block.timestamp + 365 days);
+        uint64 notAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
         bytes memory pv = abi.encode(NULLIFIER, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), notAfter);
 
         vm.prank(alice);
@@ -458,7 +458,7 @@ contract IdentityRegistryTest is Test {
 
         // Alice can register with a new cert (different nullifier)
         bytes32 nullifier2 = bytes32(uint256(0xFEED));
-        uint64 newNotAfter = uint64(block.timestamp + 365 days);
+        uint64 newNotAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
         bytes memory pv2 = abi.encode(nullifier2, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), newNotAfter);
 
         vm.prank(alice);
