@@ -94,8 +94,8 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
 
     // Decrypt based on cipher type
     let decrypted = match params.cipher {
-        CipherType::Aes256Cbc => decrypt_aes256_cbc(&derived_key, &params.iv, &encrypted_data)?,
-        CipherType::SeedCbc => decrypt_seed_cbc(&derived_key, &params.iv, &encrypted_data)?,
+        CipherType::Aes256Cbc => decrypt_cbc::<cbc::Decryptor<Aes256>>(&derived_key, &params.iv, &encrypted_data, "AES")?,
+        CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
     };
 
     // Remove PKCS#7 padding
@@ -276,33 +276,19 @@ fn find_integer_after(data: &[u8], salt: &[u8]) -> Option<u32> {
     None
 }
 
-/// Decrypt using AES-256-CBC.
-fn decrypt_aes256_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, NpkiError> {
-    type Aes256CbcDec = cbc::Decryptor<Aes256>;
-
+/// Generic CBC decryption for any block cipher implementing BlockDecryptMut + KeyIvInit.
+fn decrypt_cbc<C: BlockDecryptMut + KeyIvInit>(
+    key: &[u8],
+    iv: &[u8],
+    data: &[u8],
+    cipher_name: &str,
+) -> Result<Vec<u8>, NpkiError> {
     let mut buf = data.to_vec();
-    let decryptor = Aes256CbcDec::new_from_slices(key, iv)
-        .map_err(|e| NpkiError::DecryptionFailed(format!("AES init failed: {}", e)))?;
-
+    let decryptor = C::new_from_slices(key, iv)
+        .map_err(|e| NpkiError::DecryptionFailed(format!("{} init failed: {}", cipher_name, e)))?;
     let decrypted = decryptor
         .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf)
-        .map_err(|e| NpkiError::DecryptionFailed(format!("AES decrypt failed: {}", e)))?;
-
-    Ok(decrypted.to_vec())
-}
-
-/// Decrypt using SEED-CBC (Korean KISA block cipher, 128-bit key).
-fn decrypt_seed_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, NpkiError> {
-    type SeedCbcDec = cbc::Decryptor<SEED>;
-
-    let mut buf = data.to_vec();
-    let decryptor = SeedCbcDec::new_from_slices(key, iv)
-        .map_err(|e| NpkiError::DecryptionFailed(format!("SEED init failed: {}", e)))?;
-
-    let decrypted = decryptor
-        .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf)
-        .map_err(|e| NpkiError::DecryptionFailed(format!("SEED decrypt failed: {}", e)))?;
-
+        .map_err(|e| NpkiError::DecryptionFailed(format!("{} decrypt failed: {}", cipher_name, e)))?;
     Ok(decrypted.to_vec())
 }
 
