@@ -73,11 +73,10 @@ pub fn main() {
     // Single-level: [root_ca_pub_key_spki_der]
     let cert_chain: Vec<Vec<u8>> = sp1_zkvm::io::read();
     let current_timestamp: u64 = sp1_zkvm::io::read();
-    // CRL: revoked serial numbers (empty = skip). Host is responsible for
-    // providing an authentic CRL; the ZK proof attests that the serial was
-    // not in *this specific list*. The CRL hash is NOT committed to public
-    // values, so on-chain consumers should verify CRL freshness separately.
-    let revoked_serials: Vec<Vec<u8>> = sp1_zkvm::io::read();
+    // CRL: DER-encoded Certificate Revocation List (empty Vec = skip).
+    // When provided, the ZK program verifies the CRL's CA signature
+    // and checks the user cert serial is not revoked.
+    let crl_der: Vec<u8> = sp1_zkvm::io::read();
     // Wallet address that will call register() — binds proof to a specific sender
     let registrant: [u8; 20] = sp1_zkvm::io::read();
 
@@ -117,11 +116,13 @@ pub fn main() {
         })
         .collect();
 
+    // Parse root CA public key once (reused in chain verification + CRL verification)
+    let root_pub = RsaPublicKey::from_public_key_der(root_ca_pub_key_der)
+        .expect("Failed to parse root CA public key");
+
     // Verify user_cert → first signer
     if intermediates.is_empty() {
         // Single-level: root CA directly signed user cert
-        let root_pub = RsaPublicKey::from_public_key_der(root_ca_pub_key_der)
-            .expect("Failed to parse root CA public key");
         let oid = user_cert.signature_algorithm.algorithm.to_id_string();
         verify_rsa_signature(
             user_cert.tbs_certificate.as_ref(),
@@ -157,8 +158,6 @@ pub fn main() {
         }
 
         // Last intermediate signed by root CA
-        let root_pub = RsaPublicKey::from_public_key_der(root_ca_pub_key_der)
-            .expect("Failed to parse root CA public key");
         let last = intermediates.last().unwrap();
         let oid = last.signature_algorithm.algorithm.to_id_string();
         verify_rsa_signature(
@@ -172,13 +171,76 @@ pub fn main() {
     // ========================================
     // Step 4: Check certificate revocation (CRL)
     // ========================================
-    // Placed AFTER chain verification so we only check revocation for
-    // certificates whose authenticity has been proven.
-    if !revoked_serials.is_empty() {
-        let user_serial = user_cert.tbs_certificate.serial.to_bytes_be();
-        for revoked in &revoked_serials {
+    // The CRL is verified inside the zkVM:
+    //   1. Parse the DER-encoded CRL
+    //   2. Assert CRL issuer == user cert issuer (serial numbers are issuer-scoped)
+    //   3. Validate CRL freshness (thisUpdate/nextUpdate)
+    //   4. Verify the CRL's RSA signature using the matching issuer key
+    //   5. Check the user cert serial is not in the revoked list
+    if !crl_der.is_empty() {
+        let (_, crl) = x509_parser::revocation_list::CertificateRevocationList::from_der(&crl_der)
+            .expect("Failed to parse CRL");
+
+        // CRL issuer must match the issuer of the user certificate.
+        // CRL serial numbers are issuer-scoped: checking a cert's serial
+        // against a CRL from a different issuer is meaningless.
+        let crl_issuer = crl.issuer();
+        let user_issuer = user_cert.issuer();
+        assert!(
+            crl_issuer == user_issuer,
+            "CRL issuer does not match user certificate issuer"
+        );
+
+        // Validate CRL freshness: thisUpdate <= timestamp <= nextUpdate
+        let crl_this_update = crl.tbs_cert_list.this_update.timestamp();
+        assert!(
+            crl_this_update <= ts,
+            "CRL is not yet valid at the provided timestamp"
+        );
+        if let Some(next_update) = crl.tbs_cert_list.next_update {
             assert!(
-                user_serial != revoked.as_slice(),
+                ts <= next_update.timestamp(),
+                "CRL has expired at the provided timestamp"
+            );
+        }
+
+        // Verify CRL signature using the user cert's issuer key.
+        // For multi-level chains: intermediates[0] is the user cert issuer.
+        // For single-level: root CA is the issuer.
+        let crl_sig_oid = crl.signature_algorithm.algorithm.to_id_string();
+
+        if let Some(issuer_cert) = intermediates.iter()
+            .find(|cert| cert.subject() == crl_issuer)
+        {
+            let issuer_pub = RsaPublicKey::from_public_key_der(
+                issuer_cert.tbs_certificate.subject_pki.raw,
+            ).expect("Failed to parse CRL issuer public key");
+            verify_rsa_signature(
+                crl.tbs_cert_list.as_ref(),
+                crl.signature_value.as_ref(),
+                &crl_sig_oid,
+                &issuer_pub,
+            );
+        } else {
+            // Single-level: CRL signed by root CA. Verify issuer name matches.
+            let expected_root_name = user_cert.issuer();
+            assert!(
+                crl_issuer == expected_root_name,
+                "CRL issuer does not match root CA"
+            );
+            verify_rsa_signature(
+                crl.tbs_cert_list.as_ref(),
+                crl.signature_value.as_ref(),
+                &crl_sig_oid,
+                &root_pub,
+            );
+        }
+
+        // Check user cert serial is not revoked
+        let user_serial = user_cert.tbs_certificate.serial.to_bytes_be();
+        for revoked in crl.iter_revoked_certificates() {
+            assert!(
+                user_serial != revoked.raw_serial(),
                 "Certificate has been revoked"
             );
         }

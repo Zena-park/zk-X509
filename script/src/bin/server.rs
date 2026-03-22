@@ -186,8 +186,8 @@ async fn execute_handler(
     stdin.write(&decrypted_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
-    let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
-    stdin.write(&revoked_serials);
+    let crl_der: Vec<u8> = Vec::new(); // TODO: accept CRL from request or load from endpoint
+    stdin.write(&crl_der);
     let registrant_bytes = parse_registrant(&req.registrant)?;
     stdin.write(&registrant_bytes);
 
@@ -240,8 +240,8 @@ async fn prove_handler(
     stdin.write(&decrypted_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
-    let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
-    stdin.write(&revoked_serials);
+    let crl_der: Vec<u8> = Vec::new(); // TODO: accept CRL from request or load from endpoint
+    stdin.write(&crl_der);
     let registrant_bytes = parse_registrant(&req.registrant)?;
     stdin.write(&registrant_bytes);
 
