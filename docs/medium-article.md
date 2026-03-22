@@ -108,6 +108,34 @@ Distribute tokens to verified humans, not bot farms. The nullifier ensures each 
 ### Government Services on L2
 Public services deployed on L2 rollups can verify citizen identity without building new infrastructure. Citizens already have the certificates — they just need to generate a proof.
 
+## Configurable Identity: One Size Does Not Fit All
+
+Not every application needs the same identity rules. A DAO voting system and a decentralized exchange have fundamentally different requirements. That's why zk-X509 is designed to be **configurable per deployment**.
+
+The key parameter is `maxWalletsPerCert` — set at contract deployment time, it controls how many wallets a single certificate can verify:
+
+| Setting | Use Case | Sybil Resistance |
+|---------|----------|-----------------|
+| `maxWalletsPerCert = 1` | DAO voting, airdrops | Maximum — one person, one wallet |
+| `maxWalletsPerCert = 3` | DeFi protocols | Strong — separate trading/custody/cold wallets |
+| `maxWalletsPerCert = N` | zk-DEX, multi-account platforms | Flexible — all wallets tied to a real person |
+
+How it works under the hood: the nullifier scheme extends to include a wallet index:
+
+```
+nullifier = SHA-256(serial ‖ SHA-256(private_key) ‖ wallet_index)
+```
+
+Each `wallet_index` (0, 1, 2...) produces a different nullifier from the same certificate. The ZK circuit enforces `wallet_index < maxWalletsPerCert`, so users can't exceed the limit. When `maxWalletsPerCert = 1`, this is identical to the current strict Sybil-resistant design.
+
+This means **a single zk-X509 deployment on an L2 can serve multiple protocols**, each choosing its own trust policy:
+
+- A governance module sets `maxWalletsPerCert = 1` for voting
+- A lending protocol sets `maxWalletsPerCert = 3` for multi-collateral accounts
+- A DEX sets `maxWalletsPerCert = 10` for market-making strategies
+
+All using the same underlying identity proof, the same NPKI certificates, the same trust anchors — just different policies.
+
 ## Security: Not Just Claims — Proofs
 
 We formalized the security analysis under the standard **Dolev-Yao adversary model** with game-based definitions. Four properties, each with a mathematical proof:
