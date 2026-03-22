@@ -224,7 +224,8 @@ pub fn main() {
     // ========================================
     // Step 8: Commit public values
     // ========================================
-    // Convert [u8; 20] to alloy Address type
+    // alloy_sol_types re-exports Address from alloy-primitives via `private` module.
+    // Using this path ensures version compatibility with the sol! macro output.
     let registrant_addr = alloy_sol_types::private::Address::from_slice(&registrant);
 
     let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {

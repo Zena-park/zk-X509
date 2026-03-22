@@ -48,6 +48,16 @@ contract IdentityRegistryTest is Test {
         registry.register(hex"1234", publicValues);
     }
 
+    function test_RevertRegistrantMismatchReverse() public {
+        // Proof bound to bob, but alice tries to submit it
+        bytes memory publicValues = _pv(NULLIFIER, CA_ROOT_HASH, bob);
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.RegistrantMismatch.selector, bob, alice)
+        );
+        registry.register(hex"1234", publicValues);
+    }
+
     function test_RevertDoubleRegistration() public {
         vm.prank(alice);
         registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
