@@ -8,5 +8,6 @@ sol! {
         uint64 timestamp;        // Proof generation timestamp (verified against block.timestamp)
         address registrant;      // Wallet address bound to this proof (anti-front-running)
         uint32 walletIndex;      // Which wallet slot (0..maxWalletsPerCert-1)
+        uint64 notAfter;         // Certificate expiry (unix timestamp)
     }
 }

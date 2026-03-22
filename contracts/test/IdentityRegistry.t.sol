@@ -21,12 +21,15 @@ contract IdentityRegistryTest is Test {
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
 
+    // Default: expires 1 year from now
+    uint64 constant DEFAULT_NOT_AFTER = uint64(365 days);
+
     function _pv(bytes32 nullifier, bytes32 caHash, address sender) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, uint32(0));
+        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
     }
 
     function _pvIdx(bytes32 nullifier, bytes32 caHash, address sender, uint32 idx) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, idx);
+        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, idx, uint64(block.timestamp) + DEFAULT_NOT_AFTER);
     }
 
     function setUp() public {
@@ -98,7 +101,7 @@ contract IdentityRegistryTest is Test {
     function test_RevertProofTooOld() public {
         vm.warp(1700000000);
         uint64 oldTimestamp = uint64(block.timestamp - 2 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, oldTimestamp, alice, uint32(0));
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, oldTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -110,7 +113,7 @@ contract IdentityRegistryTest is Test {
 
     function test_RevertProofInFuture() public {
         uint64 futureTimestamp = uint64(block.timestamp + 1 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, futureTimestamp, alice, uint32(0));
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, futureTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -411,5 +414,55 @@ contract IdentityRegistryTest is Test {
             abi.encodeWithSelector(IdentityRegistry.WalletIndexOutOfRange.selector, uint32(0), uint32(0))
         );
         zeroReg.register(hex"1234", _pvIdx(NULLIFIER, CA_ROOT_HASH, alice, 0));
+    }
+
+    // ============ Certificate expiry tests ============
+
+    function test_CertExpiry_VerifiedBeforeExpiry() public {
+        vm.warp(1700000000);
+        // Cert expires in 1 year
+        uint64 notAfter = uint64(block.timestamp + 365 days);
+        bytes memory pv = abi.encode(NULLIFIER, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), notAfter);
+
+        vm.prank(alice);
+        registry.register(hex"1234", pv);
+        assertTrue(registry.isVerified(alice));
+        assertEq(registry.verifiedUntil(alice), notAfter);
+    }
+
+    function test_CertExpiry_NotVerifiedAfterExpiry() public {
+        vm.warp(1700000000);
+        uint64 notAfter = uint64(block.timestamp + 1 hours);
+        bytes memory pv = abi.encode(NULLIFIER, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), notAfter);
+
+        vm.prank(alice);
+        registry.register(hex"1234", pv);
+        assertTrue(registry.isVerified(alice));
+
+        // Fast-forward past expiry
+        vm.warp(block.timestamp + 2 hours);
+        assertFalse(registry.isVerified(alice));
+    }
+
+    function test_CertExpiry_CanReRegisterAfterExpiry() public {
+        vm.warp(1700000000);
+        uint64 notAfter = uint64(block.timestamp + 1 hours);
+        bytes memory pv = abi.encode(NULLIFIER, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), notAfter);
+
+        vm.prank(alice);
+        registry.register(hex"1234", pv);
+
+        // Fast-forward past expiry
+        vm.warp(block.timestamp + 2 hours);
+        assertFalse(registry.isVerified(alice));
+
+        // Alice can register with a new cert (different nullifier)
+        bytes32 nullifier2 = bytes32(uint256(0xFEED));
+        uint64 newNotAfter = uint64(block.timestamp + 365 days);
+        bytes memory pv2 = abi.encode(nullifier2, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), newNotAfter);
+
+        vm.prank(alice);
+        registry.register(hex"1234", pv2);
+        assertTrue(registry.isVerified(alice));
     }
 }

@@ -300,12 +300,16 @@ pub fn main() {
     // Using this path ensures version compatibility with the sol! macro output.
     let registrant_addr = alloy_sol_types::private::Address::from_slice(&registrant);
 
+    // Extract certificate expiry as unix timestamp
+    let not_after = user_cert.validity().not_after.timestamp() as u64;
+
     let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {
         nullifier: nullifier.into(),
         caRootHash: ca_root_hash.into(),
         timestamp: current_timestamp,
         registrant: registrant_addr,
         walletIndex: wallet_index,
+        notAfter: not_after,
     });
 
     sp1_zkvm::io::commit_slice(&bytes);
