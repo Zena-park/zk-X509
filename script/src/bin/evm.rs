@@ -72,6 +72,8 @@ fn main() {
     stdin.write(&priv_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
+    let revoked_serials: Vec<Vec<u8>> = Vec::new();
+    stdin.write(&revoked_serials);
 
     println!("Proof System: {:?}", args.system);
 

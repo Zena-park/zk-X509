@@ -73,6 +73,9 @@ pub fn main() {
     // For Korean NPKI: [intermediate_ca_cert_der, root_ca_pub_key_spki_der]
     let cert_chain: Vec<Vec<u8>> = sp1_zkvm::io::read();
     let current_timestamp: u64 = sp1_zkvm::io::read();
+    // CRL: list of revoked certificate serial numbers (each as big-endian bytes).
+    // Empty vec means CRL check is skipped (host didn't provide one).
+    let revoked_serials: Vec<Vec<u8>> = sp1_zkvm::io::read();
 
     assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
 
@@ -93,6 +96,19 @@ pub fn main() {
         ts <= user_cert.validity().not_after.timestamp(),
         "User certificate has expired"
     );
+
+    // ========================================
+    // Step 2.5: Check certificate revocation (CRL)
+    // ========================================
+    if !revoked_serials.is_empty() {
+        let user_serial = user_cert.tbs_certificate.serial.to_bytes_be();
+        for revoked in &revoked_serials {
+            assert!(
+                user_serial != revoked.as_slice(),
+                "Certificate has been revoked"
+            );
+        }
+    }
 
     // ========================================
     // Step 3: Verify certificate chain

@@ -47,6 +47,10 @@ struct Args {
     /// For single-level CA (no intermediates), omit this.
     #[arg(long)]
     intermediate: Vec<PathBuf>,
+
+    /// Path to CRL file (DER format, optional). If provided, cert serial is checked.
+    #[arg(long)]
+    crl: Option<PathBuf>,
 }
 
 fn main() {
@@ -96,12 +100,31 @@ fn main() {
         if cert_chain.len() == 1 { "single-level" } else { "multi-level" }
     );
 
+    // Parse CRL if provided
+    let revoked_serials: Vec<Vec<u8>> = if let Some(crl_path) = &args.crl {
+        let crl_der = std::fs::read(crl_path)
+            .unwrap_or_else(|e| panic!("Failed to read CRL {:?}: {}", crl_path, e));
+        use x509_parser::prelude::FromDer;
+        let (_, crl) = x509_parser::revocation_list::CertificateRevocationList::from_der(&crl_der)
+            .expect("Failed to parse CRL");
+        let serials: Vec<Vec<u8>> = crl
+            .iter_revoked_certificates()
+            .map(|entry| entry.raw_serial().to_vec())
+            .collect();
+        println!("CRL: {} revoked certificates", serials.len());
+        serials
+    } else {
+        println!("CRL: not provided (skipping revocation check)");
+        Vec::new()
+    };
+
     // Write inputs to SP1 stdin
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&priv_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
+    stdin.write(&revoked_serials);
 
     if args.execute {
         // Execute without proof (for testing)
