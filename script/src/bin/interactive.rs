@@ -203,7 +203,8 @@ fn cmd_prove(session: &mut Session) {
     stdin.write(&registrant_bytes);
     stdin.write(&wallet_index);
     stdin.write(&max_wallets);
-    let disclosure_mask: u8 = 0x0F;
+    let mask_str = prompt("  Disclosure mask (15=all, 1=country, 0=none) [15]: ");
+    let disclosure_mask: u8 = mask_str.parse().unwrap_or(0x0F);
     stdin.write(&disclosure_mask);
     match client.execute(ZK_X509_ELF, stdin).run() {
         Ok((output, report)) => {

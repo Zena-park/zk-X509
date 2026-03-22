@@ -35,6 +35,7 @@ use zk_x509_script::npki;
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
 fn default_max_wallets() -> u32 { 1 }
+fn default_disclosure_mask() -> u8 { 0x0F }
 
 /// Request body from the frontend.
 /// NOTE: Do NOT derive Debug — password would be logged.
@@ -53,6 +54,9 @@ struct ProveRequest2 {
     /// Max wallets per cert (must match contract)
     #[serde(default = "default_max_wallets")]
     max_wallets: u32,
+    /// Selective disclosure bitmask (0x0F = all, 0x00 = none)
+    #[serde(default = "default_disclosure_mask")]
+    disclosure_mask: u8,
 }
 
 /// Response sent back to the frontend.
@@ -217,6 +221,7 @@ fn build_stdin(
     registrant_bytes: &[u8; 20],
     wallet_index: u32,
     max_wallets: u32,
+    disclosure_mask: u8,
 ) -> SP1Stdin {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
@@ -231,7 +236,6 @@ fn build_stdin(
     stdin.write(registrant_bytes);
     stdin.write(&wallet_index);
     stdin.write(&max_wallets);
-    let disclosure_mask: u8 = 0x0F; // Default: disclose all fields (C+O+OU+CN)
     stdin.write(&disclosure_mask);
     stdin
 }
@@ -251,6 +255,7 @@ async fn execute_handler(
     let password = req.password.clone();
     let wallet_index = req.wallet_index;
     let max_wallets = req.max_wallets;
+    let disclosure_mask = req.disclosure_mask;
 
     let result = tokio::task::spawn_blocking(move || {
         let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
@@ -258,7 +263,7 @@ async fn execute_handler(
         let ownership_sig = zk_x509_script::ownership::sign_ownership(
             &cert_der, &key_der, &registrant_bytes, wallet_index)
             .map_err(|e| e.to_string())?;
-        let stdin = build_stdin(&cert_der, &ownership_sig, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets);
+        let stdin = build_stdin(&cert_der, &ownership_sig, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets, disclosure_mask);
         state.client.execute(ZK_X509_ELF, stdin).run()
             .map_err(|e| e.to_string())
     })
@@ -292,6 +297,7 @@ async fn prove_handler(
     let password = req.password.clone();
     let wallet_index = req.wallet_index;
     let max_wallets = req.max_wallets;
+    let disclosure_mask = req.disclosure_mask;
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
         let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
@@ -299,7 +305,7 @@ async fn prove_handler(
         let ownership_sig = zk_x509_script::ownership::sign_ownership(
             &cert_der, &key_der, &registrant_bytes, wallet_index)
             .map_err(|e| e.to_string())?;
-        let stdin = build_stdin(&cert_der, &ownership_sig, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets);
+        let stdin = build_stdin(&cert_der, &ownership_sig, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets, disclosure_mask);
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;
         let proof = state.client.prove(&pk, stdin).run().map_err(|e| e.to_string())?;
         state.client.verify(&proof, pk.verifying_key(), None).map_err(|e| e.to_string())?;

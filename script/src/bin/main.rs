@@ -63,6 +63,10 @@ struct Args {
     /// Max wallets per certificate (must match contract's maxWalletsPerCert).
     #[arg(long, default_value = "1")]
     max_wallets: u32,
+
+    /// Selective disclosure bitmask: bit 0=C, 1=O, 2=OU, 3=CN. Default 0x0F=all.
+    #[arg(long, default_value = "15")]
+    disclosure_mask: u8,
 }
 
 fn main() {
@@ -145,8 +149,8 @@ fn main() {
     stdin.write(&registrant_bytes);
     stdin.write(&args.wallet_index);
     stdin.write(&args.max_wallets);
-    let disclosure_mask: u8 = 0x0F;
-    stdin.write(&disclosure_mask);    println!("Wallet Index: {} / Max: {}", args.wallet_index, args.max_wallets);
+    stdin.write(&args.disclosure_mask);
+    println!("Wallet Index: {} / Max: {} / Disclosure: 0x{:02X}", args.wallet_index, args.max_wallets, args.disclosure_mask);
     println!("Registrant: 0x{}", hex::encode(registrant_bytes));
 
     if args.execute {

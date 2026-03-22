@@ -35,6 +35,8 @@ struct EVMArgs {
     wallet_index: u32,
     #[arg(long, default_value = "1")]
     max_wallets: u32,
+    #[arg(long, default_value = "15")]
+    disclosure_mask: u8,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -92,8 +94,7 @@ fn main() {
     stdin.write(&registrant_bytes);
     stdin.write(&args.wallet_index);
     stdin.write(&args.max_wallets);
-    let disclosure_mask: u8 = 0x0F;
-    stdin.write(&disclosure_mask);
+    stdin.write(&args.disclosure_mask);
     println!("Proof System: {:?}", args.system);
 
     let proof = match args.system {
