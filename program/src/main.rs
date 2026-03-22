@@ -1,9 +1,10 @@
 //! ZK X.509 Certificate Verification Program (SP1 Guest)
 //!
 //! Runs inside the zkVM. Verifies:
-//! 1. X.509 certificate is validly signed by a trusted CA
+//! 1. Certificate chain (user cert → intermediate CAs → root CA)
 //! 2. User owns the private key corresponding to the certificate
-//! 3. Outputs a nullifier (prevents double registration) and CA hash
+//! 3. All certificates in the chain are temporally valid
+//! 4. Outputs a nullifier (prevents double registration) and CA root hash
 
 #![no_main]
 sp1_zkvm::entrypoint!(main);
@@ -17,86 +18,188 @@ use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
 use zk_x509_lib::PublicValuesStruct;
 
+/// Verify an RSA signature on a certificate's TBS data.
+fn verify_rsa_signature(
+    tbs_der: &[u8],
+    signature_bytes: &[u8],
+    sig_alg_oid: &str,
+    signer_pub_key: &RsaPublicKey,
+) {
+    let scheme = match sig_alg_oid {
+        "1.2.840.113549.1.1.11" => Pkcs1v15Sign::new::<sha2::Sha256>(),
+        "1.2.840.113549.1.1.5" => Pkcs1v15Sign::new::<sha1::Sha1>(),
+        "1.2.840.113549.1.1.12" => Pkcs1v15Sign::new::<sha2::Sha384>(),
+        "1.2.840.113549.1.1.13" => Pkcs1v15Sign::new::<sha2::Sha512>(),
+        _ => panic!("Unsupported signature algorithm: {}", sig_alg_oid),
+    };
+
+    let tbs_hash = match sig_alg_oid {
+        "1.2.840.113549.1.1.11" => {
+            let mut h = sha2::Sha256::new();
+            h.update(tbs_der);
+            h.finalize().to_vec()
+        }
+        "1.2.840.113549.1.1.5" => {
+            let mut h = <sha1::Sha1 as sha1::Digest>::new();
+            sha1::Digest::update(&mut h, tbs_der);
+            sha1::Digest::finalize(h).to_vec()
+        }
+        "1.2.840.113549.1.1.12" => {
+            let mut h = sha2::Sha384::new();
+            h.update(tbs_der);
+            h.finalize().to_vec()
+        }
+        "1.2.840.113549.1.1.13" => {
+            let mut h = sha2::Sha512::new();
+            h.update(tbs_der);
+            h.finalize().to_vec()
+        }
+        _ => unreachable!(),
+    };
+
+    signer_pub_key
+        .verify(scheme, &tbs_hash, signature_bytes)
+        .expect("RSA signature verification failed");
+}
+
 pub fn main() {
     // ========================================
     // Step 1: Read inputs from the host (prover)
     // ========================================
     let cert_der: Vec<u8> = sp1_zkvm::io::read();
     let user_priv_key: Vec<u8> = sp1_zkvm::io::read();
-    let ca_pub_key: Vec<u8> = sp1_zkvm::io::read();
+    // Certificate chain: [intermediate_ca_1, intermediate_ca_2, ..., root_ca_pub_key]
+    // For single-level: just [root_ca_pub_key]
+    // For Korean NPKI: [intermediate_ca_cert_der, root_ca_pub_key_spki_der]
+    let cert_chain: Vec<Vec<u8>> = sp1_zkvm::io::read();
     let current_timestamp: u64 = sp1_zkvm::io::read();
 
-    // ========================================
-    // Step 2: Parse the X.509 certificate
-    // ========================================
-    let (_, cert) = X509Certificate::from_der(&cert_der)
-        .expect("Failed to parse X.509 certificate");
+    assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
 
-    // ========================================
-    // Step 2.5: Verify certificate validity period
-    // ========================================
-    let not_before = cert.validity().not_before.timestamp();
-    let not_after = cert.validity().not_after.timestamp();
     let ts = current_timestamp as i64;
 
-    assert!(ts >= not_before, "Certificate is not yet valid");
-    assert!(ts <= not_after, "Certificate has expired");
+    // ========================================
+    // Step 2: Parse the user certificate
+    // ========================================
+    let (_, user_cert) = X509Certificate::from_der(&cert_der)
+        .expect("Failed to parse user certificate");
+
+    // Verify user cert validity period
+    assert!(
+        ts >= user_cert.validity().not_before.timestamp(),
+        "User certificate is not yet valid"
+    );
+    assert!(
+        ts <= user_cert.validity().not_after.timestamp(),
+        "User certificate has expired"
+    );
 
     // ========================================
-    // Step 3: Verify CA signature on the certificate
+    // Step 3: Verify certificate chain
     // ========================================
-    // Parse the CA public key from SPKI DER format.
-    // We use the `rsa` crate (pure Rust) instead of x509-parser's
-    // verify_signature() which depends on `ring` (incompatible with zkVM).
-    let ca_rsa_pub = RsaPublicKey::from_public_key_der(&ca_pub_key)
-        .expect("Failed to parse CA public key");
+    // Walk the chain from user cert up to root CA.
+    //
+    // Chain layout (cert_chain vec):
+    //   - Last element: Root CA public key (SPKI DER, not a full cert)
+    //   - Other elements: Intermediate CA certificates (full X.509 DER)
+    //
+    // Verification order:
+    //   user_cert --signed_by--> chain[0] --signed_by--> chain[1] ... --signed_by--> chain[last]
+    //
+    // For single-level (no intermediates): cert_chain = [root_ca_pub_key]
+    //   user_cert --signed_by--> root_ca_pub_key
 
-    // The TBS (To Be Signed) certificate data that was signed by the CA
-    let tbs_der = cert.tbs_certificate.as_ref();
-    let signature_bytes = cert.signature_value.as_ref();
+    let root_ca_pub_key_der = cert_chain.last().unwrap();
+    let chain_len = cert_chain.len();
 
-    // Determine the signature scheme from the algorithm OID
-    let sig_alg_oid = cert.signature_algorithm.algorithm.to_id_string();
-    let scheme = match sig_alg_oid.as_str() {
-        // sha256WithRSAEncryption
-        "1.2.840.113549.1.1.11" => Pkcs1v15Sign::new::<sha2::Sha256>(),
-        // sha1WithRSAEncryption (legacy, still common in Korean NPKI)
-        "1.2.840.113549.1.1.5" => Pkcs1v15Sign::new::<sha1::Sha1>(),
-        // sha384WithRSAEncryption
-        "1.2.840.113549.1.1.12" => Pkcs1v15Sign::new::<sha2::Sha384>(),
-        // sha512WithRSAEncryption
-        "1.2.840.113549.1.1.13" => Pkcs1v15Sign::new::<sha2::Sha512>(),
-        _ => panic!("Unsupported signature algorithm: {}", sig_alg_oid),
-    };
+    if chain_len == 1 {
+        // Single-level: user cert signed directly by root CA
+        let root_pub = RsaPublicKey::from_public_key_der(root_ca_pub_key_der)
+            .expect("Failed to parse root CA public key");
 
-    // Hash the TBS data with the appropriate algorithm and verify
-    let tbs_hash = match sig_alg_oid.as_str() {
-        "1.2.840.113549.1.1.11" => {
-            let mut hasher = sha2::Sha256::new();
-            hasher.update(tbs_der);
-            hasher.finalize().to_vec()
-        }
-        "1.2.840.113549.1.1.5" => {
-            let mut hasher = <sha1::Sha1 as sha1::Digest>::new();
-            sha1::Digest::update(&mut hasher, tbs_der);
-            sha1::Digest::finalize(hasher).to_vec()
-        }
-        "1.2.840.113549.1.1.12" => {
-            let mut hasher = sha2::Sha384::new();
-            hasher.update(tbs_der);
-            hasher.finalize().to_vec()
-        }
-        "1.2.840.113549.1.1.13" => {
-            let mut hasher = sha2::Sha512::new();
-            hasher.update(tbs_der);
-            hasher.finalize().to_vec()
-        }
-        _ => unreachable!(),
-    };
+        let sig_oid = user_cert.signature_algorithm.algorithm.to_id_string();
+        verify_rsa_signature(
+            user_cert.tbs_certificate.as_ref(),
+            user_cert.signature_value.as_ref(),
+            &sig_oid,
+            &root_pub,
+        );
+    } else {
+        // Multi-level chain: verify each link
+        // First: user_cert signed by chain[0] (first intermediate)
+        let (_, first_intermediate) = X509Certificate::from_der(&cert_chain[0])
+            .expect("Failed to parse intermediate CA certificate");
 
-    ca_rsa_pub
-        .verify(scheme, &tbs_hash, signature_bytes)
-        .expect("CA signature verification failed");
+        // Verify intermediate cert validity
+        assert!(
+            ts >= first_intermediate.validity().not_before.timestamp(),
+            "Intermediate CA certificate is not yet valid"
+        );
+        assert!(
+            ts <= first_intermediate.validity().not_after.timestamp(),
+            "Intermediate CA certificate has expired"
+        );
+
+        // Verify user cert was signed by first intermediate
+        let intermediate_pub = RsaPublicKey::from_public_key_der(
+            first_intermediate.tbs_certificate.subject_pki.raw,
+        )
+        .expect("Failed to parse intermediate CA public key");
+
+        let sig_oid = user_cert.signature_algorithm.algorithm.to_id_string();
+        verify_rsa_signature(
+            user_cert.tbs_certificate.as_ref(),
+            user_cert.signature_value.as_ref(),
+            &sig_oid,
+            &intermediate_pub,
+        );
+
+        // Verify intermediate chain links (chain[0] signed by chain[1], etc.)
+        for i in 0..chain_len - 2 {
+            let (_, current_cert) = X509Certificate::from_der(&cert_chain[i])
+                .expect("Failed to parse chain certificate");
+            let (_, next_cert) = X509Certificate::from_der(&cert_chain[i + 1])
+                .expect("Failed to parse next chain certificate");
+
+            // Verify next cert validity
+            assert!(
+                ts >= next_cert.validity().not_before.timestamp(),
+                "Chain certificate is not yet valid"
+            );
+            assert!(
+                ts <= next_cert.validity().not_after.timestamp(),
+                "Chain certificate has expired"
+            );
+
+            let next_pub = RsaPublicKey::from_public_key_der(
+                next_cert.tbs_certificate.subject_pki.raw,
+            )
+            .expect("Failed to parse chain CA public key");
+
+            let oid = current_cert.signature_algorithm.algorithm.to_id_string();
+            verify_rsa_signature(
+                current_cert.tbs_certificate.as_ref(),
+                current_cert.signature_value.as_ref(),
+                &oid,
+                &next_pub,
+            );
+        }
+
+        // Last link: last intermediate signed by root CA public key
+        let (_, last_intermediate) = X509Certificate::from_der(&cert_chain[chain_len - 2])
+            .expect("Failed to parse last intermediate certificate");
+
+        let root_pub = RsaPublicKey::from_public_key_der(root_ca_pub_key_der)
+            .expect("Failed to parse root CA public key");
+
+        let oid = last_intermediate.signature_algorithm.algorithm.to_id_string();
+        verify_rsa_signature(
+            last_intermediate.tbs_certificate.as_ref(),
+            last_intermediate.signature_value.as_ref(),
+            &oid,
+            &root_pub,
+        );
+    }
 
     // ========================================
     // Step 4: Verify ownership (private key matches cert's public key)
@@ -107,9 +210,9 @@ pub fn main() {
     let derived_pub_key = RsaPublicKey::from(&priv_key);
 
     let cert_pub_key = RsaPublicKey::from_public_key_der(
-            cert.tbs_certificate.subject_pki.raw
-        )
-        .expect("Failed to parse certificate's public key");
+        user_cert.tbs_certificate.subject_pki.raw,
+    )
+    .expect("Failed to parse certificate's public key");
 
     assert_eq!(
         derived_pub_key.n(), cert_pub_key.n(),
@@ -121,11 +224,9 @@ pub fn main() {
     );
 
     // ========================================
-    // Step 5: Generate Nullifier from certificate serial + private key
+    // Step 5: Generate Nullifier
     // ========================================
-    // Include private key hash to prevent brute-force of predictable serial numbers.
-    // An attacker who knows the serial range cannot reverse the nullifier without the key.
-    let serial_bytes = cert.tbs_certificate.serial.to_bytes_be();
+    let serial_bytes = user_cert.tbs_certificate.serial.to_bytes_be();
     let priv_key_hash = Sha256::digest(&user_priv_key);
     let mut nullifier_preimage = Vec::with_capacity(serial_bytes.len() + 32);
     nullifier_preimage.extend_from_slice(&serial_bytes);
@@ -133,12 +234,12 @@ pub fn main() {
     let nullifier: [u8; 32] = Sha256::digest(&nullifier_preimage).into();
 
     // ========================================
-    // Step 6: Hash the CA public key (to identify the issuing authority)
+    // Step 6: Hash the root CA public key
     // ========================================
-    let ca_root_hash: [u8; 32] = Sha256::digest(&ca_pub_key).into();
+    let ca_root_hash: [u8; 32] = Sha256::digest(root_ca_pub_key_der).into();
 
     // ========================================
-    // Step 7: Commit public values (only these go on-chain)
+    // Step 7: Commit public values
     // ========================================
     let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {
         nullifier: nullifier.into(),
