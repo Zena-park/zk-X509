@@ -144,4 +144,31 @@ contract IdentityRegistryTest is Test {
         vm.prank(alice);
         registry.addCARoot(bytes32(uint256(0xFACE)));
     }
+
+    function test_PauseBlocksRegistration() public {
+        registry.pause();
+        assertTrue(registry.paused());
+
+        bytes memory publicValues = _publicValues(NULLIFIER, CA_ROOT_HASH);
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.ContractPaused.selector);
+        registry.register(hex"1234", publicValues);
+    }
+
+    function test_UnpauseAllowsRegistration() public {
+        registry.pause();
+        registry.unpause();
+        assertFalse(registry.paused());
+
+        bytes memory publicValues = _publicValues(NULLIFIER, CA_ROOT_HASH);
+        vm.prank(alice);
+        registry.register(hex"1234", publicValues);
+        assertTrue(registry.isVerified(alice));
+    }
+
+    function test_OnlyOwnerCanPause() public {
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        registry.pause();
+    }
 }
