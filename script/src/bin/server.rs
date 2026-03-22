@@ -49,6 +49,9 @@ struct ProveRequest2 {
     /// Intermediate CA certificates (full X.509 DER), in order from user→root
     #[serde(default)]
     intermediate_certs: Vec<Vec<u8>>,
+    /// Wallet address to bind the proof to (hex string, e.g. "0xf39F...")
+    #[serde(default)]
+    registrant: String,
 }
 
 /// Response sent back to the frontend.
@@ -176,6 +179,12 @@ async fn execute_handler(
     stdin.write(&current_timestamp);
     let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
     stdin.write(&revoked_serials);
+    let registrant_hex = req.registrant.strip_prefix("0x").unwrap_or(&req.registrant);
+    let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid registrant address".to_string()))?
+        .try_into()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Registrant must be 20 bytes".to_string()))?;
+    stdin.write(&registrant_bytes);
 
     let result = tokio::task::spawn_blocking(move || {
         state.client.execute(ZK_X509_ELF, stdin).run()
@@ -228,6 +237,12 @@ async fn prove_handler(
     stdin.write(&current_timestamp);
     let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
     stdin.write(&revoked_serials);
+    let registrant_hex = req.registrant.strip_prefix("0x").unwrap_or(&req.registrant);
+    let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid registrant address".to_string()))?
+        .try_into()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Registrant must be 20 bytes".to_string()))?;
+    stdin.write(&registrant_bytes);
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;

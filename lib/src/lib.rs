@@ -6,5 +6,6 @@ sol! {
         bytes32 nullifier;       // SHA-256 hash of cert serial + private key (unique per cert)
         bytes32 caRootHash;      // SHA-256 hash of CA public key (identifies issuing CA)
         uint64 timestamp;        // Proof generation timestamp (verified against block.timestamp)
+        address registrant;      // Wallet address bound to this proof (anti-front-running)
     }
 }

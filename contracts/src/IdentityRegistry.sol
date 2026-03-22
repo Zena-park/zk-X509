@@ -54,6 +54,7 @@ contract IdentityRegistry {
     error UserAlreadyVerified(address user);
     error ProofTooOld(uint64 proofTimestamp, uint256 blockTimestamp);
     error ProofInFuture(uint64 proofTimestamp, uint256 blockTimestamp);
+    error RegistrantMismatch(address proofRegistrant, address actualSender);
     error OnlyOwner();
     error ZeroAddress();
     error ContractPaused();
@@ -86,29 +87,32 @@ contract IdentityRegistry {
 
     /// @notice Register a verified identity using a ZK proof of X.509 certificate ownership.
     /// @param proof The serialized ZK proof bytes.
-    /// @param publicValues The ABI-encoded public values (nullifier, caRootHash, timestamp).
+    /// @param publicValues The ABI-encoded public values (nullifier, caRootHash, timestamp, registrant).
     function register(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
         // 1. Decode public values
-        (bytes32 nullifier, bytes32 caRootHash, uint64 proofTimestamp) =
-            abi.decode(publicValues, (bytes32, bytes32, uint64));
+        (bytes32 nullifier, bytes32 caRootHash, uint64 proofTimestamp, address registrant) =
+            abi.decode(publicValues, (bytes32, bytes32, uint64, address));
 
-        // 2. Verify proof timestamp is within acceptable range
+        // 2. Verify proof is bound to msg.sender (anti-front-running)
+        if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
+
+        // 3. Verify proof timestamp is within acceptable range
         if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
         if (block.timestamp - proofTimestamp > MAX_PROOF_AGE) revert ProofTooOld(proofTimestamp, block.timestamp);
 
-        // 3. Check CA is whitelisted
+        // 4. Check CA is whitelisted
         if (!validCARoots[caRootHash]) revert UnsupportedCA(caRootHash);
 
-        // 4. Check nullifier hasn't been used (no double registration)
+        // 5. Check nullifier hasn't been used (no double registration)
         if (nullifiers[nullifier]) revert AlreadyRegistered(nullifier);
 
-        // 5. Check user isn't already verified
+        // 6. Check user isn't already verified
         if (verifiedUsers[msg.sender]) revert UserAlreadyVerified(msg.sender);
 
-        // 6. Verify the ZK proof on-chain
+        // 7. Verify the ZK proof on-chain
         sp1Verifier.verifyProof(programVKey, publicValues, proof);
 
-        // 7. Update state
+        // 8. Update state
         nullifiers[nullifier] = true;
         verifiedUsers[msg.sender] = true;
 

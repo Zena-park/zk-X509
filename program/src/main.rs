@@ -78,6 +78,8 @@ pub fn main() {
     // not in *this specific list*. The CRL hash is NOT committed to public
     // values, so on-chain consumers should verify CRL freshness separately.
     let revoked_serials: Vec<Vec<u8>> = sp1_zkvm::io::read();
+    // Wallet address that will call register() — binds proof to a specific sender
+    let registrant: [u8; 20] = sp1_zkvm::io::read();
 
     assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
 
@@ -222,10 +224,14 @@ pub fn main() {
     // ========================================
     // Step 8: Commit public values
     // ========================================
+    // Convert [u8; 20] to alloy Address type
+    let registrant_addr = alloy_sol_types::private::Address::from_slice(&registrant);
+
     let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {
         nullifier: nullifier.into(),
         caRootHash: ca_root_hash.into(),
         timestamp: current_timestamp,
+        registrant: registrant_addr,
     });
 
     sp1_zkvm::io::commit_slice(&bytes);

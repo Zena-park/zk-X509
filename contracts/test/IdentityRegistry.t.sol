@@ -21,8 +21,8 @@ contract IdentityRegistryTest is Test {
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
 
-    function _publicValues(bytes32 nullifier, bytes32 caHash) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caHash, uint64(block.timestamp));
+    function _pv(bytes32 nullifier, bytes32 caHash, address sender) internal view returns (bytes memory) {
+        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender);
     }
 
     function setUp() public {
@@ -32,131 +32,111 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_Register() public {
-        bytes memory publicValues = _publicValues(NULLIFIER, CA_ROOT_HASH);
-        bytes memory proof = hex"1234";
-
         vm.prank(alice);
-        registry.register(proof, publicValues);
-
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
         assertTrue(registry.isVerified(alice));
         assertTrue(registry.nullifiers(NULLIFIER));
     }
 
+    function test_RevertRegistrantMismatch() public {
+        // Proof bound to alice, but bob tries to submit it (front-running)
+        bytes memory publicValues = _pv(NULLIFIER, CA_ROOT_HASH, alice);
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.RegistrantMismatch.selector, alice, bob)
+        );
+        registry.register(hex"1234", publicValues);
+    }
+
     function test_RevertDoubleRegistration() public {
-        bytes memory publicValues = _publicValues(NULLIFIER, CA_ROOT_HASH);
-        bytes memory proof = hex"1234";
-
         vm.prank(alice);
-        registry.register(proof, publicValues);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
 
+        // Bob tries with same nullifier but his own address
         vm.prank(bob);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.AlreadyRegistered.selector, NULLIFIER)
         );
-        registry.register(proof, publicValues);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
     }
 
     function test_RevertUserAlreadyVerified() public {
-        bytes memory publicValues1 = _publicValues(NULLIFIER, CA_ROOT_HASH);
-        bytes memory proof = hex"1234";
-
         vm.prank(alice);
-        registry.register(proof, publicValues1);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
 
         bytes32 nullifier2 = bytes32(uint256(0xBEEF));
-        bytes memory publicValues2 = _publicValues(nullifier2, CA_ROOT_HASH);
-
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.UserAlreadyVerified.selector, alice)
         );
-        registry.register(proof, publicValues2);
+        registry.register(hex"1234", _pv(nullifier2, CA_ROOT_HASH, alice));
     }
 
     function test_RevertUnsupportedCA() public {
         bytes32 unknownCA = bytes32(uint256(0xBAD));
-        bytes memory publicValues = _publicValues(NULLIFIER, unknownCA);
-        bytes memory proof = hex"1234";
-
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.UnsupportedCA.selector, unknownCA)
         );
-        registry.register(proof, publicValues);
+        registry.register(hex"1234", _pv(NULLIFIER, unknownCA, alice));
     }
 
     function test_RevertProofTooOld() public {
-        vm.warp(1700000000); // Set block.timestamp to a realistic value
-        // Proof from 2 hours ago
+        vm.warp(1700000000);
         uint64 oldTimestamp = uint64(block.timestamp - 2 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, oldTimestamp);
-        bytes memory proof = hex"1234";
-
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, oldTimestamp, alice);
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IdentityRegistry.ProofTooOld.selector, oldTimestamp, block.timestamp
             )
         );
-        registry.register(proof, publicValues);
+        registry.register(hex"1234", publicValues);
     }
 
     function test_RevertProofInFuture() public {
-        // Proof from 1 hour in the future
         uint64 futureTimestamp = uint64(block.timestamp + 1 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, futureTimestamp);
-        bytes memory proof = hex"1234";
-
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, futureTimestamp, alice);
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IdentityRegistry.ProofInFuture.selector, futureTimestamp, block.timestamp
             )
         );
-        registry.register(proof, publicValues);
+        registry.register(hex"1234", publicValues);
     }
 
     function test_AddRemoveCARoot() public {
         bytes32 newCA = bytes32(uint256(0xFACE));
-
         registry.addCARoot(newCA);
         assertTrue(registry.validCARoots(newCA));
-
         registry.removeCARoot(newCA);
         assertFalse(registry.validCARoots(newCA));
     }
 
     function test_OnlyOwnerCanManageCA() public {
-        bytes32 newCA = bytes32(uint256(0xFACE));
-
         vm.prank(alice);
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
-        registry.addCARoot(newCA);
+        registry.addCARoot(bytes32(uint256(0xFACE)));
     }
 
     function test_TwoStepOwnershipTransfer() public {
-        // Step 1: Owner proposes alice
         registry.transferOwnership(alice);
-        // Owner hasn't changed yet
         assertEq(registry.owner(), address(this));
         assertEq(registry.pendingOwner(), alice);
 
-        // Random user can't accept
         vm.prank(bob);
         vm.expectRevert(IdentityRegistry.NotPendingOwner.selector);
         registry.acceptOwnership();
 
-        // Step 2: Alice accepts
         vm.prank(alice);
         registry.acceptOwnership();
         assertEq(registry.owner(), alice);
         assertEq(registry.pendingOwner(), address(0));
 
-        // Old owner can no longer manage
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
         registry.addCARoot(bytes32(uint256(0xFACE)));
 
-        // New owner can
         vm.prank(alice);
         registry.addCARoot(bytes32(uint256(0xFACE)));
     }
@@ -164,21 +144,17 @@ contract IdentityRegistryTest is Test {
     function test_PauseBlocksRegistration() public {
         registry.pause();
         assertTrue(registry.paused());
-
-        bytes memory publicValues = _publicValues(NULLIFIER, CA_ROOT_HASH);
         vm.prank(alice);
         vm.expectRevert(IdentityRegistry.ContractPaused.selector);
-        registry.register(hex"1234", publicValues);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
     }
 
     function test_UnpauseAllowsRegistration() public {
         registry.pause();
         registry.unpause();
         assertFalse(registry.paused());
-
-        bytes memory publicValues = _publicValues(NULLIFIER, CA_ROOT_HASH);
         vm.prank(alice);
-        registry.register(hex"1234", publicValues);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
         assertTrue(registry.isVerified(alice));
     }
 
@@ -189,13 +165,9 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_RevokeUser() public {
-        // Register alice first
-        bytes memory publicValues = _publicValues(NULLIFIER, CA_ROOT_HASH);
         vm.prank(alice);
-        registry.register(hex"1234", publicValues);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
         assertTrue(registry.isVerified(alice));
-
-        // Revoke alice
         registry.revokeUser(alice, keccak256("CERT_EXPIRED"));
         assertFalse(registry.isVerified(alice));
     }
@@ -208,18 +180,13 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_RevokedUserCanReRegister() public {
-        // Register, revoke, then re-register with new nullifier
-        bytes memory publicValues1 = _publicValues(NULLIFIER, CA_ROOT_HASH);
         vm.prank(alice);
-        registry.register(hex"1234", publicValues1);
-
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
         registry.revokeUser(alice, keccak256("RE_ISSUE"));
 
-        // Re-register with different nullifier (new cert)
         bytes32 nullifier2 = bytes32(uint256(0xBEEF));
-        bytes memory publicValues2 = _publicValues(nullifier2, CA_ROOT_HASH);
         vm.prank(alice);
-        registry.register(hex"1234", publicValues2);
+        registry.register(hex"1234", _pv(nullifier2, CA_ROOT_HASH, alice));
         assertTrue(registry.isVerified(alice));
     }
 }

@@ -74,6 +74,8 @@ fn main() {
     stdin.write(&current_timestamp);
     let revoked_serials: Vec<Vec<u8>> = Vec::new();
     stdin.write(&revoked_serials);
+    let registrant_bytes: [u8; 20] = [0u8; 20]; // TODO: accept from CLI
+    stdin.write(&registrant_bytes);
 
     println!("Proof System: {:?}", args.system);
 

@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 
 interface UploadProps {
   disabled: boolean;
+  account: string | null;
   onProofGenerated: (result: {
     nullifier: string;
     caRootHash: string;
@@ -11,7 +12,7 @@ interface UploadProps {
   }) => void;
 }
 
-export function Upload({ disabled, onProofGenerated }: UploadProps) {
+export function Upload({ disabled, account, onProofGenerated }: UploadProps) {
   const [certFile, setCertFile] = useState<File | null>(null);
   const [keyFile, setKeyFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
@@ -60,6 +61,7 @@ export function Upload({ disabled, onProofGenerated }: UploadProps) {
           cert_der: Array.from(new Uint8Array(certBytes)),
           user_priv_key: Array.from(new Uint8Array(keyBytes)),
           password: password,
+          registrant: account || "",
         }),
       });
 
