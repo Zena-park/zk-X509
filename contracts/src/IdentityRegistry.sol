@@ -40,6 +40,9 @@ contract IdentityRegistry {
     /// @notice Maximum allowed age of a proof (1 hour).
     uint256 public constant MAX_PROOF_AGE = 1 hours;
 
+    /// @notice Max wallets per certificate (1 = strict 1:1, N = multi-wallet).
+    uint32 public immutable maxWalletsPerCert;
+
     // ============ Events ============
 
     event UserRegistered(address indexed user, bytes32 nullifier, bytes32 caRootHash);
@@ -47,7 +50,7 @@ contract IdentityRegistry {
     event CARootAdded(bytes32 indexed caRootHash);
     event CARootRemoved(bytes32 indexed caRootHash);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-    event UserRevoked(address indexed user, bytes32 reason);
+    event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
 
@@ -62,10 +65,10 @@ contract IdentityRegistry {
     error OnlyOwner();
     error ZeroAddress();
     error ContractPaused();
-    error UserNotVerified(address user);
     error NotPendingOwner();
     error NullifierNotRegistered(bytes32 nullifier);
     error NullifierRevoked(bytes32 nullifier);
+    error WalletIndexOutOfRange(uint32 walletIndex, uint32 maxAllowed);
 
     // ============ Modifiers ============
 
@@ -83,28 +86,32 @@ contract IdentityRegistry {
 
     /// @param _sp1Verifier Address of the SP1 verifier contract.
     /// @param _programVKey The verification key for the ZK X.509 SP1 program.
-    constructor(address _sp1Verifier, bytes32 _programVKey) {
+    /// @param _maxWallets Max wallets per certificate (1 for DAO/voting, N for DeFi).
+    constructor(address _sp1Verifier, bytes32 _programVKey, uint32 _maxWallets) {
         sp1Verifier = ISP1Verifier(_sp1Verifier);
         programVKey = _programVKey;
+        maxWalletsPerCert = _maxWallets;
         owner = msg.sender;
     }
 
     // ============ Internal ============
 
-    /// @dev Shared validation: decode, check registrant, timestamp, CA, and verify proof.
+    /// @dev Shared validation: decode, check registrant, timestamp, CA, walletIndex, and verify proof.
     function _validateProof(
         bytes calldata proof,
         bytes calldata publicValues
     ) internal view returns (bytes32 nullifier, bytes32 caRootHash) {
         address registrant;
         uint64 proofTimestamp;
-        (nullifier, caRootHash, proofTimestamp, registrant) =
-            abi.decode(publicValues, (bytes32, bytes32, uint64, address));
+        uint32 walletIndex;
+        (nullifier, caRootHash, proofTimestamp, registrant, walletIndex) =
+            abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32));
 
         if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
         if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
         if (block.timestamp - proofTimestamp > MAX_PROOF_AGE) revert ProofTooOld(proofTimestamp, block.timestamp);
         if (!validCARoots[caRootHash]) revert UnsupportedCA(caRootHash);
+        if (walletIndex >= maxWalletsPerCert) revert WalletIndexOutOfRange(walletIndex, maxWalletsPerCert);
 
         sp1Verifier.verifyProof(programVKey, publicValues, proof);
     }
@@ -117,6 +124,7 @@ contract IdentityRegistry {
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         if (nullifierOwner[nullifier] != address(0)) revert AlreadyRegistered(nullifier);
+        // Same address cannot be registered twice (even in multi-wallet mode)
         if (verifiedUsers[msg.sender]) revert UserAlreadyVerified(msg.sender);
 
         nullifierOwner[nullifier] = msg.sender;
@@ -125,11 +133,9 @@ contract IdentityRegistry {
         emit UserRegistered(msg.sender, nullifier, caRootHash);
     }
 
-    /// @notice Re-register: move an existing certificate to a new wallet address.
+    /// @notice Re-register: move an existing nullifier slot to a new wallet address.
     /// @dev No admin required. User proves ownership of the same certificate with a new wallet.
-    ///      The old wallet is unverified and the new wallet takes over.
-    ///      WARNING: If certificate files are compromised, an attacker could re-register
-    ///      to their own wallet. This is by design — the certificate is the identity anchor.
+    ///      WARNING: If certificate files are compromised, an attacker could re-register.
     function reRegister(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
         (bytes32 nullifier, ) = _validateProof(proof, publicValues);
 
@@ -179,7 +185,7 @@ contract IdentityRegistry {
         if (user == address(0)) revert NullifierNotRegistered(nullifier);
         verifiedUsers[user] = false;
         revokedNullifiers[nullifier] = true;
-        emit UserRevoked(user, reason);
+        emit IdentityRevoked(user, nullifier, reason);
     }
 
     /// @notice Pause the contract (emergency stop).

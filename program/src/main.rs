@@ -79,8 +79,13 @@ pub fn main() {
     let crl_der: Vec<u8> = sp1_zkvm::io::read();
     // Wallet address that will call register() — binds proof to a specific sender
     let registrant: [u8; 20] = sp1_zkvm::io::read();
+    // Wallet index for multi-wallet registration (0 for single-wallet mode)
+    let wallet_index: u32 = sp1_zkvm::io::read();
+    // Max wallets per cert (verified inside ZK circuit)
+    let max_wallets: u32 = sp1_zkvm::io::read();
 
     assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
+    assert!(wallet_index < max_wallets, "wallet_index must be < max_wallets");
 
     let ts = current_timestamp as i64;
 
@@ -271,11 +276,14 @@ pub fn main() {
     // ========================================
     // Step 6: Generate Nullifier
     // ========================================
+    // nullifier = SHA-256(serial ‖ SHA-256(sk) ‖ wallet_index)
+    // wallet_index makes each wallet slot produce a unique nullifier
     let serial_bytes = user_cert.tbs_certificate.serial.to_bytes_be();
     let priv_key_hash = Sha256::digest(&user_priv_key);
-    let mut nullifier_preimage = Vec::with_capacity(serial_bytes.len() + 32);
+    let mut nullifier_preimage = Vec::with_capacity(serial_bytes.len() + 32 + 4);
     nullifier_preimage.extend_from_slice(&serial_bytes);
     nullifier_preimage.extend_from_slice(&priv_key_hash);
+    nullifier_preimage.extend_from_slice(&wallet_index.to_be_bytes());
     let nullifier: [u8; 32] = Sha256::digest(&nullifier_preimage).into();
 
     // ========================================
@@ -295,6 +303,7 @@ pub fn main() {
         caRootHash: ca_root_hash.into(),
         timestamp: current_timestamp,
         registrant: registrant_addr,
+        walletIndex: wallet_index,
     });
 
     sp1_zkvm::io::commit_slice(&bytes);

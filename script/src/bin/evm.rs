@@ -31,6 +31,10 @@ struct EVMArgs {
     /// Wallet address to bind the proof to (hex, e.g. 0xf39F...).
     #[arg(long)]
     registrant: String,
+    #[arg(long, default_value = "0")]
+    wallet_index: u32,
+    #[arg(long, default_value = "1")]
+    max_wallets: u32,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -83,6 +87,8 @@ fn main() {
         .try_into()
         .expect("Registrant address must be 20 bytes");
     stdin.write(&registrant_bytes);
+    stdin.write(&args.wallet_index);
+    stdin.write(&args.max_wallets);
 
     println!("Proof System: {:?}", args.system);
 
