@@ -643,18 +643,18 @@ The CRL is verified trustlessly inside the zkVM: its RSA signature is checked ag
 
 **Residual limitation.** The host selects *which* valid CRL to provide. If the CA has issued a newer CRL revoking the user's certificate, a malicious host could still provide the older (but still temporally valid) CRL that does not yet contain the revocation. This is bounded by the CRL's validity window (typically 24–72 hours for Korean NPKI). The CRL data is not committed to public values, so on-chain consumers cannot independently verify which CRL was used. For stronger guarantees, a CRL oracle (Section 7.2) could maintain an on-chain Merkle root of revoked serials.
 
-#### 5.5.3 Private Key Exposure
+#### 5.5.3 Private Key Handling
 
-**Architecture.** The private key **never transits from the browser to the prover server**. The prover server runs as a localhost daemon that directly scans the user's NPKI certificate directories (e.g., `~/Library/Preferences/NPKI` on macOS, `~/.pki/NPKI` on Linux). The frontend sends only a certificate selection index and decryption password—not the key bytes themselves. The server reads the encrypted private key from the local filesystem and decrypts it in-process.
+**Architecture.** The private key **never transits over any network interface**. The prover server runs as a localhost daemon that directly scans the user's NPKI certificate directories (e.g., `~/Library/Preferences/NPKI` on macOS, `~/.pki/NPKI` on Linux). The frontend sends only a certificate selection index and decryption password—not the key bytes themselves. The server reads the encrypted private key from the local filesystem and decrypts it in-process.
 
-**Mitigations:**
+**Defenses:**
 - Private key bytes never appear in any HTTP request or response
 - CORS restricted to `localhost:3000` (prevents cross-origin requests)
 - Password is the only sensitive data transmitted, over the loopback interface only
 - No `Debug` derive on key-holding structs (prevents accidental logging)
 - Password cleared from frontend memory after proof generation
 
-**Residual risk.** The decrypted private key exists in the prover server's process memory during proof generation. This is mitigated by assumption A1 and is equivalent to the trust model of any local application that reads private key files (e.g., a web browser using client certificates).
+**Trust model equivalence.** During proof generation, the decrypted private key resides in the prover server's process memory. This is identical to the trust model of *any* software that uses X.509 private keys: banking applications, TLS client authentication in web browsers, and government e-signature tools all hold private keys in process memory during cryptographic operations. zk-X509 introduces no additional exposure beyond what is inherent to private key usage on any computing platform.
 
 #### 5.5.4 Smart Contract Security
 

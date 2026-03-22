@@ -4,213 +4,98 @@
 
 ---
 
-## The Problem No One Has Solved
+## The Problem
 
-Public blockchains have a fundamental contradiction: they need identity verification for compliance, but their transparency makes it impossible to store personal data safely.
+Blockchain needs identity for compliance, but its transparency makes storing personal data impossible. Every solution so far is a compromise: centralized KYC leaks data, Worldcoin requires special hardware, and DID systems need 3–5 years to bootstrap new credential infrastructure that regulators don't yet recognize.
 
-Every "solution" so far has been a compromise:
+The Tornado Cash sanctions, MiCA, and the Travel Rule all say the same thing: **"privacy" without "compliance" is a dead end.**
 
-- **Centralized KYC** (Coinbase, Binance): A third party sees everything. Single point of failure. You're trusting someone not to leak your data — and breaches prove they can't.
-- **Hardware-dependent** (Worldcoin's Orb, zkPassport's NFC): You need special devices. Billions of people are excluded. Try explaining to your grandmother why she needs to scan her iris.
-- **DID/Verifiable Credentials** (Polygon ID, Veramo): Architecturally promising, but who issues the credentials? Who trusts the issuers? You need 3–5 years to bootstrap an entirely new trust ecosystem — and regulators still don't recognize it.
+## The Insight
 
-Meanwhile, the regulatory noose is tightening. The Tornado Cash sanctions, MiCA in Europe, the Travel Rule — all signal the same message: **"privacy" without "compliance" is a dead end.** The industry desperately needs a way to prove "I am a real, unique person" on-chain without revealing *which* person.
+**Governments already solved this. Two decades ago.**
 
-## The Insight Everyone Missed
+Over 4 billion X.509 digital certificates are active worldwide. In South Korea alone, **20 million NPKI certificates** are used daily for banking and government services — legally binding under the Electronic Signatures Act. These credentials are sitting on people's computers right now.
 
-Here's what we noticed: **governments already solved this problem. Two decades ago.**
+We don't need to build a new trust system. **We need to bridge the one that already works.**
 
-Over 4 billion X.509 digital certificates are active worldwide right now. Governments issue them. Banks trust them. Courts recognize them. They're sitting on people's computers, in their keychains, on their smart cards.
-
-In South Korea alone, approximately **20 million NPKI certificates** are used daily for banking, tax filing, government services, and e-commerce. These aren't toy credentials — they carry full legal weight under Korea's Electronic Signatures Act. A single Korean NPKI certificate can authorize a $10 million wire transfer.
-
-The trust infrastructure already exists. The cryptographic signatures are already there. We don't need to build a new identity system. **We need to bridge the one that already works.**
-
-## Introducing zk-X509
-
-**zk-X509** lets you prove you own a valid government-issued X.509 certificate on a blockchain — without revealing your name, ID number, or any personal data.
-
-The flow is simple:
+## How zk-X509 Works
 
 ```
 Your Certificate → Local ZK Prover → On-Chain Proof → Verified Wallet
     (private)        (your machine)     (public)        (anonymous)
 ```
 
-1. **You have a certificate** — a Korean NPKI cert from your bank, a corporate PKI cert, any X.509 credential
-2. **A local prover** on your machine reads it and generates a zero-knowledge proof inside SP1's zkVM
-3. **The proof goes on-chain**, where a smart contract verifies it in ~77,000 gas
-4. **Your wallet is now "verified"** — but the blockchain only sees an anonymous nullifier and which CA issued your cert
+1. You have an X.509 certificate (e.g., Korean NPKI from your bank)
+2. A local prover on your machine generates a zero-knowledge proof inside SP1's zkVM
+3. The proof goes on-chain — a smart contract verifies it in ~77,000 gas
+4. Your wallet is "verified" — the blockchain sees only an anonymous nullifier and which CA issued your cert
 
-No personal data on-chain. No central server seeing your identity. No hardware required. No new credential issuance needed.
+**No personal data on-chain. No central server. No hardware. No new credentials needed.**
 
-## What the Zero-Knowledge Circuit Actually Proves
+The ZK circuit verifies six things, all hidden: full certificate chain signatures, temporal validity, private key ownership, trustless CRL revocation checking (CA signature on the CRL verified inside ZK), registrant binding (proof locked to your wallet), and nullifier generation for Sybil resistance.
 
-Inside the zkVM, six things are verified — all hidden from the outside world:
-
-**1. Full Certificate Chain** — Your cert was signed by a real CA, which was signed by a root CA trusted by the government. Not just one signature — the *entire chain* from your cert to the government root.
-
-**2. Temporal Validity** — Every certificate in the chain is currently valid. No expired certs sneaking through.
-
-**3. Private Key Ownership** — You actually hold the private key matching the certificate. Not just a copy of the cert file — you prove cryptographic ownership.
-
-**4. Trustless CRL Verification** — Your certificate hasn't been revoked. And here's the key difference: the revocation list itself is cryptographically verified inside the ZK circuit. The CA's signature on the CRL is checked. The freshness is validated. No trusting the host. No trusting an oracle. Trustless.
-
-**5. Registrant Binding** — The proof is locked to your specific wallet address. If someone copies your proof from the mempool and tries to front-run you, it fails. The proof only works for your wallet.
-
-**6. Nullifier Generation** — A unique, deterministic ID is derived from your certificate. Register once per cert, no more. This is how Sybil resistance works.
-
-**What goes on-chain:** `nullifier`, `caRootHash`, `timestamp`, `registrant address`. That's it. Zero personal information. Everything else stays in the ZK proof.
-
-## Sybil Resistance: One Person, One Identity
-
-This deserves its own section because it's what makes zk-X509 useful for real applications.
-
-The nullifier is deterministic: same certificate + same private key = same nullifier, every time. The smart contract rejects any nullifier it has seen before. This means:
-
-- **One certificate = one verified wallet.** You can create 1,000 wallets, but only one gets verified.
-- **No double voting in DAOs.** One person, one vote — enforced by government-issued cryptography.
-- **Fair airdrops.** No farming with multiple wallets. Each verified human gets one share.
-
-And because NPKI certificates are tied to real Korean resident registration numbers, the government has already done the hard work of ensuring one person doesn't have unlimited certificates.
-
-## Why Not Just Use DIDs?
-
-This is the question we get most often. Here's the honest answer:
+## Why Not DIDs?
 
 | | DID/Verifiable Credentials | zk-X509 |
 |---|---|---|
-| **Existing infrastructure** | Must build new issuers, registries, schemas | Leverages 4B+ existing X.509 certs |
-| **Trust model** | "Who trusts the issuer?" — unclear | Government CAs — already established |
-| **Revocation** | Issuer-maintained registries (centralized) | Trustless CRL verification in ZK |
-| **Regulatory standing** | Unresolved in most jurisdictions | Legally binding (Korea E-Sig Act) |
-| **Time to deploy** | 3–5 years (ecosystem bootstrap) | 3–6 months (whitelist existing CAs) |
-| **Privacy** | Varies by implementation | Full zero-knowledge, always |
+| **Infrastructure** | Must build new issuers and registries | Leverages 4B+ existing certs |
+| **Trust model** | "Who trusts the issuer?" — unclear | Government CAs — established |
+| **Revocation** | Issuer-maintained (centralized) | Trustless CRL in ZK |
+| **Regulatory standing** | Unresolved | Legally binding |
+| **Time to deploy** | 3–5 years | 3–6 months |
 
-**DID and zk-X509 are complementary, not competing.** DID is for creating *new* trust relationships where no credentials exist. zk-X509 is for bridging *existing* government trust to the blockchain — today, not in 5 years.
+DID builds *new* trust. zk-X509 bridges *existing* trust. They're complementary.
 
-Think of it this way: DID asks "how do we build a new identity system?" zk-X509 asks "why build one when governments already did?"
+## Flexible Identity: One Size Does Not Fit All
 
-## Real-World Use Cases
-
-### DAO Governance
-One person, one vote. No plutocracy, no Sybil attacks. Deploy with `maxWalletsPerCert = 1` and every verified member gets exactly one vote, backed by a government certificate.
-
-### DeFi Compliance
-Protocols that need to prove their users are real humans (for regulatory reasons) without collecting KYC data. Users prove they hold a valid certificate, the protocol sees only "verified: yes" — no names, no IDs.
-
-### Decentralized Exchanges
-Traders may need multiple wallets (trading, custody, cold storage) under a single verified identity. Deploy with `maxWalletsPerCert = N` to allow multiple wallets per certificate while still ensuring each wallet is tied to a real person.
-
-### Fair Airdrops
-Distribute tokens to verified humans, not bot farms. The nullifier ensures each certificate gets one allocation, regardless of how many wallets the holder controls.
-
-### Government Services on L2
-Public services deployed on L2 rollups can verify citizen identity without building new infrastructure. Citizens already have the certificates — they just need to generate a proof.
-
-## Configurable Identity: One Size Does Not Fit All
-
-Not every application needs the same identity rules. A DAO voting system and a decentralized exchange have fundamentally different requirements. That's why zk-X509 is designed to be **configurable per deployment**.
-
-The key parameter is `maxWalletsPerCert` — set at contract deployment time, it controls how many wallets a single certificate can verify:
+Different applications need different rules. A DAO needs "one person, one vote." A DEX needs traders to use multiple wallets. zk-X509 handles both with a single parameter: **`maxWalletsPerCert`**.
 
 | Setting | Use Case | Sybil Resistance |
 |---------|----------|-----------------|
-| `maxWalletsPerCert = 1` | DAO voting, airdrops | Maximum — one person, one wallet |
-| `maxWalletsPerCert = 3` | DeFi protocols | Strong — separate trading/custody/cold wallets |
-| `maxWalletsPerCert = N` | zk-DEX, multi-account platforms | Flexible — all wallets tied to a real person |
+| `= 1` | DAO voting, airdrops | Maximum — one person, one wallet |
+| `= 3` | DeFi protocols | Strong — trading / custody / cold |
+| `= N` | zk-DEX, multi-account | Flexible — all tied to a real person |
 
-How it works under the hood: the nullifier scheme extends to include a wallet index:
+The nullifier extends to include a wallet index: `SHA-256(serial ‖ SHA-256(sk) ‖ wallet_index)`. The ZK circuit enforces the limit. Regardless of the setting, every wallet is always backed by a real, government-issued certificate.
 
-```
-nullifier = SHA-256(serial ‖ SHA-256(private_key) ‖ wallet_index)
-```
+A single zk-X509 deployment on an L2 can serve multiple protocols — a governance module at `= 1`, a lending protocol at `= 3`, a DEX at `= 10` — all sharing the same identity layer.
 
-Each `wallet_index` (0, 1, 2...) produces a different nullifier from the same certificate. The ZK circuit enforces `wallet_index < maxWalletsPerCert`, so users can't exceed the limit. When `maxWalletsPerCert = 1`, this is identical to the current strict Sybil-resistant design.
+## Security: Formal Proofs, Not Claims
 
-This means **a single zk-X509 deployment on an L2 can serve multiple protocols**, each choosing its own trust policy:
+Security is formalized under the **Dolev-Yao adversary model** with game-based definitions:
 
-- A governance module sets `maxWalletsPerCert = 1` for voting
-- A lending protocol sets `maxWalletsPerCert = 3` for multi-collateral accounts
-- A DEX sets `maxWalletsPerCert = 10` for market-making strategies
+- **Unforgeability** — reduced to RSA hardness + ZK soundness
+- **Unlinkability** — reduced to SHA-256 preimage resistance
+- **Double-registration resistance** — deterministic nullifiers enforce the configured wallet limit
+- **Front-running immunity** — proofs are bound to your wallet address
 
-All using the same underlying identity proof, the same NPKI certificates, the same trust anchors — just different policies.
+Breaking our system means breaking RSA or SHA-256.
 
-## Security: Not Just Claims — Proofs
-
-We formalized the security analysis under the standard **Dolev-Yao adversary model** with game-based definitions. Four properties, each with a mathematical proof:
-
-- **Unforgeability**: You can't fake a proof without a real CA-signed certificate. Reduced to the hardness of factoring RSA moduli + ZK soundness.
-- **Unlinkability**: On-chain nullifiers can't be linked back to certificate holders. Reduced to SHA-256 preimage resistance.
-- **Double-registration resistance**: One certificate = one registration. Enforced by deterministic nullifiers + on-chain deduplication.
-- **Front-running immunity**: Proofs are bound to your wallet address. Copy them from the mempool? Useless — they only work for the original sender.
-
-This isn't "we think it's secure." This is "here are the formal definitions, here are the reduction proofs, here's why breaking our system means breaking RSA or SHA-256."
-
-## Performance: It Actually Works
-
-This isn't a theoretical paper. We have a complete, working implementation:
+## It Actually Works
 
 | Metric | Value |
 |--------|-------|
-| ZK proving (single-level, CPU) | ~7.2M SP1 cycles |
-| ZK proving (3-level NPKI chain, CPU) | ~13M SP1 cycles |
+| ZK proving (single-level) | ~7.2M SP1 cycles |
+| ZK proving (3-level NPKI chain) | ~13M SP1 cycles |
 | On-chain verification | ~77K gas (mock) / ~300K gas (Groth16) |
-| Proving time (CPU) | ~10 minutes |
 | Proving time (GPU, estimated) | ~1–2 minutes |
 | On L2 rollups | Negligible gas cost |
 
-The full stack: SP1 zkVM guest program (Rust), Solidity smart contracts (Foundry), Axum prover server with NPKI auto-discovery, and a web frontend with MetaMask integration.
-
-**Key architectural decision: the private key never leaves your machine.** The prover server runs locally, reads certificates directly from your NPKI directory, and only the proof travels to the blockchain. Not even the password leaves localhost.
-
-## The Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│              User's Machine (localhost)           │
-│                                                   │
-│  NPKI Directory ──→ Prover Server (Rust/Axum)    │
-│  ~/Library/NPKI/    - Auto-discovers certs        │
-│  signCert.der       - Decrypts key (SEED/AES)    │
-│  signPri.key        - Generates ZK proof (SP1)   │
-│                         │                         │
-│  Web Browser ←──────────┘                         │
-│  (cert selection + proof display)                 │
-└─────────────────┬───────────────────────────────┘
-                  │ ZK Proof + Public Values
-                  ▼
-┌─────────────────────────────────────────────────┐
-│              Blockchain (L1 or L2)               │
-│                                                   │
-│  IdentityRegistry.sol                            │
-│  - Verify registrant == msg.sender               │
-│  - Check timestamp freshness                      │
-│  - Verify CA whitelist                            │
-│  - Check nullifier uniqueness                     │
-│  - Verify ZK proof (SP1 Verifier)                │
-│  → Wallet marked as verified                      │
-└─────────────────────────────────────────────────┘
-```
+Full stack implemented: SP1 zkVM (Rust), Solidity smart contracts, Axum prover server with NPKI auto-discovery, web frontend with MetaMask. **The private key never leaves your machine** — the prover reads certs from your local NPKI directory, and only the proof goes on-chain.
 
 ## What's Next
 
-- **Configurable registration policy**: `maxWalletsPerCert` parameter so each L2 deployment can choose its Sybil resistance level (strict 1:1 for DAOs, flexible 1:N for DeFi)
-- **Self-service re-registration**: Change your wallet without admin approval — prove you own the cert, swap the address
-- **Client-side proving**: When SP1 supports WASM, proof generation moves entirely into the browser
-- **On-chain CRL oracle**: Merkle root of revoked serials for even stronger revocation guarantees
-- **Cross-chain deployment**: Same proof, multiple chains — one identity across the entire L2 ecosystem
-- **Academic publication**: We're preparing a submission to Financial Cryptography (FC) with formal security proofs
+- **Self-service re-registration** — change wallets without admin approval
+- **Client-side proving** — SP1 WASM for fully browser-based proofs
+- **Cross-chain deployment** — one identity across multiple L2s
+- **Academic publication** — submission to Financial Cryptography (FC)
 
 ## Try It
 
-The code is open source: **[github.com/tokamak-network/zk-X509](https://github.com/tokamak-network/zk-X509)**
+Open source: **[github.com/tokamak-network/zk-X509](https://github.com/tokamak-network/zk-X509)**
 
 ```bash
-# Generate test certificates
 cd certs && bash generate-test-certs.sh && cd ..
-
-# Run ZK verification (execute mode, ~15 seconds)
 cargo run --release -p zk-x509-script --bin zk-x509 -- \
   --execute --cert certs/signCert.der --key certs/signPri.key \
   --ca-cert certs/ca_pub.der
@@ -218,18 +103,16 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- \
 
 ## The Bigger Picture
 
-The blockchain identity space is obsessed with building new credential systems from scratch. We think that's backwards.
+The blockchain identity space is obsessed with building from scratch. We think that's backwards.
 
-Governments have already issued **billions** of cryptographic credentials. They're on people's computers right now. The math checks out — RSA signatures can be verified inside a ZK circuit. The revocation lists can be checked trustlessly. The proofs can be bound to specific wallets.
+Governments have issued **billions** of cryptographic credentials. The math checks out — RSA signatures verify inside ZK circuits, revocation lists check trustlessly, proofs bind to wallets.
 
-The only missing piece was a system to do it all privately and put it on-chain.
+**zk-X509 is the missing bridge.**
 
-**zk-X509 is that missing piece.**
-
-We're not replacing DID. We're not competing with Worldcoin. We're asking a different question: *before you build a new trust system, have you checked if there's already one that works?*
+We're not replacing DID or competing with Worldcoin. We're asking: *before you build a new trust system, have you checked if there's already one that works?*
 
 For 4 billion certificates and 20 million Korean users — there is.
 
 ---
 
-*zk-X509 is developed by [Tokamak Network](https://tokamak.network). For technical details, see our [full paper](https://github.com/tokamak-network/zk-X509/blob/main/docs/paper.md). For questions and contributions, visit our [GitHub](https://github.com/tokamak-network/zk-X509).*
+*zk-X509 is developed by [Tokamak Network](https://tokamak.network). [Full paper](https://github.com/tokamak-network/zk-X509/blob/main/docs/paper.md) | [GitHub](https://github.com/tokamak-network/zk-X509)*
