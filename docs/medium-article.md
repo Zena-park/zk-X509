@@ -32,7 +32,7 @@ Your Certificate → Local ZK Prover → On-Chain Proof → Verified Wallet
 
 **No personal data on-chain. No central server. No hardware. No new credentials needed.**
 
-The ZK circuit verifies six things, all hidden: full certificate chain signatures, temporal validity, private key ownership, trustless CRL revocation checking (CA signature on the CRL verified inside ZK), registrant binding (proof locked to your wallet), and nullifier generation for Sybil resistance.
+The ZK circuit verifies six things, all hidden: full certificate chain signatures, temporal validity, signature-based key ownership (the private key never even enters the ZK circuit — only a signature from your OS keychain), trustless CRL revocation checking (CA signature on the CRL verified inside ZK), registrant binding (proof locked to your wallet), and nullifier generation for Sybil resistance.
 
 ## Why Not DIDs?
 
@@ -56,7 +56,7 @@ Different applications need different rules. A DAO needs "one person, one vote."
 | `= 3` | DeFi protocols | Strong — trading / custody / cold |
 | `= N` | zk-DEX, multi-account | Flexible — all tied to a real person |
 
-The nullifier extends to include a wallet index: `SHA-256(serial ‖ SHA-256(sk) ‖ wallet_index)`. The ZK circuit enforces the limit. Regardless of the setting, every wallet is always backed by a real, government-issued certificate.
+The nullifier is derived from the certificate's public key and wallet index: `SHA-256(cert_public_key ‖ wallet_index)`. The ZK circuit enforces the limit. Regardless of the setting, every wallet is always backed by a real, government-issued certificate.
 
 A single zk-X509 deployment on an L2 can serve multiple protocols — a governance module at `= 1`, a lending protocol at `= 3`, a DEX at `= 10` — all sharing the same identity layer.
 
@@ -65,7 +65,7 @@ A single zk-X509 deployment on an L2 can serve multiple protocols — a governan
 Security is formalized under the **Dolev-Yao adversary model** with game-based definitions:
 
 - **Unforgeability** — reduced to RSA hardness + ZK soundness
-- **Unlinkability** — reduced to SHA-256 preimage resistance
+- **Unlinkability** — reduced to SHA-256 collision resistance + ZK zero-knowledge property
 - **Double-registration resistance** — deterministic nullifiers enforce the configured wallet limit
 - **Front-running immunity** — proofs are bound to your wallet address
 
@@ -81,7 +81,7 @@ Breaking our system means breaking RSA or SHA-256.
 | Proving time (GPU, estimated) | ~1–2 minutes |
 | On L2 rollups | Negligible gas cost |
 
-Full stack implemented: SP1 zkVM (Rust), Solidity smart contracts, Axum prover server with NPKI auto-discovery, web frontend with MetaMask. **The private key never leaves your machine** — the prover reads certs from your local NPKI directory, and only the proof goes on-chain.
+Full stack implemented: SP1 zkVM (Rust), Solidity smart contracts, Axum prover server with NPKI auto-discovery, web frontend with MetaMask. **The private key never even enters the ZK circuit.** The OS keychain signs a challenge, and only the signature goes into the prover. On devices with hardware-backed keystores (macOS Secure Enclave, Windows TPM), the private key may never exist in general process memory at all.
 
 ## What's Next
 
