@@ -31,14 +31,10 @@ fn verify_rsa_signature(
             Pkcs1v15Sign::new::<sha2::Sha256>(),
             Sha256::digest(tbs_der).to_vec(),
         ),
-        "1.2.840.113549.1.1.5" => {
-            let hash = {
-                let mut h = <sha1::Sha1 as sha1::Digest>::new();
-                sha1::Digest::update(&mut h, tbs_der);
-                sha1::Digest::finalize(h).to_vec()
-            };
-            (Pkcs1v15Sign::new::<sha1::Sha1>(), hash)
-        }
+        "1.2.840.113549.1.1.5" => (
+            Pkcs1v15Sign::new::<sha1::Sha1>(),
+            sha1::Sha1::digest(tbs_der).to_vec(),
+        ),
         "1.2.840.113549.1.1.12" => (
             Pkcs1v15Sign::new::<sha2::Sha384>(),
             sha2::Sha384::digest(tbs_der).to_vec(),
@@ -114,7 +110,7 @@ pub fn main() {
         .map(|(i, der)| {
             let (_, cert) = X509Certificate::from_der(der)
                 .unwrap_or_else(|_| panic!("Failed to parse chain certificate [{}]", i));
-            assert_cert_valid_at(&cert, ts, &format!("Chain certificate [{}]", i));
+            assert_cert_valid_at(&cert, ts, "Chain certificate");
             cert
         })
         .collect();
