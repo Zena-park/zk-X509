@@ -25,11 +25,15 @@ contract IdentityRegistryTest is Test {
     uint64 constant DEFAULT_NOT_AFTER = uint64(365 days);
 
     function _pv(bytes32 nullifier, bytes32 caHash, address sender) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
+        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, uint32(0),
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER,
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0)); // selective disclosure: none
     }
 
     function _pvIdx(bytes32 nullifier, bytes32 caHash, address sender, uint32 idx) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, idx, uint64(block.timestamp) + DEFAULT_NOT_AFTER);
+        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, idx,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER,
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
     function setUp() public {

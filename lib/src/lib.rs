@@ -9,5 +9,10 @@ sol! {
         address registrant;      // Wallet address bound to this proof (anti-front-running)
         uint32 walletIndex;      // Which wallet slot (0..maxWalletsPerCert-1)
         uint64 notAfter;         // Certificate expiry (unix timestamp)
+        // Selective disclosure: hash of each disclosed field (bytes32(0) = not disclosed)
+        bytes32 countryHash;     // SHA-256("KR") or bytes32(0)
+        bytes32 orgHash;         // SHA-256("yessign") or bytes32(0)
+        bytes32 orgUnitHash;     // SHA-256("personal4IB") or bytes32(0)
+        bytes32 commonNameHash;  // SHA-256("Hong Gildong") or bytes32(0)
     }
 }

@@ -92,7 +92,8 @@ fn main() {
     stdin.write(&registrant_bytes);
     stdin.write(&args.wallet_index);
     stdin.write(&args.max_wallets);
-
+    let disclosure_mask: u8 = 0x0F;
+    stdin.write(&disclosure_mask);
     println!("Proof System: {:?}", args.system);
 
     let proof = match args.system {

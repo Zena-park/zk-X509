@@ -145,7 +145,8 @@ fn main() {
     stdin.write(&registrant_bytes);
     stdin.write(&args.wallet_index);
     stdin.write(&args.max_wallets);
-    println!("Wallet Index: {} / Max: {}", args.wallet_index, args.max_wallets);
+    let disclosure_mask: u8 = 0x0F;
+    stdin.write(&disclosure_mask);    println!("Wallet Index: {} / Max: {}", args.wallet_index, args.max_wallets);
     println!("Registrant: 0x{}", hex::encode(registrant_bytes));
 
     if args.execute {

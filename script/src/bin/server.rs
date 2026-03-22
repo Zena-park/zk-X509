@@ -231,6 +231,8 @@ fn build_stdin(
     stdin.write(registrant_bytes);
     stdin.write(&wallet_index);
     stdin.write(&max_wallets);
+    let disclosure_mask: u8 = 0x0F; // Default: disclose all fields (C+O+OU+CN)
+    stdin.write(&disclosure_mask);
     stdin
 }
 
