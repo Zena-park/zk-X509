@@ -2,7 +2,7 @@
 
 **Authors:** Tokamak Network Research Team
 
-**Version:** 3.0 — March 2026
+**Version:** 4.0 — March 2026
 
 ---
 
@@ -45,7 +45,7 @@ zk-X509 resolves the transparency-privacy tension by verifying X.509 certificate
 1. **Certificate Chain Validity.** The full chain from user certificate through intermediate CAs to a trusted root CA is verified, with each link's RSA signature checked cryptographically.
 2. **Temporal Validity.** Every certificate in the chain is checked against the proof generation timestamp.
 3. **Private Key Ownership.** The user proves possession of the private key corresponding to the certificate's public key.
-4. **Revocation Status.** The user's certificate serial number is checked against a provided Certificate Revocation List (CRL).
+4. **Revocation Status.** The CRL is parsed and its CA signature verified inside the zkVM, then the user's serial number is checked against the revoked list—providing trustless revocation checking.
 5. **Registrant Binding.** The proof is cryptographically bound to the user's blockchain address, preventing proof theft via front-running.
 6. **Nullifier Generation.** A deterministic, privacy-preserving identifier is derived from the certificate for Sybil resistance.
 
@@ -132,15 +132,15 @@ The zk-X509 system comprises four components arranged in a layered architecture:
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                     Frontend (Next.js)                        │
-│   Browser: file upload, wallet connect, TX submission         │
+│   Browser: NPKI cert selection, wallet connect, TX submission  │
 └───────────────────────┬──────────────────────────────────────┘
                         │ HTTP POST (cert, key, password, registrant)
 ┌───────────────────────▼──────────────────────────────────────┐
 │                 Prover Server (Rust/Axum)                     │
-│   Localhost daemon: decrypt key → feed SP1 → return proof    │
+│   Localhost daemon: scan NPKI → decrypt key → prove → return  │
 └───────────────────────┬──────────────────────────────────────┘
                         │ SP1 stdin (cert, chain, key, timestamp,
-                        │            revoked_serials, registrant)
+                        │            crl_der, registrant)
 ┌───────────────────────▼──────────────────────────────────────┐
 │               SP1 zkVM Guest Program (Rust)                   │
 │   1. Parse & validate chain  2. Check CRL  3. Verify key     │
@@ -163,7 +163,7 @@ We define the registration protocol formally. Let $\mathcal{P}$ denote the prove
 - $\text{cert}$: DER-encoded user certificate
 - $\text{sk}$: User's RSA private key (PKCS#1 DER)
 - $\text{chain}$: Certificate chain $[\text{cert}_{\text{inter}_1}, \ldots, \text{cert}_{\text{inter}_k}, \text{pk}_{\text{root}}]$ where $\text{pk}_{\text{root}}$ is the root CA's public key (SPKI DER)
-- $\text{CRL}$: List of revoked serial numbers $[s_1, \ldots, s_m]$
+- $\text{CRL}$: DER-encoded Certificate Revocation List (signed by the issuing CA)
 - $\text{addr}$: $\mathcal{P}$'s Ethereum address (20 bytes)
 - $t$: Current Unix timestamp
 - $\mathcal{H}$: SHA-256
@@ -171,13 +171,14 @@ We define the registration protocol formally. Let $\mathcal{P}$ denote the prove
 **Protocol.**
 
 ```
-Step 1.  P → S:   (cert, sk, chain, password, addr)
+Step 1.  P → S:   (cert_index, password, addr)
                    via HTTP POST to localhost
+                   cert_index identifies an NPKI certificate discovered
+                   by the server's filesystem scanner
 
-Step 2.  S:        If sk is encrypted (NPKI):
-                     sk' ← PBES2_Decrypt(sk, password)
-                   Else:
-                     sk' ← sk
+Step 2.  S:        (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
+                   sk' ← PBES2_Decrypt(sk_enc, password)  // SEED-CBC or AES-256-CBC
+                   CRL ← FetchCRL(cert.issuer)             // from CA distribution point
 
 Step 3.  S → Z:   (cert, sk', chain, t, CRL, addr)
                    via SP1 stdin
@@ -200,8 +201,14 @@ Step 4.  Z:        // Parse and validate user certificate
                        Assert: RSA.Verify(inter_{i+1}.pk, inter_i.tbs, inter_i.sig)
                      Assert: RSA.Verify(pk_root, inter_{k-1}.tbs, inter_{k-1}.sig)
 
-                   // Check CRL
-                   Assert: cert_parsed.serial ∉ CRL
+                   // Verify and check CRL (trustless)
+                   If CRL ≠ ∅:
+                     crl_parsed ← ParseDER(CRL)
+                     Assert: crl_parsed.issuer = cert_parsed.issuer
+                     Assert: crl_parsed.thisUpdate ≤ t ≤ crl_parsed.nextUpdate
+                     issuer_pk ← FindIssuerKey(intermediates, pk_root, crl_parsed.issuer)
+                     Assert: RSA.Verify(issuer_pk, crl_parsed.tbs, crl_parsed.sig)
+                     Assert: cert_parsed.serial ∉ crl_parsed.revokedCertificates
 
                    // Verify key ownership
                    pk_derived ← DerivePublicKey(sk')
@@ -262,7 +269,7 @@ The guest program executes inside the SP1 zkVM and performs all sensitive comput
 | `user_priv_key` | `Vec<u8>` | Private | PKCS#1 RSA private key |
 | `cert_chain` | `Vec<Vec<u8>>` | Private | Chain: $[\text{inter}_1, \ldots, \text{inter}_k, \text{pk}_{\text{root}}]$ |
 | `current_timestamp` | `u64` | Public (via output) | Unix timestamp |
-| `revoked_serials` | `Vec<Vec<u8>>` | Private | CRL: revoked serial numbers |
+| `crl_der` | `Vec<u8>` | Private | DER-encoded CRL (empty = skip) |
 | `registrant` | `[u8; 20]` | Public (via output) | Wallet address |
 
 All private inputs remain hidden within the ZK proof. Only the four public values are revealed.
@@ -273,7 +280,15 @@ All private inputs remain hidden within the ZK proof. Only the four public value
 
 **CA Signature Verification.** The pure-Rust `rsa` crate (v0.9) verifies each RSA signature in the chain. The process for each link: (1) extract the `signatureAlgorithm` OID, (2) select the hash function (SHA-256, SHA-1, SHA-384, or SHA-512), (3) hash the TBSCertificate bytes, (4) verify using the signer's RSA public key with PKCS#1 v1.5 padding.
 
-**Certificate Revocation Checking.** The `revoked_serials` input contains a list of revoked certificate serial numbers provided by the host. The guest program asserts that the user certificate's serial number is not in this list. This check occurs after chain verification to ensure only authentic certificates are checked against the CRL. Note that the CRL itself is not committed to public values; on-chain consumers requiring CRL freshness guarantees should verify this separately.
+**Trustless Certificate Revocation Checking.** The `crl_der` input contains a full DER-encoded Certificate Revocation List. Unlike systems that rely on the host to provide pre-filtered revocation data, zk-X509 performs **trustless CRL verification** entirely inside the zkVM:
+
+1. **Parse** the DER-encoded CRL using `x509_parser::revocation_list`.
+2. **Issuer matching**: Assert that the CRL's issuer matches the user certificate's issuer (serial numbers are issuer-scoped; checking against a CRL from a different issuer is meaningless).
+3. **Freshness validation**: Assert $\text{thisUpdate} \leq t \leq \text{nextUpdate}$, ensuring the CRL is current at the proof generation time.
+4. **Signature verification**: Verify the CRL's RSA signature using the matching issuer's public key (intermediate CA for multi-level chains, root CA for single-level).
+5. **Revocation check**: Assert that the user certificate's serial number is not in the CRL's revoked certificates list.
+
+This design ensures that a malicious host cannot supply a forged or tampered CRL—the ZK proof cryptographically attests that the CRL was signed by the legitimate issuing CA and was fresh at proof time. The CRL data is not committed to public values; the proof attests only that revocation was checked against a valid, CA-signed CRL.
 
 **Key Ownership Verification.** The user's RSA private key is parsed from PKCS#1 DER format. The public key is derived, and its modulus $n$ and exponent $e$ are compared with the certificate's embedded public key.
 
@@ -313,9 +328,16 @@ The contract additionally provides administrative functions:
 - **`pause()` / `unpause()`**: Emergency stop mechanism to halt registrations if a vulnerability is discovered.
 - **`transferOwnership(address)` / `acceptOwnership()`**: Two-step ownership transfer requiring the new owner to explicitly accept, preventing accidental transfers to incorrect addresses.
 
-### 3.6 NPKI Private Key Decryption
+### 3.6 NPKI Integration
 
-Korean NPKI private keys are stored in PKCS#8 EncryptedPrivateKeyInfo format using PBES2 with PBKDF2-HMAC-SHA1 key derivation and AES-256-CBC or SEED-CBC encryption. The prover server includes a dedicated decryption module that: (1) parses the ASN.1 encryption parameters, (2) derives the key via PBKDF2, (3) decrypts using the appropriate cipher, and (4) strips PKCS#7 padding to yield the raw PKCS#1 DER private key.
+**Certificate Discovery.** The prover server includes an NPKI filesystem scanner that automatically discovers certificate/key pairs in platform-specific directories: `~/Library/Preferences/NPKI` (macOS), `~/.pki/NPKI` (Linux), and `%APPDATA%\NPKI` (Windows). For each discovered pair (`signCert.der` + `signPri.key`), the scanner extracts metadata (subject, issuer, serial number, expiry) for display in the frontend's certificate selection UI. This eliminates the need for manual file upload.
+
+**Private Key Decryption.** Korean NPKI private keys are stored in PKCS#8 EncryptedPrivateKeyInfo format using PBES2 with PBKDF2-HMAC-SHA1 key derivation. Two encryption ciphers are supported:
+
+- **SEED-CBC** (OID 1.2.410.200004.1.4): The Korean national block cipher, widely used in legacy NPKI certificates. Supported via the `kisaseed` crate.
+- **AES-256-CBC** (OID 2.16.840.1.101.3.4.1.42): Used in newer NPKI certificates.
+
+The decryption module: (1) parses the ASN.1 encryption parameters, (2) derives the key via PBKDF2, (3) decrypts using the appropriate cipher, and (4) strips PKCS#7 padding to yield the raw PKCS#1 DER private key. A generic `decrypt_cbc<C>()` function handles both ciphers uniformly.
 
 ---
 
@@ -581,23 +603,27 @@ All strategies fail. $\square$
 
 This bounds the manipulation window to 1 hour, insufficient to exploit typical certificate validity periods of 1+ years. An adversary would need to advance the blockchain's clock, which requires controlling block production—infeasible on Ethereum's proof-of-stake consensus.
 
-#### 5.5.2 CRL Freshness
+#### 5.5.2 CRL Integrity and Freshness
 
-**Limitation.** The CRL is provided by the host and is not committed to public values. A malicious host could provide an outdated CRL that omits a recently revoked certificate.
+The CRL is verified trustlessly inside the zkVM: its RSA signature is checked against the issuing CA's public key, and its temporal validity ($\text{thisUpdate} \leq t \leq \text{nextUpdate}$) is enforced. This prevents two attacks:
 
-**Mitigation.** This is a deliberate design trade-off: committing the full CRL as a public value would be prohibitively expensive on-chain. The CRL check provides a best-effort defense within the ZK circuit. For applications requiring stronger revocation guarantees, the on-chain contract could be extended with a separate CRL oracle that maintains a Merkle root of revoked serial numbers.
+- **Forged CRL**: $\mathcal{A}$ cannot supply a CRL not signed by the legitimate CA (RSA signature verification inside zkVM).
+- **Stale CRL**: $\mathcal{A}$ cannot supply an expired CRL (freshness check inside zkVM).
+
+**Residual limitation.** The host selects *which* valid CRL to provide. If the CA has issued a newer CRL revoking the user's certificate, a malicious host could still provide the older (but still temporally valid) CRL that does not yet contain the revocation. This is bounded by the CRL's validity window (typically 24–72 hours for Korean NPKI). The CRL data is not committed to public values, so on-chain consumers cannot independently verify which CRL was used. For stronger guarantees, a CRL oracle (Section 7.2) could maintain an on-chain Merkle root of revoked serials.
 
 #### 5.5.3 Private Key Exposure
 
-**Attack.** The private key transits from the browser to the prover server via HTTP.
+**Architecture.** The private key **never transits from the browser to the prover server**. The prover server runs as a localhost daemon that directly scans the user's NPKI certificate directories (e.g., `~/Library/Preferences/NPKI` on macOS, `~/.pki/NPKI` on Linux). The frontend sends only a certificate selection index and decryption password—not the key bytes themselves. The server reads the encrypted private key from the local filesystem and decrypts it in-process.
 
-**Mitigation.** The prover server runs as a localhost daemon. The private key transits only over the loopback interface (`127.0.0.1:3001`). Additional defenses include:
+**Mitigations:**
+- Private key bytes never appear in any HTTP request or response
 - CORS restricted to `localhost:3000` (prevents cross-origin requests)
-- Request body limit of 1MB (prevents memory exhaustion)
-- No `Debug` derive on the request struct (prevents accidental logging)
+- Password is the only sensitive data transmitted, over the loopback interface only
+- No `Debug` derive on key-holding structs (prevents accidental logging)
 - Password cleared from frontend memory after proof generation
 
-**Residual risk.** The private key exists in the prover server's process memory during proof generation. This is mitigated by assumption A1 and is equivalent to the trust model of any local application that reads private key files.
+**Residual risk.** The decrypted private key exists in the prover server's process memory during proof generation. This is mitigated by assumption A1 and is equivalent to the trust model of any local application that reads private key files (e.g., a web browser using client certificates).
 
 #### 5.5.4 Smart Contract Security
 
@@ -630,7 +656,7 @@ This bounds the manipulation window to 1 hour, insufficient to exploit typical c
 | Hardware required | None | None | None | NFC reader | None |
 | Trust anchor | Government CAs | KYC provider | Token issuer | Government (passport) | Email providers |
 | Chain verification | Full multi-level | N/A | N/A | N/A | N/A |
-| Revocation checking | CRL in ZK | Off-chain | Issuer policy | N/A | N/A |
+| Revocation checking | Trustless CRL in ZK | Off-chain | Issuer policy | N/A | N/A |
 | Front-running defense | Registrant binding | N/A | N/A | Varies | Varies |
 | Double-reg prevention | Nullifier | Database check | Issuer policy | Nullifier | Nullifier |
 | Existing infrastructure | Billions of certs | Requires KYC provider | Requires issuer | NFC passport | DKIM email |
@@ -645,9 +671,9 @@ zk-X509's unique position is the combination of **no hardware requirement**, **g
 
 The current architecture requires a localhost prover server. While the private key never leaves the local machine (assumption A1), moving proof generation entirely into the browser via WebAssembly would eliminate even the inter-process transfer. SP1's WASM support is under active development and would enable a fully browser-contained proving flow, strengthening the trust model.
 
-### 7.2 CRL Oracle
+### 7.2 On-Chain CRL Commitment
 
-The current CRL checking is host-provided and not committed on-chain. A stronger approach would be a dedicated CRL oracle contract that maintains a Merkle root of revoked serial numbers, updated periodically by a trusted operator or DAO. The ZK circuit could then prove that a Merkle non-membership proof is valid, providing on-chain-verifiable revocation guarantees.
+CRL verification is already trustless: the zkVM verifies the CRL's CA signature and freshness. However, the CRL data is not committed to public values, so on-chain consumers cannot verify *which* CRL was used. A stronger approach would be a dedicated CRL oracle contract that maintains a Merkle root of revoked serial numbers, updated periodically by a trusted operator or DAO. The ZK circuit could then commit the CRL's Merkle root as an additional public value, enabling on-chain verification that the most recent CRL was used.
 
 ### 7.3 Multi-Signature Governance
 
