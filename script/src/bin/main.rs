@@ -123,20 +123,25 @@ fn main() {
         Vec::new()
     };
 
-    // Write inputs to SP1 stdin
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&cert_der);
-    stdin.write(&priv_key);
-    stdin.write(&cert_chain);
-    stdin.write(&current_timestamp);
-    stdin.write(&crl_der);
-
-    // Parse registrant address (strip 0x prefix, decode 20 bytes)
+    // Parse registrant address
     let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
     let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
         .expect("Invalid registrant address hex")
         .try_into()
         .expect("Registrant address must be 20 bytes");
+
+    // Sign ownership + nullifier challenges
+    let ownership_sig = zk_x509_script::ownership::sign_ownership(
+        &cert_der, &priv_key, &registrant_bytes, args.wallet_index,
+    ).expect("Failed to sign ownership challenge");
+    println!("Ownership sig: {} bytes", ownership_sig.len());
+
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&cert_der);
+    stdin.write(&ownership_sig);
+    stdin.write(&cert_chain);
+    stdin.write(&current_timestamp);
+    stdin.write(&crl_der);
     stdin.write(&registrant_bytes);
     stdin.write(&args.wallet_index);
     stdin.write(&args.max_wallets);

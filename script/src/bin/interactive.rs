@@ -186,19 +186,23 @@ fn cmd_prove(session: &mut Session) {
     println!("  For full proof, use the prover server's /prove endpoint.");
     let client = ProverClient::from_env();
 
+    let idx_str = prompt("  Wallet index [0]: ");
+    let wallet_index: u32 = idx_str.parse().unwrap_or(0);
+    let max_wallets: u32 = 1;
+
+    let ownership_sig = zk_x509_script::ownership::sign_ownership(
+        &cert_der, &key_der, &registrant_bytes, wallet_index,
+    ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });
+
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
-    stdin.write(&key_der);
+    stdin.write(&ownership_sig);
     stdin.write(&cert_chain);
     stdin.write(&timestamp);
     stdin.write(&crl_der);
     stdin.write(&registrant_bytes);
-    let idx_str = prompt("  Wallet index [0]: ");
-    let wallet_index: u32 = idx_str.parse().unwrap_or(0);
-    let max_wallets: u32 = 1;
     stdin.write(&wallet_index);
     stdin.write(&max_wallets);
-    // key_der goes out of scope after this — dropped from memory
 
     match client.execute(ZK_X509_ELF, stdin).run() {
         Ok((output, report)) => {

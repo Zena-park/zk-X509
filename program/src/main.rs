@@ -11,10 +11,8 @@
 sp1_zkvm::entrypoint!(main);
 
 use alloy_sol_types::SolType;
-use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::traits::PublicKeyParts;
-use rsa::{Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey};
+use rsa::{Pkcs1v15Sign, RsaPublicKey};
 use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
 use zk_x509_lib::PublicValuesStruct;
@@ -68,7 +66,9 @@ pub fn main() {
     // Step 1: Read inputs from the host (prover)
     // ========================================
     let cert_der: Vec<u8> = sp1_zkvm::io::read();
-    let user_priv_key: Vec<u8> = sp1_zkvm::io::read();
+    // Signature-based ownership: host signs a challenge with the private key,
+    // only the signature enters the ZK circuit. Private key never touches zkVM.
+    let ownership_sig: Vec<u8> = sp1_zkvm::io::read();
     // Chain: [intermediate_ca_certs..., root_ca_pub_key_spki_der]
     // Single-level: [root_ca_pub_key_spki_der]
     let cert_chain: Vec<Vec<u8>> = sp1_zkvm::io::read();
@@ -252,37 +252,39 @@ pub fn main() {
     }
 
     // ========================================
-    // Step 5: Verify ownership (private key matches cert's public key)
+    // Step 5: Verify ownership (signature-based)
     // ========================================
-    let priv_key = RsaPrivateKey::from_pkcs1_der(&user_priv_key)
-        .expect("Failed to parse RSA private key");
-
-    let derived_pub_key = RsaPublicKey::from(&priv_key);
+    // Host signs challenge = SHA-256(serial ‖ registrant ‖ wallet_index).
+    // ZK circuit verifies signature using the cert's public key.
+    // Private key never enters the ZK circuit.
+    let serial_bytes = user_cert.tbs_certificate.serial.to_bytes_be();
 
     let cert_pub_key = RsaPublicKey::from_public_key_der(
         user_cert.tbs_certificate.subject_pki.raw,
     )
     .expect("Failed to parse certificate's public key");
 
-    assert_eq!(
-        derived_pub_key.n(), cert_pub_key.n(),
-        "Private key does not match certificate's public key"
-    );
-    assert_eq!(
-        derived_pub_key.e(), cert_pub_key.e(),
-        "Private key exponent does not match"
-    );
+    let mut ownership_preimage = Vec::new();
+    ownership_preimage.extend_from_slice(&serial_bytes);
+    ownership_preimage.extend_from_slice(&registrant);
+    ownership_preimage.extend_from_slice(&wallet_index.to_be_bytes());
+    let ownership_hash: [u8; 32] = Sha256::digest(&ownership_preimage).into();
+
+    cert_pub_key
+        .verify(Pkcs1v15Sign::new::<sha2::Sha256>(), &ownership_hash, &ownership_sig)
+        .expect("Ownership signature verification failed");
 
     // ========================================
     // Step 6: Generate Nullifier
     // ========================================
-    // nullifier = SHA-256(serial ‖ SHA-256(sk) ‖ wallet_index)
-    // wallet_index makes each wallet slot produce a unique nullifier
-    let serial_bytes = user_cert.tbs_certificate.serial.to_bytes_be();
-    let priv_key_hash = Sha256::digest(&user_priv_key);
-    let mut nullifier_preimage = Vec::with_capacity(serial_bytes.len() + 32 + 4);
-    nullifier_preimage.extend_from_slice(&serial_bytes);
-    nullifier_preimage.extend_from_slice(&priv_key_hash);
+    // Nullifier = SHA-256(cert_public_key_der ‖ wallet_index)
+    //
+    // Uses the certificate's public key (already CA-verified) instead of a signature.
+    // Same cert = same public key = same nullifier, regardless of registrant.
+    // No additional RSA operation needed — saves ~5.7M cycles.
+    let cert_pub_key_raw = user_cert.tbs_certificate.subject_pki.raw;
+    let mut nullifier_preimage = Vec::new();
+    nullifier_preimage.extend_from_slice(cert_pub_key_raw);
     nullifier_preimage.extend_from_slice(&wallet_index.to_be_bytes());
     let nullifier: [u8; 32] = Sha256::digest(&nullifier_preimage).into();
 
