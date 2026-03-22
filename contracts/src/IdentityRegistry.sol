@@ -37,6 +37,7 @@ contract IdentityRegistry {
     event CARootAdded(bytes32 indexed caRootHash);
     event CARootRemoved(bytes32 indexed caRootHash);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event UserRevoked(address indexed user, string reason);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
 
@@ -50,6 +51,7 @@ contract IdentityRegistry {
     error OnlyOwner();
     error ZeroAddress();
     error ContractPaused();
+    error UserNotVerified(address user);
 
     /// @notice Maximum allowed age of a proof (1 hour).
     uint256 public constant MAX_PROOF_AGE = 1 hours;
@@ -130,6 +132,15 @@ contract IdentityRegistry {
     function removeCARoot(bytes32 caRootHash) external onlyOwner {
         validCARoots[caRootHash] = false;
         emit CARootRemoved(caRootHash);
+    }
+
+    /// @notice Revoke a verified user's identity (e.g., cert expired/revoked).
+    /// @param user The wallet address to revoke.
+    /// @param reason Human-readable reason for revocation.
+    function revokeUser(address user, string calldata reason) external onlyOwner {
+        if (!verifiedUsers[user]) revert UserNotVerified(user);
+        verifiedUsers[user] = false;
+        emit UserRevoked(user, reason);
     }
 
     /// @notice Pause the contract (emergency stop).
