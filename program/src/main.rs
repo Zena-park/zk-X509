@@ -61,54 +61,59 @@ fn assert_cert_valid_at(cert: &X509Certificate, ts: i64, label: &str) {
     );
 }
 
+/// OIDs for X.509 subject fields (DER-encoded).
+const OID_COUNTRY: &[u8]  = &[0x55, 0x04, 0x06]; // 2.5.4.6
+const OID_ORG: &[u8]      = &[0x55, 0x04, 0x0A]; // 2.5.4.10
+const OID_ORG_UNIT: &[u8] = &[0x55, 0x04, 0x0B]; // 2.5.4.11
+const OID_CN: &[u8]       = &[0x55, 0x04, 0x03]; // 2.5.4.3
+
 /// Extract disclosable fields from X.509 subject in a single pass.
-/// Each field is salted with the cert serial to prevent rainbow table attacks.
-/// hash = SHA-256(field_value ‖ cert_serial)
-/// Multiple values for the same OID (e.g., OU=personal4IB, OU=IBK) are
-/// sorted and concatenated before hashing.
+/// hash = SHA-256(len1 ‖ val1 ‖ len2 ‖ val2 ‖ ... ‖ serial)
+/// Length-prefixed encoding prevents concatenation ambiguity.
+/// Salted with cert serial to prevent rainbow table attacks.
 fn extract_subject_field_hashes(
     subject: &x509_parser::x509::X509Name,
     mask: u8,
     serial: &[u8],
 ) -> ([u8; 32], [u8; 32], [u8; 32], [u8; 32]) {
     let zero: [u8; 32] = [0u8; 32];
-    if mask == 0 { return (zero, zero, zero, zero); }
+    let effective_mask = mask & 0x0F;
+    if effective_mask == 0 { return (zero, zero, zero, zero); }
 
-    // Collect all values per OID
     let mut country_vals: Vec<&str> = Vec::new();
     let mut org_vals: Vec<&str> = Vec::new();
     let mut ou_vals: Vec<&str> = Vec::new();
     let mut cn_vals: Vec<&str> = Vec::new();
 
+    // Single pass: compare OID bytes directly (no String allocation)
     for attr in subject.iter_attributes() {
-        let oid = attr.attr_type().to_id_string();
+        let oid_bytes = attr.attr_type().as_bytes();
         if let Ok(value) = attr.as_str() {
-            match oid.as_str() {
-                "2.5.4.6"  => country_vals.push(value),
-                "2.5.4.10" => org_vals.push(value),
-                "2.5.4.11" => ou_vals.push(value),
-                "2.5.4.3"  => cn_vals.push(value),
-                _ => {}
-            }
+            if oid_bytes == OID_COUNTRY       { country_vals.push(value); }
+            else if oid_bytes == OID_ORG      { org_vals.push(value); }
+            else if oid_bytes == OID_ORG_UNIT { ou_vals.push(value); }
+            else if oid_bytes == OID_CN       { cn_vals.push(value); }
         }
     }
 
-    // Hash function: sort values, concatenate, append serial as salt
+    // Length-prefixed hash: prevents ["ab","c"] == ["a","bc"] collision
     let hash_field = |vals: &mut Vec<&str>| -> [u8; 32] {
         if vals.is_empty() { return zero; }
         vals.sort();
         let mut preimage = Vec::new();
         for v in vals.iter() {
+            let len = (v.len() as u32).to_be_bytes();
+            preimage.extend_from_slice(&len);
             preimage.extend_from_slice(v.as_bytes());
         }
-        preimage.extend_from_slice(serial); // salt
+        preimage.extend_from_slice(serial);
         Sha256::digest(&preimage).into()
     };
 
-    let country  = if mask & 0x01 != 0 { hash_field(&mut country_vals) } else { zero };
-    let org      = if mask & 0x02 != 0 { hash_field(&mut org_vals) } else { zero };
-    let org_unit = if mask & 0x04 != 0 { hash_field(&mut ou_vals) } else { zero };
-    let cn       = if mask & 0x08 != 0 { hash_field(&mut cn_vals) } else { zero };
+    let country  = if effective_mask & 0x01 != 0 { hash_field(&mut country_vals) } else { zero };
+    let org      = if effective_mask & 0x02 != 0 { hash_field(&mut org_vals) } else { zero };
+    let org_unit = if effective_mask & 0x04 != 0 { hash_field(&mut ou_vals) } else { zero };
+    let cn       = if effective_mask & 0x08 != 0 { hash_field(&mut cn_vals) } else { zero };
 
     (country, org, org_unit, cn)
 }
