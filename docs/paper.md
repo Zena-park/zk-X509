@@ -8,11 +8,11 @@
 
 ## Abstract
 
-The inherent transparency of public blockchains creates a fundamental tension between regulatory compliance and user privacy. Existing on-chain identity solutions either rely on centralized KYC attestors—introducing single points of failure and metadata leakage—or require specialized hardware such as NFC readers or biometric scanners, limiting accessibility. Meanwhile, billions of X.509 digital certificates already form a globally deployed, government-grade trust infrastructure, yet no practical system exists to leverage them for decentralized identity without exposing personal data.
+The inherent transparency of public blockchains creates a fundamental tension between regulatory compliance and user privacy. Existing on-chain identity solutions either rely on centralized KYC attestors—introducing single points of failure and metadata leakage—require specialized hardware such as NFC readers or biometric scanners, or depend on Decentralized Identifier (DID) frameworks that require building entirely new credential issuance infrastructure before deployment. Meanwhile, billions of X.509 digital certificates already form a globally deployed, government-grade trust infrastructure, yet no practical system exists to leverage them for decentralized identity without exposing personal data.
 
 We present **zk-X509**, a fully software-based, privacy-preserving identity system that bridges legacy Public Key Infrastructure (PKI) with public ledgers. Using a RISC-V-based zero-knowledge virtual machine (zkVM), zk-X509 enables users to prove ownership and validity of standard X.509 certificates—targeting the legally binding Korean National PKI (NPKI) comprising millions of active certificates—without revealing private keys or personal identifiers. The zero-knowledge circuit verifies six properties: (1) the full certificate chain from user certificate through intermediate CAs to a trusted root, (2) temporal validity of every certificate in the chain, (3) private key ownership, (4) certificate revocation status against a provided CRL, (5) binding to a specific blockchain address, and (6) generation of a deterministic nullifier for Sybil resistance. The proof commits only the nullifier, a CA root hash, a timestamp, and the registrant's address as public values.
 
-We formalize the security model under a Dolev-Yao adversary and prove four properties via game-based definitions: unforgeability, unlinkability, double-registration resistance, and front-running immunity. Our SP1 zkVM implementation achieves approximately 7.2 million cycles for single-level RSA-2048 verification, and on-chain verification costs approximately 77,000 gas. zk-X509 provides a pragmatic, hardware-free pathway to integrate government-grade trust anchors into decentralized finance while strictly preserving user anonymity.
+We formalize the security model under a Dolev-Yao adversary and prove four properties via game-based definitions: unforgeability, unlinkability, double-registration resistance, and front-running immunity. Our SP1 zkVM implementation achieves approximately 7.2 million cycles for single-level RSA-2048 verification, and on-chain verification costs approximately 77,000 gas. Unlike DID-based approaches that require building new credential issuance infrastructure from scratch, zk-X509 leverages government-grade certificates that are already deployed at scale, enabling immediate adoption without new trust establishment. zk-X509 provides a pragmatic, hardware-free pathway to integrate existing trust anchors into decentralized finance while strictly preserving user anonymity.
 
 **Keywords:** Zero-Knowledge Proofs, X.509, Digital Identity, zkVM, Ethereum, Korean NPKI, Privacy-Preserving Authentication, Proof of Personhood
 
@@ -32,11 +32,15 @@ Existing approaches to on-chain identity fall into three categories, each with s
 
 3. **Direct credential submission.** Users submit identity documents to smart contracts or oracles, permanently recording personal data on an immutable ledger—a fundamental privacy violation.
 
-None of these approaches simultaneously achieves **verifiability** (anyone can check that an address is backed by a valid credential), **privacy** (no personal data is revealed), **decentralization** (no single entity can forge or revoke attestations), and **accessibility** (no specialized hardware required).
+4. **Decentralized Identifiers (DIDs).** W3C DID-based systems such as Polygon ID and Veramo require building entirely new credential issuance infrastructure—new issuers, new trust registries, and new verification workflows. While architecturally promising, DIDs face a cold-start problem: they cannot leverage the billions of credentials already issued by governments and CAs, and regulatory acceptance remains uncertain. Deployment timelines of 3–5 years for ecosystem bootstrapping limit their near-term applicability to compliance-sensitive domains.
+
+None of these approaches simultaneously achieves **verifiability** (anyone can check that an address is backed by a valid credential), **privacy** (no personal data is revealed), **decentralization** (no single entity can forge or revoke attestations), **accessibility** (no specialized hardware required), and **immediate deployability** (no new issuance infrastructure needed).
 
 ### 1.2 Key Insight
 
-We observe that a vast, government-grade trust infrastructure already exists: the X.509 Public Key Infrastructure. Over 4 billion X.509 certificates are active globally, issued by Certificate Authorities (CAs) for purposes ranging from TLS to national identity. Crucially, these certificates embed RSA or ECDSA signatures from trusted CAs, providing a cryptographic chain of trust that can be verified computationally—and therefore inside a zero-knowledge circuit.
+The dominant paradigm in blockchain identity research—Decentralized Identifiers (DIDs)—attempts to build *new* trust systems from scratch. We argue for an orthogonal approach: *bridging existing trust* to the blockchain.
+
+A vast, government-grade trust infrastructure already exists: the X.509 Public Key Infrastructure. Over 4 billion X.509 certificates are active globally, issued by Certificate Authorities (CAs) for purposes ranging from TLS to national identity. In Korea alone, approximately 20 million NPKI certificates are actively used for banking, government services, and e-commerce—each carrying legal weight under the Electronic Signatures Act. These certificates embed RSA or ECDSA signatures from trusted CAs, providing a cryptographic chain of trust that can be verified computationally—and therefore inside a zero-knowledge circuit. The core insight of zk-X509 is that these existing credentials, already trusted by governments and institutions, can serve as blockchain identity anchors *today*, without waiting years for new DID ecosystems to mature.
 
 ### 1.3 Proposed Solution
 
@@ -68,7 +72,7 @@ This paper makes the following contributions:
 
 ### 1.6 Paper Organization
 
-Section 2 provides background on X.509, zkVMs, and related work. Section 3 presents the system architecture and formal protocol specification. Section 4 details the implementation. Section 5 formalizes the security analysis with game-based definitions. Section 6 compares with alternative approaches. Section 7 discusses limitations and future work. Section 8 concludes.
+Section 2 provides background on X.509, zkVMs, related work, and a detailed comparison with DID-based approaches. Section 3 presents the system architecture and formal protocol specification. Section 4 details the implementation. Section 5 formalizes the security analysis with game-based definitions. Section 6 compares with alternative approaches. Section 7 discusses limitations and future work. Section 8 concludes.
 
 ---
 
@@ -102,7 +106,7 @@ We survey existing approaches to privacy-preserving on-chain identity and positi
 
 **Worldcoin** [3] uses iris biometric scanning with a proprietary device (the Orb) to generate unique identity proofs. The hardware dependency and biometric data collection raise both accessibility and privacy concerns that zk-X509 avoids entirely.
 
-**Polygon ID** uses W3C Verifiable Credentials with ZK proofs. However, it requires credential issuance by specific DID providers, creating a dependency on new infrastructure rather than leveraging existing PKI.
+**Polygon ID and DID-based systems** [13] use W3C Verifiable Credentials (VCs) with ZK proofs. While providing a flexible credential framework, DID systems face a fundamental bootstrapping problem: they require new credential issuers, trust registries, and verification schemas to be established before any identity verification can occur. This "build from scratch" approach contrasts sharply with zk-X509's "bridge the existing" philosophy. Furthermore, DID revocation depends on issuer-maintained registries—a centralized dependency—whereas zk-X509 verifies CA-signed CRLs trustlessly inside the zkVM. Regulatory acceptance of DID credentials remains unresolved in most jurisdictions, while X.509 certificates carry established legal standing.
 
 **Semaphore** [8] enables anonymous group membership proofs but provides no mechanism for certificate-based identity verification. It solves a different problem: anonymous signaling within a pre-defined group.
 
@@ -110,16 +114,43 @@ We survey existing approaches to privacy-preserving on-chain identity and positi
 
 **Soulbound Tokens (SBTs)** [10] propose non-transferable tokens as identity primitives. However, SBTs require a trusted issuer and provide no mechanism for privacy-preserving credential verification.
 
-| System | Credential | Hardware | Trust Model | Chain Verification | CRL | Privacy |
-|--------|-----------|----------|-------------|-------------------|-----|---------|
-| zkPassport [2] | Passport | NFC required | Government CA | N/A | N/A | Full ZK |
-| Worldcoin [3] | Biometric | Orb required | Worldcoin Foundation | N/A | N/A | Partial |
-| Polygon ID | W3C VC | None | DID Issuers | No | No | Full ZK |
-| Semaphore [8] | Group key | None | Group admin | N/A | N/A | Full ZK |
-| zk-email [9] | Email DKIM | None | Email providers | No | No | Full ZK |
-| **zk-X509** | **X.509 cert** | **None** | **Government CAs** | **Yes** | **Yes** | **Full ZK** |
+| System | Credential | Hardware | Trust Model | Existing Infra | CRL | Privacy |
+|--------|-----------|----------|-------------|---------------|-----|---------|
+| zkPassport [2] | Passport | NFC required | Government CA | Yes (passports) | N/A | Full ZK |
+| Worldcoin [3] | Biometric | Orb required | Worldcoin Foundation | No | N/A | Partial |
+| DID/VC [13] | W3C VC | None | New issuers | No (must build) | Issuer-dependent | Varies |
+| Semaphore [8] | Group key | None | Group admin | No | N/A | Full ZK |
+| zk-email [9] | Email DKIM | None | Email providers | Yes (DKIM) | No | Full ZK |
+| **zk-X509** | **X.509 cert** | **None** | **Government CAs** | **Yes (billions)** | **Trustless ZK** | **Full ZK** |
 
 zk-X509 is, to our knowledge, the first system to bring existing X.509 PKI certificates into the blockchain ecosystem using zero-knowledge proofs, combining government-grade trust with full certificate chain verification, revocation checking, full privacy, and no hardware requirements.
+
+### 2.5 zk-X509 vs Decentralized Identifiers (DIDs)
+
+Decentralized Identifier (DID) frameworks [13] represent the dominant paradigm in blockchain identity research. While architecturally elegant, DID-based systems differ fundamentally from zk-X509 in their trust assumptions and deployment requirements. We highlight the key distinctions:
+
+**Infrastructure dependency.** DID systems require bootstrapping entirely new infrastructure: credential issuers, trust registries, verification schemas, and holder wallets. In contrast, zk-X509 leverages X.509 PKI—an infrastructure already deployed at global scale with over 4 billion active certificates. In Korea alone, approximately 20 million NPKI certificates are actively used, providing an immediate user base without any new issuance required.
+
+**Trust model.** DID trust is issuer-dependent: a verifier must decide *which* DID issuers to trust, creating a fragmented trust landscape. zk-X509 inherits the established CA trust model, where governments have already designated trusted CAs through legal frameworks (e.g., Korea's Electronic Signatures Act). This eliminates the "who trusts whom?" bootstrapping problem.
+
+**Revocation mechanism.** DID revocation depends on the issuer maintaining and publishing revocation registries—a centralized dependency within a supposedly decentralized system. zk-X509 performs trustless CRL verification inside the zkVM: the CRL's CA signature is cryptographically verified, ensuring revocation data cannot be forged or suppressed.
+
+**Regulatory compliance.** DID frameworks lack clear regulatory standing in most jurisdictions. X.509 certificates, particularly national PKI certificates, carry legal weight: Korean NPKI certificates are legally binding under the Electronic Signatures Act. This makes zk-X509 immediately applicable to compliance-sensitive domains (banking, government services) where DID acceptance remains unresolved.
+
+**Time to deployment.** DID ecosystems require 3–5 years for credential issuance, trust registry establishment, and ecosystem adoption. zk-X509 can be deployed within 3–6 months by whitelisting existing CA root hashes—no new credential issuance is needed.
+
+| Criterion | DID (e.g., Polygon ID, Veramo) | zk-X509 |
+|-----------|-------------------------------|---------|
+| Existing infrastructure | Not leveraged; new issuers required | Leverages billions of X.509 certs |
+| Trust model | Issuer-dependent, fragmented | Government CAs, legally established |
+| Revocation | Issuer-maintained registries | Trustless CRL verification in zkVM |
+| Hardware requirement | None | None |
+| Regulatory compliance | Unresolved in most jurisdictions | Legally binding (e.g., Korea E-Sig Act) |
+| Time to deployment | 3–5 years (ecosystem bootstrap) | 3–6 months (whitelist existing CAs) |
+| Trust establishment cost | High (new ecosystem) | Low (existing government trust) |
+| Privacy | ZK proofs (varies by system) | Full ZK (nullifier + CA hash only) |
+
+**Complementary roles.** DID and zk-X509 are not mutually exclusive. DID excels at creating *new* trust relationships in domains where no prior credential infrastructure exists. zk-X509 excels at bridging *existing* government-grade trust to the blockchain. In a mature ecosystem, a user might hold both: a DID for Web3-native credentials and a zk-X509 registration for government-backed identity verification.
 
 ---
 
@@ -649,19 +680,19 @@ The CRL is verified trustlessly inside the zkVM: its RSA signature is checked ag
 
 ## 6. Comparison with Alternative Approaches
 
-| Criterion | zk-X509 | zkKYC | SBT [10] | zkPassport [2] | zk-email [9] |
-|-----------|---------|-------|----------|---------------|-------------|
-| Privacy | Full ZK | Attestor sees data | Issuer sees data | Full ZK | Full ZK |
-| Verifiability | On-chain, trustless | Trust attestor | Trust issuer | On-chain, trustless | On-chain, trustless |
-| Hardware required | None | None | None | NFC reader | None |
-| Trust anchor | Government CAs | KYC provider | Token issuer | Government (passport) | Email providers |
-| Chain verification | Full multi-level | N/A | N/A | N/A | N/A |
-| Revocation checking | Trustless CRL in ZK | Off-chain | Issuer policy | N/A | N/A |
-| Front-running defense | Registrant binding | N/A | N/A | Varies | Varies |
-| Double-reg prevention | Nullifier | Database check | Issuer policy | Nullifier | Nullifier |
-| Existing infrastructure | Billions of certs | Requires KYC provider | Requires issuer | NFC passport | DKIM email |
+| Criterion | zk-X509 | DID/VC [13] | zkKYC | SBT [10] | zkPassport [2] | zk-email [9] |
+|-----------|---------|------------|-------|----------|---------------|-------------|
+| Privacy | Full ZK | Varies | Attestor sees data | Issuer sees data | Full ZK | Full ZK |
+| Verifiability | On-chain, trustless | Trust issuer | Trust attestor | Trust issuer | On-chain, trustless | On-chain, trustless |
+| Hardware required | None | None | None | None | NFC reader | None |
+| Trust anchor | Government CAs | New issuers | KYC provider | Token issuer | Government | Email providers |
+| Existing infrastructure | Billions of certs | Must build new | Requires provider | Requires issuer | NFC passport | DKIM email |
+| Revocation | Trustless CRL in ZK | Issuer registry | Off-chain | Issuer policy | N/A | N/A |
+| Regulatory standing | Legally binding | Unresolved | Provider-dependent | None | Legally binding | None |
+| Time to deploy | 3–6 months | 3–5 years | Months | Months | Months | Months |
+| Front-running defense | Registrant binding | N/A | N/A | N/A | Varies | Varies |
 
-zk-X509's unique position is the combination of **no hardware requirement**, **government-grade trust** with full certificate chain verification, **revocation checking**, **front-running protection**, and **full zero-knowledge privacy**, leveraging an infrastructure base of billions of existing certificates.
+zk-X509's unique position is the combination of **no hardware requirement**, **government-grade trust** with full certificate chain verification, **trustless revocation checking**, **immediate deployability** (no new issuance infrastructure), **legal standing** under existing regulations, and **full zero-knowledge privacy**, leveraging an infrastructure base of billions of existing certificates.
 
 ---
 
@@ -683,11 +714,17 @@ The single-owner access control for CA management represents a centralization po
 
 The ZK proof is chain-agnostic. Deploying `IdentityRegistry` on multiple chains with the same verification key would enable cross-chain identity from a single proof generation. Standardizing the public values format could enable interoperability across different ZK identity systems.
 
-### 7.5 ECDSA Support
+### 7.5 Configurable Registration Policy
+
+The current design enforces a strict 1:1 mapping between certificates and wallet addresses, providing maximal Sybil resistance. However, different applications have different requirements. DAO governance and airdrop distribution benefit from 1:1 enforcement (one person, one vote). Decentralized exchanges and DeFi protocols may require users to register multiple wallets (e.g., separate trading and custody wallets) under a single identity.
+
+A configurable `maxWalletsPerCert` parameter in the contract constructor would allow each deployment to choose its policy. The nullifier scheme would be extended to $\mathcal{H}(\text{serial} \| \mathcal{H}(\text{sk}) \| \text{wallet\_index})$, with the ZK circuit enforcing $\text{wallet\_index} < \text{maxWalletsPerCert}$. Setting $\text{maxWalletsPerCert} = 1$ preserves the current strict Sybil resistance, while higher values enable multi-wallet use cases. This parameterization enables zk-X509 to serve as a general-purpose identity layer across diverse L2 protocols with varying trust requirements.
+
+### 7.6 ECDSA Support
 
 The current implementation supports only RSA-based signatures. Adding ECDSA support (specifically secp256r1, commonly used in modern X.509 certificates) would extend compatibility beyond the RSA-centric Korean NPKI ecosystem.
 
-### 7.6 Formal Verification
+### 7.7 Formal Verification
 
 Formal verification of the Solidity smart contract (e.g., using Certora or Halmos) and the ZK circuit logic would provide stronger assurance beyond the game-based security analysis presented here.
 
@@ -699,7 +736,7 @@ zk-X509 demonstrates that legacy PKI infrastructure can be bridged to blockchain
 
 The security analysis under the Dolev-Yao model establishes four properties with game-based definitions and proofs: unforgeability (reduced to RSA hardness and ZK soundness), unlinkability (reduced to SHA-256 preimage resistance), double-registration resistance (via deterministic nullifiers and ZK soundness), and front-running immunity (via registrant binding). The implementation demonstrates practical feasibility: ~7.2M SP1 cycles for single-level verification and ~77K gas for on-chain registration.
 
-For the Korean market specifically, zk-X509 offers a compelling path: the nation's existing PKI ecosystem, with millions of active certificates and a multi-level CA hierarchy, can immediately serve as the trust anchor for blockchain-based identity verification—enabling DeFi compliance, DAO governance, and government service integration—without exposing a single byte of personal data.
+A key differentiator from DID-based approaches is immediacy: while DID frameworks require years to bootstrap new issuance infrastructure, zk-X509 leverages government-grade certificates that are already deployed and legally binding. For the Korean market specifically, approximately 20 million active NPKI certificates can immediately serve as trust anchors for blockchain-based identity verification—enabling DeFi compliance, DAO governance, and government service integration—without issuing a single new credential or exposing a single byte of personal data. We believe this "bridge the existing, don't build from scratch" philosophy represents a pragmatic and underexplored direction in the blockchain identity literature, complementary to rather than competing with DID-based systems.
 
 ---
 
@@ -728,3 +765,5 @@ For the Korean market specifically, zk-X509 offers a compelling path: the nation
 [11] Dolev, D. and Yao, A. "On the Security of Public Key Protocols." IEEE Transactions on Information Theory, 29(2):198–208, 1983.
 
 [12] Rivest, R., Shamir, A., and Adleman, L. "A Method for Obtaining Digital Signatures and Public-Key Cryptosystems." Communications of the ACM, 21(2):120–126, 1978.
+
+[13] Sporny, M., Longley, D., and Chadwick, D. "Verifiable Credentials Data Model v2.0." W3C Recommendation, March 2024.
