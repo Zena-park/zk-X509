@@ -19,8 +19,11 @@ contract IdentityRegistry {
     /// @notice Whitelisted CA root hashes (SHA-256 of CA public key).
     mapping(bytes32 => bool) public validCARoots;
 
-    /// @notice Used nullifiers (prevents double registration).
-    mapping(bytes32 => bool) public nullifiers;
+    /// @notice Nullifier → registered wallet address (address(0) = unused).
+    mapping(bytes32 => address) public nullifierOwner;
+
+    /// @notice Nullifiers that have been permanently revoked by admin.
+    mapping(bytes32 => bool) public revokedNullifiers;
 
     /// @notice Verified wallet addresses.
     mapping(address => bool) public verifiedUsers;
@@ -40,6 +43,7 @@ contract IdentityRegistry {
     // ============ Events ============
 
     event UserRegistered(address indexed user, bytes32 nullifier, bytes32 caRootHash);
+    event UserReRegistered(address indexed oldUser, address indexed newUser, bytes32 nullifier);
     event CARootAdded(bytes32 indexed caRootHash);
     event CARootRemoved(bytes32 indexed caRootHash);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -60,6 +64,8 @@ contract IdentityRegistry {
     error ContractPaused();
     error UserNotVerified(address user);
     error NotPendingOwner();
+    error NullifierNotRegistered(bytes32 nullifier);
+    error NullifierRevoked(bytes32 nullifier);
 
     // ============ Modifiers ============
 
@@ -83,40 +89,62 @@ contract IdentityRegistry {
         owner = msg.sender;
     }
 
+    // ============ Internal ============
+
+    /// @dev Shared validation: decode, check registrant, timestamp, CA, and verify proof.
+    function _validateProof(
+        bytes calldata proof,
+        bytes calldata publicValues
+    ) internal view returns (bytes32 nullifier, bytes32 caRootHash) {
+        address registrant;
+        uint64 proofTimestamp;
+        (nullifier, caRootHash, proofTimestamp, registrant) =
+            abi.decode(publicValues, (bytes32, bytes32, uint64, address));
+
+        if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
+        if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
+        if (block.timestamp - proofTimestamp > MAX_PROOF_AGE) revert ProofTooOld(proofTimestamp, block.timestamp);
+        if (!validCARoots[caRootHash]) revert UnsupportedCA(caRootHash);
+
+        sp1Verifier.verifyProof(programVKey, publicValues, proof);
+    }
+
     // ============ External Functions ============
 
     /// @notice Register a verified identity using a ZK proof of X.509 certificate ownership.
-    /// @param proof The serialized ZK proof bytes.
-    /// @param publicValues The ABI-encoded public values (nullifier, caRootHash, timestamp, registrant).
     function register(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
-        // 1. Decode public values
-        (bytes32 nullifier, bytes32 caRootHash, uint64 proofTimestamp, address registrant) =
-            abi.decode(publicValues, (bytes32, bytes32, uint64, address));
+        (bytes32 nullifier, bytes32 caRootHash) = _validateProof(proof, publicValues);
 
-        // 2. Verify proof is bound to msg.sender (anti-front-running)
-        if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
-
-        // 3. Verify proof timestamp is within acceptable range
-        if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
-        if (block.timestamp - proofTimestamp > MAX_PROOF_AGE) revert ProofTooOld(proofTimestamp, block.timestamp);
-
-        // 4. Check CA is whitelisted
-        if (!validCARoots[caRootHash]) revert UnsupportedCA(caRootHash);
-
-        // 5. Check nullifier hasn't been used (no double registration)
-        if (nullifiers[nullifier]) revert AlreadyRegistered(nullifier);
-
-        // 6. Check user isn't already verified
+        if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
+        if (nullifierOwner[nullifier] != address(0)) revert AlreadyRegistered(nullifier);
         if (verifiedUsers[msg.sender]) revert UserAlreadyVerified(msg.sender);
 
-        // 7. Verify the ZK proof on-chain
-        sp1Verifier.verifyProof(programVKey, publicValues, proof);
-
-        // 8. Update state
-        nullifiers[nullifier] = true;
+        nullifierOwner[nullifier] = msg.sender;
         verifiedUsers[msg.sender] = true;
 
         emit UserRegistered(msg.sender, nullifier, caRootHash);
+    }
+
+    /// @notice Re-register: move an existing certificate to a new wallet address.
+    /// @dev No admin required. User proves ownership of the same certificate with a new wallet.
+    ///      The old wallet is unverified and the new wallet takes over.
+    ///      WARNING: If certificate files are compromised, an attacker could re-register
+    ///      to their own wallet. This is by design — the certificate is the identity anchor.
+    function reRegister(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
+        (bytes32 nullifier, ) = _validateProof(proof, publicValues);
+
+        if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
+        address oldOwner = nullifierOwner[nullifier];
+        if (oldOwner == address(0)) revert NullifierNotRegistered(nullifier);
+        if (verifiedUsers[msg.sender]) revert UserAlreadyVerified(msg.sender);
+
+        if (oldOwner != msg.sender) {
+            verifiedUsers[oldOwner] = false;
+            nullifierOwner[nullifier] = msg.sender;
+        }
+        verifiedUsers[msg.sender] = true;
+
+        emit UserReRegistered(oldOwner, msg.sender, nullifier);
     }
 
     /// @notice Check if a wallet address is verified.
@@ -142,12 +170,15 @@ contract IdentityRegistry {
         emit CARootRemoved(caRootHash);
     }
 
-    /// @notice Revoke a verified user's identity (e.g., cert expired/revoked).
-    /// @param user The wallet address to revoke.
-    /// @param reason Reason code (e.g., keccak256("CERT_EXPIRED"), keccak256("CERT_REVOKED")).
-    function revokeUser(address user, bytes32 reason) external onlyOwner {
-        if (!verifiedUsers[user]) revert UserNotVerified(user);
+    /// @notice Revoke an identity by nullifier. Permanently disables the nullifier
+    ///         and unverifies the associated wallet. Cannot be undone.
+    /// @param nullifier The nullifier to revoke.
+    /// @param reason Reason code (e.g., keccak256("CERT_REVOKED")).
+    function revokeIdentity(bytes32 nullifier, bytes32 reason) external onlyOwner {
+        address user = nullifierOwner[nullifier];
+        if (user == address(0)) revert NullifierNotRegistered(nullifier);
         verifiedUsers[user] = false;
+        revokedNullifiers[nullifier] = true;
         emit UserRevoked(user, reason);
     }
 

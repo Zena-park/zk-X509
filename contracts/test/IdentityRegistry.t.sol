@@ -35,7 +35,7 @@ contract IdentityRegistryTest is Test {
         vm.prank(alice);
         registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
         assertTrue(registry.isVerified(alice));
-        assertTrue(registry.nullifiers(NULLIFIER));
+        assertTrue(registry.nullifierOwner(NULLIFIER) == alice);
     }
 
     function test_RevertRegistrantMismatch() public {
@@ -174,29 +174,104 @@ contract IdentityRegistryTest is Test {
         registry.pause();
     }
 
-    function test_RevokeUser() public {
+    function test_RevokeIdentity() public {
         vm.prank(alice);
         registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
         assertTrue(registry.isVerified(alice));
-        registry.revokeUser(alice, keccak256("CERT_EXPIRED"));
+
+        registry.revokeIdentity(NULLIFIER, keccak256("CERT_REVOKED"));
         assertFalse(registry.isVerified(alice));
+        assertTrue(registry.revokedNullifiers(NULLIFIER));
     }
 
-    function test_RevertRevokeUnverifiedUser() public {
+    function test_RevertRevokeUnregisteredNullifier() public {
         vm.expectRevert(
-            abi.encodeWithSelector(IdentityRegistry.UserNotVerified.selector, alice)
+            abi.encodeWithSelector(IdentityRegistry.NullifierNotRegistered.selector, NULLIFIER)
         );
-        registry.revokeUser(alice, keccak256("TEST"));
+        registry.revokeIdentity(NULLIFIER, keccak256("TEST"));
     }
 
-    function test_RevokedUserCanReRegister() public {
+    function test_RevokedNullifierCannotReRegister() public {
+        // Register then revoke
         vm.prank(alice);
         registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
-        registry.revokeUser(alice, keccak256("RE_ISSUE"));
+        registry.revokeIdentity(NULLIFIER, keccak256("CERT_REVOKED"));
 
+        // Attempt to reRegister the revoked nullifier → should fail
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.NullifierRevoked.selector, NULLIFIER)
+        );
+        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+    }
+
+    function test_RevokedNullifierCannotRegister() public {
+        // Register, revoke, then try to register same nullifier again
+        vm.prank(alice);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.revokeIdentity(NULLIFIER, keccak256("CERT_REVOKED"));
+
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.NullifierRevoked.selector, NULLIFIER)
+        );
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+    }
+
+    function test_RevokedUserCanRegisterWithNewCert() public {
+        // Alice registers with NULLIFIER, gets revoked
+        vm.prank(alice);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.revokeIdentity(NULLIFIER, keccak256("RE_ISSUE"));
+
+        // Alice can register with a different cert (different nullifier)
         bytes32 nullifier2 = bytes32(uint256(0xBEEF));
         vm.prank(alice);
         registry.register(hex"1234", _pv(nullifier2, CA_ROOT_HASH, alice));
         assertTrue(registry.isVerified(alice));
+    }
+
+    // ============ reRegister tests ============
+
+    function test_ReRegister() public {
+        // Alice registers
+        vm.prank(alice);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        assertTrue(registry.isVerified(alice));
+
+        // Alice re-registers to bob's wallet (same cert/nullifier, new wallet)
+        vm.prank(bob);
+        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+
+        // Alice unverified, bob verified
+        assertFalse(registry.isVerified(alice));
+        assertTrue(registry.isVerified(bob));
+        assertEq(registry.nullifierOwner(NULLIFIER), bob);
+    }
+
+    function test_RevertReRegisterUnregisteredNullifier() public {
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.NullifierNotRegistered.selector, NULLIFIER)
+        );
+        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+    }
+
+    function test_RevertReRegisterToAlreadyVerifiedWallet() public {
+        // Register alice with NULLIFIER
+        vm.prank(alice);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+
+        // Register bob with different nullifier
+        bytes32 nullifier2 = bytes32(uint256(0xBEEF));
+        vm.prank(bob);
+        registry.register(hex"1234", _pv(nullifier2, CA_ROOT_HASH, bob));
+
+        // Try to re-register NULLIFIER to bob (already verified)
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.UserAlreadyVerified.selector, bob)
+        );
+        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
     }
 }
