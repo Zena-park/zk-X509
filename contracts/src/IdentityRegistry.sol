@@ -28,12 +28,17 @@ contract IdentityRegistry {
     /// @notice Contract owner (for CA management).
     address public owner;
 
+    /// @notice Whether the contract is paused.
+    bool public paused;
+
     // ============ Events ============
 
     event UserRegistered(address indexed user, bytes32 nullifier, bytes32 caRootHash);
     event CARootAdded(bytes32 indexed caRootHash);
     event CARootRemoved(bytes32 indexed caRootHash);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event Paused(address indexed by);
+    event Unpaused(address indexed by);
 
     // ============ Errors ============
 
@@ -44,6 +49,7 @@ contract IdentityRegistry {
     error ProofInFuture(uint64 proofTimestamp, uint256 blockTimestamp);
     error OnlyOwner();
     error ZeroAddress();
+    error ContractPaused();
 
     /// @notice Maximum allowed age of a proof (1 hour).
     uint256 public constant MAX_PROOF_AGE = 1 hours;
@@ -52,6 +58,11 @@ contract IdentityRegistry {
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert OnlyOwner();
+        _;
+    }
+
+    modifier whenNotPaused() {
+        if (paused) revert ContractPaused();
         _;
     }
 
@@ -70,7 +81,7 @@ contract IdentityRegistry {
     /// @notice Register a verified identity using a ZK proof of X.509 certificate ownership.
     /// @param proof The serialized ZK proof bytes.
     /// @param publicValues The ABI-encoded public values (nullifier, caRootHash, timestamp).
-    function register(bytes calldata proof, bytes calldata publicValues) external {
+    function register(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
         // 1. Decode public values
         (bytes32 nullifier, bytes32 caRootHash, uint64 proofTimestamp) =
             abi.decode(publicValues, (bytes32, bytes32, uint64));
@@ -119,6 +130,18 @@ contract IdentityRegistry {
     function removeCARoot(bytes32 caRootHash) external onlyOwner {
         validCARoots[caRootHash] = false;
         emit CARootRemoved(caRootHash);
+    }
+
+    /// @notice Pause the contract (emergency stop).
+    function pause() external onlyOwner {
+        paused = true;
+        emit Paused(msg.sender);
+    }
+
+    /// @notice Unpause the contract.
+    function unpause() external onlyOwner {
+        paused = false;
+        emit Unpaused(msg.sender);
     }
 
     /// @notice Transfer contract ownership.
