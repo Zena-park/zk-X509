@@ -28,7 +28,7 @@ contracts/cache/
 contracts/out/
 contracts/broadcast/
 
-# Test certs (all generated cert files)
-certs/*.key
-certs/*.pem
-certs/*.der
+# Test certs (all generated cert files, including subdirs)
+certs/**/*.key
+certs/**/*.pem
+certs/**/*.der
