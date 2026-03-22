@@ -67,8 +67,8 @@ zk-X509 is designed to work with **any X.509 certificate from any CA worldwide**
 
 This paper makes the following contributions:
 
-- A **system architecture** for a complete ZK-based X.509 verification pipeline supporting full certificate chain verification, trustless CRL checking, registrant binding, configurable multi-wallet registration, and self-service wallet migration.
-- A **working implementation** using the SP1 zkVM for zero-knowledge computation, with Solidity smart contracts for on-chain verification, configurable `maxWalletsPerCert` policy, and a web-based frontend with NPKI auto-discovery.
+- A **system architecture** for a complete ZK-based X.509 verification pipeline supporting full certificate chain verification, trustless CRL checking, signature-based ownership (private key never enters zkVM), registrant binding, configurable multi-wallet registration, automatic identity expiry, selective attribute disclosure, and self-service wallet migration.
+- A **working implementation** using the SP1 zkVM for zero-knowledge computation, with Solidity smart contracts for on-chain verification, configurable `maxWalletsPerCert` policy, selective disclosure via bitmask, OS keychain integration, and a web-based frontend with NPKI auto-discovery.
 - A **formal security analysis** with game-based definitions under the Dolev-Yao adversary model, establishing unforgeability, unlinkability, double-registration resistance, and front-running immunity.
 - A **performance evaluation** demonstrating practical feasibility: ~7.2M SP1 cycles for single-level RSA-2048 verification and ~77K gas for on-chain registration.
 
@@ -204,10 +204,11 @@ We define the registration protocol formally. Let $\mathcal{P}$ denote the prove
 **Protocol.**
 
 ```
-Step 1.  P → S:   (cert_index, password, addr)
+Step 1.  P → S:   (cert_index, password, addr, wallet_index?, max_wallets?, disclosure_mask?)
                    via HTTP POST to localhost
                    cert_index identifies an NPKI certificate discovered
                    by the server's filesystem scanner
+                   wallet_index, max_wallets, disclosure_mask have sensible defaults
 
 Step 2.  S:        (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
                    sk' ← PBES2_Decrypt(sk_enc, password)  // SEED-CBC or AES-256-CBC
@@ -216,7 +217,8 @@ Step 2.  S:        (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
                    ownership_sig ← OS_Keychain.Sign(sk', challenge)  // private key stays in keychain
                    Erase(sk')  // private key never reaches SP1
 
-Step 3.  S → Z:   (cert, ownership_sig, chain, t, CRL, addr, wallet_index, max_wallets)
+Step 3.  S → Z:   (cert, ownership_sig, chain, t, CRL, addr, wallet_index,
+                    max_wallets, disclosure_mask)
                    via SP1 stdin  // NOTE: no private key
 
 Step 4.  Z:        // Parse and validate user certificate
@@ -256,9 +258,17 @@ Step 4.  Z:        // Parse and validate user certificate
                    // Compute public outputs
                    nullifier ← H(cert_parsed.pk_der ‖ wallet_index)
                    caRootHash ← H(pk_root)
+                   notAfter ← cert_parsed.notAfter
+
+                   // Selective disclosure (per disclosure_mask bits)
+                   countryHash  ← (mask & 0x01) ? H(cert.subject.C)  : 0x0
+                   orgHash      ← (mask & 0x02) ? H(cert.subject.O)  : 0x0
+                   orgUnitHash  ← (mask & 0x04) ? H(cert.subject.OU) : 0x0
+                   commonNameHash ← (mask & 0x08) ? H(cert.subject.CN) : 0x0
 
                    // Commit public values
-                   Commit(nullifier, caRootHash, t, addr, wallet_index)
+                   Commit(nullifier, caRootHash, t, addr, wallet_index,
+                          notAfter, countryHash, orgHash, orgUnitHash, commonNameHash)
 
 Step 5.  Z → S:   (π, pubvals)
                    where π is the ZK proof, pubvals = ABI(nullifier, caRootHash, t, addr)
@@ -269,19 +279,20 @@ Step 7.  P → V:   register(π, pubvals)
                    via Ethereum transaction signed by addr
 
 Step 8.  V:        // On-chain verification
-                   (nullifier, caRootHash, t_proof, registrant, walletIndex)
+                   (nullifier, caRootHash, t_proof, registrant, walletIndex,
+                    notAfter, countryHash, orgHash, orgUnitHash, commonNameHash)
                      ← ABI.Decode(pubvals)
-                   Assert: registrant = msg.sender             // front-running
-                   Assert: t_proof ≤ block.timestamp            // no future proofs
-                   Assert: block.timestamp - t_proof ≤ 3600     // freshness
-                   Assert: validCARoots[caRootHash] = true      // CA whitelist
-                   Assert: walletIndex < maxWalletsPerCert      // wallet limit
-                   SP1Verifier.verify(vkey, pubvals, π)        // ZK proof
-                   Assert: revokedNullifiers[nullifier] = false // not revoked
-                   Assert: nullifierOwner[nullifier] = 0x0      // no double-reg
-                   Assert: verifiedUsers[msg.sender] = false    // no multi-reg
+                   Assert: registrant = msg.sender              // front-running
+                   Assert: t_proof ≤ block.timestamp             // no future proofs
+                   Assert: block.timestamp - t_proof ≤ 3600      // freshness
+                   Assert: validCARoots[caRootHash] = true       // CA whitelist
+                   Assert: walletIndex < maxWalletsPerCert       // wallet limit
+                   SP1Verifier.verify(vkey, pubvals, π)         // ZK proof
+                   Assert: revokedNullifiers[nullifier] = false  // not revoked
+                   Assert: nullifierOwner[nullifier] = 0x0       // no double-reg
+                   Assert: verifiedUntil[msg.sender] < block.timestamp  // expired or new
                    nullifierOwner[nullifier] ← msg.sender
-                   verifiedUsers[msg.sender] ← true
+                   verifiedUntil[msg.sender] ← notAfter          // auto-expiry
                    Emit UserRegistered(msg.sender, nullifier, caRootHash)
 ```
 
@@ -291,21 +302,26 @@ The shared data structure between the ZK circuit and the smart contract is:
 
 ```solidity
 struct PublicValuesStruct {
-    bytes32 nullifier;    // H(cert.pk_der ‖ walletIndex)
-    bytes32 caRootHash;   // H(root CA public key SPKI DER)
-    uint64  timestamp;    // Unix timestamp at proof generation
-    address registrant;   // Wallet address bound to this proof
-    uint32  walletIndex;  // Wallet slot index (0..maxWalletsPerCert-1)
+    bytes32 nullifier;       // H(cert.pk_der ‖ walletIndex)
+    bytes32 caRootHash;      // H(root CA public key SPKI DER)
+    uint64  timestamp;       // Unix timestamp at proof generation
+    address registrant;      // Wallet address bound to this proof
+    uint32  walletIndex;     // Wallet slot index (0..maxWalletsPerCert-1)
+    uint64  notAfter;        // Certificate expiry (unix timestamp)
+    bytes32 countryHash;     // H(country) or 0x0 if not disclosed
+    bytes32 orgHash;         // H(organization) or 0x0 if not disclosed
+    bytes32 orgUnitHash;     // H(organizational unit) or 0x0 if not disclosed
+    bytes32 commonNameHash;  // H(common name) or 0x0 if not disclosed
 }
 ```
 
-This struct is ABI-encoded using `alloy-sol-types` in Rust and ABI-decoded in Solidity, ensuring binary compatibility across the stack. The `walletIndex` field enables configurable multi-wallet registration (see Section 3.7).
+This struct is ABI-encoded using `alloy-sol-types` in Rust and ABI-decoded in Solidity, ensuring binary compatibility across the stack. The `walletIndex` field enables configurable multi-wallet registration (Section 3.6). The `notAfter` field enables automatic identity expiry (Section 3.9). The four disclosure hash fields enable selective attribute disclosure (Section 3.10) — each field is either the SHA-256 hash of the corresponding certificate attribute (when disclosed) or zero (when hidden), controlled by the user's `disclosure_mask`.
 
 ### 3.4 ZK Guest Program
 
 The guest program executes inside the SP1 zkVM and performs all sensitive computations. A critical design principle is that **the user's private key never enters the zkVM**. Instead, the prover server uses the OS keychain to sign a challenge, and only the resulting signature enters the circuit. This eliminates private key exposure from the proving process entirely.
 
-The program receives eight inputs via SP1 stdin:
+The program receives nine inputs via SP1 stdin:
 
 | Input | Type | Visibility | Purpose |
 |-------|------|-----------|---------|
@@ -317,8 +333,9 @@ The program receives eight inputs via SP1 stdin:
 | `registrant` | `[u8; 20]` | Public (via output) | Wallet address |
 | `wallet_index` | `u32` | Public (via output) | Wallet slot index (0-based) |
 | `max_wallets` | `u32` | Private | Max wallets per cert (enforced in circuit) |
+| `disclosure_mask` | `u8` | Private | Bitmask: which cert fields to reveal (bit 0=C, 1=O, 2=OU, 3=CN) |
 
-The circuit asserts `wallet_index < max_wallets` before proceeding. All private inputs remain hidden within the ZK proof. Only the five public values (nullifier, caRootHash, timestamp, registrant, walletIndex) are revealed.
+The circuit asserts `wallet_index < max_wallets` before proceeding. All private inputs remain hidden within the ZK proof. The ten public values committed are: nullifier, caRootHash, timestamp, registrant, walletIndex, notAfter, and four selective disclosure hashes (countryHash, orgHash, orgUnitHash, commonNameHash — zero when not disclosed).
 
 **Certificate Parsing.** We use the `x509-parser` crate (v0.16) with `default-features = false` to parse DER-encoded certificates. Disabling default features avoids the `ring` cryptography library, which contains platform-specific assembly incompatible with the RISC-V zkVM target.
 
@@ -360,12 +377,13 @@ State Variables:
   validCARoots      : mapping(bytes32 => bool)      — Whitelisted CA root hashes
   nullifierOwner    : mapping(bytes32 => address)   — Nullifier → registered wallet
   revokedNullifiers : mapping(bytes32 => bool)      — Permanently revoked nullifiers
-  verifiedUsers     : mapping(address => bool)      — Verified wallet addresses
+  verifiedUntil     : mapping(address => uint64)    — Wallet → cert expiry timestamp
   owner             : address                       — Contract administrator
+  pendingOwner      : address                       — For 2-step ownership transfer
   paused            : bool                          — Emergency stop flag
 ```
 
-The `maxWalletsPerCert` parameter is set at deployment, enabling configurable registration policy per L2 deployment (see Section 3.7). The `nullifierOwner` mapping tracks which address owns each nullifier (rather than a simple boolean), enabling the `reRegister()` function.
+The `maxWalletsPerCert` parameter is set at deployment, enabling configurable registration policy per L2 deployment (see Section 3.6). The `nullifierOwner` mapping tracks which address owns each nullifier, enabling `reRegister()`. The `verifiedUntil` mapping stores the certificate's `notAfter` timestamp instead of a boolean, enabling automatic identity expiry when the underlying certificate expires (see Section 3.9).
 
 **`register()`.** A shared `_validateProof()` function decodes public values and performs validation:
 
@@ -379,8 +397,8 @@ After validation, `register()` additionally checks:
 
 6. **Nullifier not revoked**: `revokedNullifiers[nullifier] == false`
 7. **Nullifier uniqueness**: `nullifierOwner[nullifier] == address(0)`
-8. **Address uniqueness**: `verifiedUsers[msg.sender] == false`
-9. **State update**: `nullifierOwner[nullifier] = msg.sender; verifiedUsers[msg.sender] = true`
+8. **Address uniqueness**: `verifiedUntil[msg.sender] < block.timestamp` — allows re-registration after cert expiry
+9. **State update**: `nullifierOwner[nullifier] = msg.sender; verifiedUntil[msg.sender] = notAfter`
 
 **`reRegister()`.** Enables self-service wallet migration without admin approval. A user who loses access to their wallet can generate a new proof with the same certificate and a new registrant address. The contract verifies the proof, unverifies the old wallet, and registers the new one. This eliminates the centralization concern of admin-only revocation for wallet changes. The nullifier is reused (same certificate, same wallet index), so the old wallet is automatically displaced.
 
@@ -403,9 +421,9 @@ zk-X509 addresses this via the `maxWalletsPerCert` parameter, set immutably at c
 
 The mechanism works through the `wallet_index` parameter in the nullifier:
 
-$$\text{nullifier} = \mathcal{H}(\text{serial} \| \mathcal{H}(\text{sk}) \| \text{wallet\_index})$$
+$$\text{nullifier} = \mathcal{H}(\text{cert.pk\_der} \| \text{wallet\_index})$$
 
-Each `wallet_index` (0, 1, 2...) produces a distinct nullifier from the same certificate. The ZK circuit enforces `wallet_index < max_wallets`, and the smart contract independently verifies `walletIndex < maxWalletsPerCert`. Setting `maxWalletsPerCert = 1` reduces to the strict 1:1 Sybil-resistant mode. Regardless of the setting, every verified wallet is backed by a real, government-issued certificate.
+Each `wallet_index` (0, 1, 2...) produces a distinct nullifier from the same certificate's public key. The ZK circuit enforces `wallet_index < max_wallets`, and the smart contract independently verifies `walletIndex < maxWalletsPerCert`. Setting `maxWalletsPerCert = 1` reduces to the strict 1:1 Sybil-resistant mode. Regardless of the setting, every verified wallet is backed by a real, government-issued certificate.
 
 This parameterization enables a single zk-X509 deployment on an L2 to serve multiple protocols with different trust requirements.
 
@@ -427,6 +445,33 @@ This design ensures that wallet migration is **self-sovereign**: users control t
 - **AES-256-CBC** (OID 2.16.840.1.101.3.4.1.42): Used in newer NPKI certificates.
 
 The decryption module: (1) parses the ASN.1 encryption parameters, (2) derives the key via PBKDF2, (3) decrypts using the appropriate cipher, and (4) strips PKCS#7 padding to yield the raw PKCS#1 DER private key. A generic `decrypt_cbc<C>()` function handles both ciphers uniformly.
+
+### 3.9 Automatic Identity Expiry
+
+A subtle but critical issue in on-chain identity systems is **credential staleness**: once a wallet is marked as verified, it typically remains so indefinitely, even after the underlying certificate expires or is revoked. This creates a disconnect between the certificate lifecycle and the on-chain state.
+
+zk-X509 resolves this by committing the certificate's `notAfter` timestamp as a public value. The smart contract stores this in `verifiedUntil[address]` instead of a boolean flag. The `isVerified()` function checks `verifiedUntil[user] >= block.timestamp`, causing verification to automatically lapse when the certificate expires. Users must re-prove with a renewed certificate to maintain their verified status.
+
+This design has two advantages: (1) on-chain identity tracks the real-world credential lifecycle without manual intervention, and (2) it creates a natural re-verification cycle that limits the damage window if a certificate is compromised — the compromised identity expires automatically.
+
+### 3.10 Selective Attribute Disclosure
+
+Prior sections describe a binary identity model: the verifier learns only "this wallet holds a valid certificate" without any attributes. While this suffices for simple Sybil resistance, real-world applications often require **granular attribute verification**: "this user is from country X" or "this user belongs to organization Y" — without revealing other attributes like name or ID number.
+
+zk-X509 implements selective disclosure via a `disclosure_mask` bitmask input to the ZK circuit:
+
+| Bit | Field | X.509 OID | Example |
+|-----|-------|-----------|---------|
+| 0 | Country (C) | 2.5.4.6 | "KR", "EE", "DE" |
+| 1 | Organization (O) | 2.5.4.10 | "금융결제원", "Samsung" |
+| 2 | Organizational Unit (OU) | 2.5.4.11 | "개인", "Engineering" |
+| 3 | Common Name (CN) | 2.5.4.3 | (user's name — typically hidden) |
+
+For each bit set in the mask, the circuit extracts the corresponding field from the certificate's subject DN, hashes it with SHA-256, and commits the hash as a public value. For unset bits, zero is committed. The verifier (or any on-chain application) can then check: `countryHash == SHA256("KR")` to verify nationality without learning the user's name, organization, or any other attribute.
+
+**User sovereignty.** The `disclosure_mask` is chosen by the user at proof generation time, not by the verifier. The same certificate can produce different proofs for different applications: a DAO voting contract may require only `countryHash`, while a corporate DeFi protocol may additionally require `orgHash`. The user decides what to reveal on a per-proof basis.
+
+**Privacy guarantee.** Fields with mask bit = 0 produce a zero hash in the public values, revealing no information. The ZK zero-knowledge property ensures that even the *existence* of undisclosed fields is hidden — the verifier cannot distinguish "field is empty in the certificate" from "field exists but was not disclosed."
 
 ---
 
@@ -733,7 +778,9 @@ This represents a strictly stronger security model than the typical approach of 
 | Property | Status | Guarantee |
 |----------|--------|-----------|
 | Certificate subject (name, ID) | Hidden | ZK zero-knowledge property |
-| Certificate serial number | Hidden | Hashed with private key + wallet index in nullifier |
+| Certificate serial number | Hidden | Not used in nullifier; hidden by ZK |
+| Certificate attributes (C, O, OU, CN) | User-controlled | Disclosed only if user sets disclosure_mask bit |
+| Identity expiry | Automatic | notAfter committed; verifiedUntil expires on-chain |
 | Private key | Never enters zkVM | Signature-based ownership; OS keychain isolation |
 | CA identity | Partially revealed | caRootHash reveals issuing CA; Merkle CA verification (Section 7.6) can eliminate |
 | Wallet-to-certificate link | Unlinkable | Theorem 2 |
