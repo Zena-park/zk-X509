@@ -10,7 +10,7 @@
 
 The inherent transparency of public blockchains creates a fundamental tension between regulatory compliance and user privacy. Existing on-chain identity solutions either rely on centralized KYC attestors—introducing single points of failure and metadata leakage—require specialized hardware such as NFC readers or biometric scanners, or depend on Decentralized Identifier (DID) frameworks that require building entirely new credential issuance infrastructure before deployment. Meanwhile, billions of X.509 digital certificates already form a globally deployed, government-grade trust infrastructure, yet no practical system exists to leverage them for decentralized identity without exposing personal data.
 
-We present **zk-X509**, a fully software-based, privacy-preserving identity system that bridges legacy Public Key Infrastructure (PKI) with public ledgers. Using a RISC-V-based zero-knowledge virtual machine (zkVM), zk-X509 enables users to prove ownership and validity of standard X.509 certificates—targeting the legally binding Korean National PKI (NPKI) comprising millions of active certificates—without revealing private keys or personal identifiers. The zero-knowledge circuit verifies six properties: (1) the full certificate chain from user certificate through intermediate CAs to a trusted root, (2) temporal validity of every certificate in the chain, (3) private key ownership, (4) certificate revocation status against a provided CRL, (5) binding to a specific blockchain address, and (6) generation of a deterministic nullifier for Sybil resistance. The proof commits only the nullifier, a CA root hash, a timestamp, and the registrant's address as public values.
+We present **zk-X509**, a fully software-based, privacy-preserving identity system that bridges legacy Public Key Infrastructure (PKI) with public ledgers. Using a RISC-V-based zero-knowledge virtual machine (zkVM), zk-X509 enables users to prove ownership and validity of standard X.509 certificates—from any national PKI worldwide (Korean NPKI, Estonian eID, German eID, etc.) or corporate/TLS CAs—without revealing private keys or personal identifiers. The private key never enters the ZK circuit; ownership is proven via signature verification using the OS keychain (macOS Secure Enclave, Windows TPM). The circuit verifies six properties: (1) the full certificate chain to a trusted root, (2) temporal validity, (3) signature-based key ownership, (4) trustless CRL revocation checking (CA signature verified inside zkVM), (5) binding to a specific blockchain address, and (6) configurable nullifier generation for tunable Sybil resistance. The proof commits only the nullifier, a CA root hash, a timestamp, a wallet index, and the registrant's address as public values.
 
 We formalize the security model under a Dolev-Yao adversary and prove four properties via game-based definitions: unforgeability, unlinkability, double-registration resistance, and front-running immunity. Our SP1 zkVM implementation achieves approximately 7.2 million cycles for single-level RSA-2048 verification, and on-chain verification costs approximately 77,000 gas. Unlike DID-based approaches that require building new credential issuance infrastructure from scratch, zk-X509 leverages government-grade certificates that are already deployed at scale, enabling immediate adoption without new trust establishment. zk-X509 provides a pragmatic, hardware-free pathway to integrate existing trust anchors into decentralized finance while strictly preserving user anonymity.
 
@@ -55,11 +55,13 @@ zk-X509 resolves the transparency-privacy tension by verifying X.509 certificate
 
 Only four values are revealed publicly: a **nullifier**, a **CA root hash**, a **timestamp**, and the **registrant address**. These are committed as public outputs and verified on-chain by a Solidity smart contract.
 
-### 1.4 Target Application: Korean National PKI
+### 1.4 Global Applicability and Primary Target
 
-While zk-X509 works with any X.509 certificate, our primary target is the Korean National Public Key Infrastructure (NPKI). Korean digital certificates (공인인증서) are issued by authorized CAs such as the Korea Financial Telecommunications and Clearings Institute (금융결제원) and are used for banking, government services, and e-commerce. Korean NPKI employs a 3-level certificate chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 using SHA-256 or SHA-1 signatures. Certificates are stored as DER-encoded files (`signCert.der`) with encrypted private keys (`signPri.key`) using PBES2 with PBKDF2-HMAC-SHA1 and SEED-CBC or AES-256-CBC encryption.
+zk-X509 is designed to work with **any X.509 certificate from any CA worldwide**. The smart contract maintains a configurable whitelist of trusted CA root hashes, enabling deployment-specific trust policies: a Korean DeFi protocol may whitelist only Korean NPKI CAs, while a global DAO may whitelist government CAs from multiple nations simultaneously.
 
-By enabling these certificates to serve as on-chain identity credentials, zk-X509 bridges an existing ecosystem of millions of active certificates with blockchain-based services, without requiring any modification to the certificate infrastructure.
+**Primary validation target: Korean NPKI.** Our implementation is validated against the Korean National Public Key Infrastructure (NPKI) as a concrete case study. Korean digital certificates (공인인증서) are issued by authorized CAs such as the Korea Financial Telecommunications and Clearings Institute (금융결제원), employing a 3-level certificate chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 and SHA-256 or SHA-1 signatures. Private keys use PBES2 encryption with PBKDF2-HMAC-SHA1 and SEED-CBC or AES-256-CBC ciphers.
+
+**Multi-national deployment.** The architecture supports simultaneous whitelisting of CAs from multiple jurisdictions. For example, a single `IdentityRegistry` deployment could accept certificates from Korean NPKI (~20M users), Estonian eID (~1.3M e-residents), German eID, and corporate PKI systems—each user proving identity under their national CA without any cross-border credential issuance. The `caRootHash` in the public values identifies which CA issued the certificate, enabling on-chain applications to apply jurisdiction-specific logic if desired.
 
 ### 1.5 Contributions
 
@@ -658,7 +660,7 @@ $$\left| \Pr[b' = b] - \frac{1}{2} \right| \leq \text{Adv}_{\mathcal{A}}^{\text{
 
 where $\text{Adv}^{\text{col}}$ is the collision-finding advantage against SHA-256. $\square$
 
-**Caveat.** The `caRootHash` reveals which CA issued the certificate. In the Korean NPKI context, this narrows the anonymity set to users of a particular CA (one of ~5–6 authorized CAs) but does not identify individuals. Additionally, if an adversary independently obtains a user's certificate (e.g., from a compromised server that received the cert during TLS handshake), they could compute the nullifier and link it to the user. This is bounded by the adversary's access to the certificate, not a weakness of the nullifier scheme itself.
+**Caveat.** The `caRootHash` reveals which CA issued the certificate. In single-nation deployments (e.g., Korean NPKI only), this reveals minimal information since all users share the same few CAs. In multi-national deployments, this effectively reveals the user's jurisdiction (e.g., "Korean CA" vs "Estonian CA"), narrowing the anonymity set. This is an inherent trade-off of the current design: the CA whitelist is necessary for trust, and `caRootHash` is the minimum disclosure. A Merkle-tree-based CA verification scheme (Section 7.6) could eliminate this leakage. Additionally, if an adversary independently obtains a user's certificate, they could compute the nullifier and link it to the user. This is bounded by the adversary's access to the certificate, not a weakness of the nullifier scheme itself.
 
 #### Theorem 3 (Double-Registration Resistance)
 
@@ -733,7 +735,7 @@ This represents a strictly stronger security model than the typical approach of 
 | Certificate subject (name, ID) | Hidden | ZK zero-knowledge property |
 | Certificate serial number | Hidden | Hashed with private key + wallet index in nullifier |
 | Private key | Never enters zkVM | Signature-based ownership; OS keychain isolation |
-| CA identity | Partially revealed | caRootHash reveals issuing CA (~5–6 CAs in NPKI) |
+| CA identity | Partially revealed | caRootHash reveals issuing CA; Merkle CA verification (Section 7.6) can eliminate |
 | Wallet-to-certificate link | Unlinkable | Theorem 2 |
 | Proof-to-address binding | Enforced | Theorem 4 |
 | Double registration | Prevented | Theorem 3 |
@@ -781,7 +783,11 @@ The ZK proof is chain-agnostic. Deploying `IdentityRegistry` on multiple chains 
 
 The current implementation supports only RSA-based signatures. Adding ECDSA support (specifically secp256r1, commonly used in modern X.509 certificates) would extend compatibility beyond the RSA-centric Korean NPKI ecosystem.
 
-### 7.6 Formal Verification
+### 7.6 CA-Anonymous Verification via Merkle Tree
+
+The current design reveals `caRootHash` as a public value, disclosing which CA issued the certificate. In multi-national deployments, this effectively reveals the user's jurisdiction. A stronger privacy guarantee would replace the direct `caRootHash` output with a Merkle membership proof: the smart contract stores only the Merkle root of all whitelisted CA hashes, and the ZK circuit proves that the certificate's CA hash is a member of this Merkle tree without revealing *which* member. This would reduce the on-chain disclosure from "this user has a Korean CA certificate" to simply "this user has a certificate from one of the whitelisted CAs," significantly enlarging the anonymity set in multi-national deployments.
+
+### 7.7 Formal Verification
 
 Formal verification of the Solidity smart contract (e.g., using Certora or Halmos) and the ZK circuit logic would provide stronger assurance beyond the game-based security analysis presented here.
 
@@ -791,9 +797,9 @@ Formal verification of the Solidity smart contract (e.g., using Certora or Halmo
 
 zk-X509 demonstrates that legacy PKI infrastructure can be bridged to blockchain identity systems without compromising user privacy. By executing full X.509 certificate chain verification—including multi-level CA signature verification, temporal validity, trustless CRL checking, key ownership proof, registrant binding, and configurable multi-wallet policy—inside a zero-knowledge virtual machine, the system achieves on-chain verifiability with off-chain privacy. The self-service re-registration mechanism further ensures that users maintain sovereign control over their identity lifecycle without centralized admin dependencies.
 
-The security analysis under the Dolev-Yao model establishes four properties with game-based definitions and proofs: unforgeability (reduced to RSA hardness and ZK soundness), unlinkability (reduced to SHA-256 preimage resistance), double-registration resistance (via deterministic nullifiers and ZK soundness), and front-running immunity (via registrant binding). The implementation demonstrates practical feasibility: ~7.2M SP1 cycles for single-level verification and ~77K gas for on-chain registration.
+The signature-based ownership scheme ensures that the user's private key never enters the ZK circuit or the prover's general process memory—a strictly stronger security model than existing ZK identity systems. The security analysis under the Dolev-Yao model establishes four properties with game-based definitions and proofs: unforgeability (reduced to RSA hardness and ZK soundness), unlinkability (reduced to SHA-256 collision resistance and ZK zero-knowledge), double-registration resistance (via deterministic nullifiers and ZK soundness), and front-running immunity (via registrant binding). The implementation demonstrates practical feasibility: ~7.2M SP1 cycles for single-level verification and ~77K gas for on-chain registration.
 
-A key differentiator from DID-based approaches is immediacy: while DID frameworks require years to bootstrap new issuance infrastructure, zk-X509 leverages government-grade certificates that are already deployed and legally binding. For the Korean market specifically, approximately 20 million active NPKI certificates can immediately serve as trust anchors for blockchain-based identity verification—enabling DeFi compliance, DAO governance, and government service integration—without issuing a single new credential or exposing a single byte of personal data. We believe this "bridge the existing, don't build from scratch" philosophy represents a pragmatic and underexplored direction in the blockchain identity literature, complementary to rather than competing with DID-based systems.
+A key differentiator from DID-based approaches is immediacy: while DID frameworks require years to bootstrap new issuance infrastructure, zk-X509 leverages government-grade certificates that are already deployed and legally binding across multiple jurisdictions. The system supports simultaneous whitelisting of CAs from any nation—Korean NPKI (~20M users), Estonian eID (~1.3M e-residents), German eID, corporate PKI, and beyond—enabling a single deployment to serve a global user base without cross-border credential issuance. We believe this "bridge the existing, don't build from scratch" philosophy represents a pragmatic and underexplored direction in the blockchain identity literature, complementary to rather than competing with DID-based systems.
 
 ---
 
