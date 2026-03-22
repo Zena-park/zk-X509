@@ -286,10 +286,12 @@ fn decrypt_cbc<C: BlockDecryptMut + KeyIvInit>(
     let mut buf = data.to_vec();
     let decryptor = C::new_from_slices(key, iv)
         .map_err(|e| NpkiError::DecryptionFailed(format!("{} init failed: {}", cipher_name, e)))?;
-    let decrypted = decryptor
+    let decrypted_len = decryptor
         .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf)
-        .map_err(|e| NpkiError::DecryptionFailed(format!("{} decrypt failed: {}", cipher_name, e)))?;
-    Ok(decrypted.to_vec())
+        .map_err(|e| NpkiError::DecryptionFailed(format!("{} decrypt failed: {}", cipher_name, e)))?
+        .len();
+    buf.truncate(decrypted_len);
+    Ok(buf)
 }
 
 /// Remove PKCS#7 padding.
