@@ -2,10 +2,10 @@
 //!
 //! Usage:
 //!   RUST_LOG=info cargo run --release -- --execute \
-//!     --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca.der
+//!     --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der
 //!
 //!   RUST_LOG=info cargo run --release -- --prove \
-//!     --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca.der
+//!     --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der
 
 use alloy_sol_types::SolType;
 use clap::Parser;

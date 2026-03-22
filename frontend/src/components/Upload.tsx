@@ -73,7 +73,8 @@ export function Upload({ disabled, onProofGenerated }: UploadProps) {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       if (errorMsg.includes("fetch") || errorMsg.includes("Failed to fetch")) {
-        setStatus("오류: 프루버 서버(localhost:8080)에 연결할 수 없습니다. 서버를 실행하세요.");
+        const url = process.env.NEXT_PUBLIC_PROVER_URL || "http://localhost:8080";
+        setStatus(`오류: 프루버 서버(${url})에 연결할 수 없습니다. 서버를 실행하세요.`);
       } else {
         setStatus(`오류: ${errorMsg}`);
       }
