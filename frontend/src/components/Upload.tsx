@@ -51,9 +51,9 @@ export function Upload({ disabled, onProofGenerated }: UploadProps) {
       const certBytes = await certFile.arrayBuffer();
       const keyBytes = await keyFile.arrayBuffer();
 
-      // Send to local prover server
-      // MVP: localhost:8080 Rust prover server
-      const response = await fetch("http://localhost:8080/prove", {
+      // Send to prover server (configurable via env var for future WASM migration)
+      const proverUrl = process.env.NEXT_PUBLIC_PROVER_URL || "http://localhost:8080";
+      const response = await fetch(`${proverUrl}/prove`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
