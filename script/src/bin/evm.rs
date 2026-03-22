@@ -75,8 +75,8 @@ fn main() {
     stdin.write(&priv_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
-    let revoked_serials: Vec<Vec<u8>> = Vec::new();
-    stdin.write(&revoked_serials);
+    let crl_der: Vec<u8> = Vec::new(); // TODO: accept CRL from CLI
+    stdin.write(&crl_der);
     let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
     let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
         .expect("Invalid registrant address hex")

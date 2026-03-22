@@ -104,19 +104,12 @@ fn main() {
         if cert_chain.len() == 1 { "single-level" } else { "multi-level" }
     );
 
-    // Parse CRL if provided
-    let revoked_serials: Vec<Vec<u8>> = if let Some(crl_path) = &args.crl {
-        let crl_der = std::fs::read(crl_path)
+    // Load CRL DER if provided (passed as-is to zkVM for signature verification)
+    let crl_der: Vec<u8> = if let Some(crl_path) = &args.crl {
+        let data = std::fs::read(crl_path)
             .unwrap_or_else(|e| panic!("Failed to read CRL {:?}: {}", crl_path, e));
-        use x509_parser::prelude::FromDer;
-        let (_, crl) = x509_parser::revocation_list::CertificateRevocationList::from_der(&crl_der)
-            .expect("Failed to parse CRL");
-        let serials: Vec<Vec<u8>> = crl
-            .iter_revoked_certificates()
-            .map(|entry| entry.raw_serial().to_vec())
-            .collect();
-        println!("CRL: {} revoked certificates", serials.len());
-        serials
+        println!("CRL: {} ({} bytes)", crl_path.display(), data.len());
+        data
     } else {
         println!("CRL: not provided (skipping revocation check)");
         Vec::new()
@@ -128,7 +121,7 @@ fn main() {
     stdin.write(&priv_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
-    stdin.write(&revoked_serials);
+    stdin.write(&crl_der);
 
     // Parse registrant address (strip 0x prefix, decode 20 bytes)
     let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
