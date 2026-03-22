@@ -70,6 +70,20 @@
 - 컨트랙트 constructor 파라미터로 설정
 - 변경 범위: lib, program, contracts
 
+### 학술 Novelty / 기능 확장
+
+#### 29. 인증서 만료일 기반 자동 인증 만료
+- 현재: isVerified가 영구적 — 인증서 만료돼도 true 유지 (문제)
+- 개선: ZK 프로그램이 인증서 notAfter를 public values에 포함
+- 컨트랙트에서 verifiedUntil[user] = notAfter, isVerified에서 block.timestamp 비교
+- 변경 범위: lib(notAfter 필드), program(commit), contracts(verifiedUntil mapping)
+
+#### 30. 선택적 공개 (Selective Disclosure)
+- 인증서의 특정 필드만 증명 (예: 국적, 발급기관)
+- 이름, 주민번호 등 나머지는 공개하지 않음
+- X.509에 대한 ZK 선택적 공개는 아직 미구현 (zk-email은 DKIM 한정)
+- 변경 범위: program (필드별 해싱), lib (선택적 public values)
+
 ### LOW
 
 #### 27. LaTeX 변환 (LNCS 템플릿)

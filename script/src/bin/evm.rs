@@ -71,21 +71,24 @@ fn main() {
         .unwrap()
         .as_secs();
 
-    // Single-level chain for now (no intermediates in evm CLI)
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key];
-
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&cert_der);
-    stdin.write(&priv_key);
-    stdin.write(&cert_chain);
-    stdin.write(&current_timestamp);
-    let crl_der: Vec<u8> = Vec::new(); // TODO: accept CRL from CLI
-    stdin.write(&crl_der);
     let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
     let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
         .expect("Invalid registrant address hex")
         .try_into()
         .expect("Registrant address must be 20 bytes");
+
+    let ownership_sig = zk_x509_script::ownership::sign_ownership(
+        &cert_der, &priv_key, &registrant_bytes, args.wallet_index,
+    ).expect("Failed to sign");
+
+    let crl_der: Vec<u8> = Vec::new();
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&cert_der);
+    stdin.write(&ownership_sig);
+    stdin.write(&cert_chain);
+    stdin.write(&current_timestamp);
+    stdin.write(&crl_der);
     stdin.write(&registrant_bytes);
     stdin.write(&args.wallet_index);
     stdin.write(&args.max_wallets);

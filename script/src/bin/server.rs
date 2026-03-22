@@ -212,7 +212,7 @@ fn load_cert_and_key(
 /// Build SP1 stdin from cert, key, CA, timestamp, registrant.
 fn build_stdin(
     cert_der: &[u8],
-    key_der: &[u8],
+    ownership_sig: &[u8],
     ca_pub_key: &[u8],
     registrant_bytes: &[u8; 20],
     wallet_index: u32,
@@ -224,7 +224,7 @@ fn build_stdin(
 
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
-    stdin.write(&key_der);
+    stdin.write(&ownership_sig);
     stdin.write(&cert_chain);
     stdin.write(&timestamp);
     stdin.write(&crl_der);
@@ -253,7 +253,10 @@ async fn execute_handler(
     let result = tokio::task::spawn_blocking(move || {
         let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
             .map_err(|(_status, msg)| msg)?;
-        let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets);
+        let ownership_sig = zk_x509_script::ownership::sign_ownership(
+            &cert_der, &key_der, &registrant_bytes, wallet_index)
+            .map_err(|e| e.to_string())?;
+        let stdin = build_stdin(&cert_der, &ownership_sig, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets);
         state.client.execute(ZK_X509_ELF, stdin).run()
             .map_err(|e| e.to_string())
     })
@@ -291,7 +294,10 @@ async fn prove_handler(
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
         let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
             .map_err(|(_status, msg)| msg)?;
-        let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets);
+        let ownership_sig = zk_x509_script::ownership::sign_ownership(
+            &cert_der, &key_der, &registrant_bytes, wallet_index)
+            .map_err(|e| e.to_string())?;
+        let stdin = build_stdin(&cert_der, &ownership_sig, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets);
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;
         let proof = state.client.prove(&pk, stdin).run().map_err(|e| e.to_string())?;
         state.client.verify(&proof, pk.verifying_key(), None).map_err(|e| e.to_string())?;
