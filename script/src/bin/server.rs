@@ -34,6 +34,8 @@ use zk_x509_script::npki;
 
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
+fn default_max_wallets() -> u32 { 1 }
+
 /// Request body from the frontend.
 /// NOTE: Do NOT derive Debug — password would be logged.
 #[derive(Deserialize)]
@@ -45,6 +47,12 @@ struct ProveRequest2 {
     password: String,
     /// Wallet address to bind the proof to (hex string, e.g. "0xf39F...")
     registrant: String,
+    /// Wallet slot index (0-based, for multi-wallet mode)
+    #[serde(default)]
+    wallet_index: u32,
+    /// Max wallets per cert (must match contract)
+    #[serde(default = "default_max_wallets")]
+    max_wallets: u32,
 }
 
 /// Response sent back to the frontend.
@@ -207,6 +215,8 @@ fn build_stdin(
     key_der: &[u8],
     ca_pub_key: &[u8],
     registrant_bytes: &[u8; 20],
+    wallet_index: u32,
+    max_wallets: u32,
 ) -> SP1Stdin {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
@@ -219,8 +229,6 @@ fn build_stdin(
     stdin.write(&timestamp);
     stdin.write(&crl_der);
     stdin.write(registrant_bytes);
-    let wallet_index: u32 = 0; // TODO: accept from request
-    let max_wallets: u32 = 1;
     stdin.write(&wallet_index);
     stdin.write(&max_wallets);
     stdin
@@ -239,11 +247,13 @@ async fn execute_handler(
 
     let cert_index = req.cert_index;
     let password = req.password.clone();
+    let wallet_index = req.wallet_index;
+    let max_wallets = req.max_wallets;
 
     let result = tokio::task::spawn_blocking(move || {
         let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
             .map_err(|(_status, msg)| msg)?;
-        let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes);
+        let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets);
         state.client.execute(ZK_X509_ELF, stdin).run()
             .map_err(|e| e.to_string())
     })
@@ -275,11 +285,13 @@ async fn prove_handler(
 
     let cert_index = req.cert_index;
     let password = req.password.clone();
+    let wallet_index = req.wallet_index;
+    let max_wallets = req.max_wallets;
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
         let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
             .map_err(|(_status, msg)| msg)?;
-        let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes);
+        let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets);
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;
         let proof = state.client.prove(&pk, stdin).run().map_err(|e| e.to_string())?;
         state.client.verify(&proof, pk.verifying_key(), None).map_err(|e| e.to_string())?;

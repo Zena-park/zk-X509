@@ -85,7 +85,7 @@ pub fn main() {
     let max_wallets: u32 = sp1_zkvm::io::read();
 
     assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
-    assert!(wallet_index < max_wallets, "wallet_index must be < maxWalletsPerCert");
+    assert!(wallet_index < max_wallets, "wallet_index must be < max_wallets");
 
     let ts = current_timestamp as i64;
 

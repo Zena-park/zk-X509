@@ -55,6 +55,14 @@ struct Args {
     /// Wallet address to bind the proof to (hex, e.g. 0xf39F...).
     #[arg(long)]
     registrant: String,
+
+    /// Wallet slot index (0-based, for multi-wallet mode).
+    #[arg(long, default_value = "0")]
+    wallet_index: u32,
+
+    /// Max wallets per certificate (must match contract's maxWalletsPerCert).
+    #[arg(long, default_value = "1")]
+    max_wallets: u32,
 }
 
 fn main() {
@@ -130,10 +138,9 @@ fn main() {
         .try_into()
         .expect("Registrant address must be 20 bytes");
     stdin.write(&registrant_bytes);
-    let wallet_index: u32 = 0; // TODO: accept from CLI
-    let max_wallets: u32 = 1;
-    stdin.write(&wallet_index);
-    stdin.write(&max_wallets);
+    stdin.write(&args.wallet_index);
+    stdin.write(&args.max_wallets);
+    println!("Wallet Index: {} / Max: {}", args.wallet_index, args.max_wallets);
     println!("Registrant: 0x{}", hex::encode(registrant_bytes));
 
     if args.execute {

@@ -292,7 +292,7 @@ contract IdentityRegistryTest is Test {
         multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
         assertTrue(multiReg.isVerified(alice));
 
-        // Alice registers wallet index 1 to bob
+        // Bob registers wallet index 1 (same cert, different wallet)
         bytes32 null1 = bytes32(uint256(0xA001));
         vm.prank(bob);
         multiReg.register(hex"1234", _pvIdx(null1, CA_ROOT_HASH, bob, 1));

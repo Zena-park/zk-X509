@@ -25,7 +25,9 @@ contract DeployScript is Script {
         vm.startBroadcast();
 
         // Deploy IdentityRegistry
-        IdentityRegistry registry = new IdentityRegistry(sp1Verifier, programVKey, 1);
+        uint32 maxWallets = uint32(vm.envOr("MAX_WALLETS_PER_CERT", uint256(1)));
+        IdentityRegistry registry = new IdentityRegistry(sp1Verifier, programVKey, maxWallets);
+        console.log("Max wallets per cert:", maxWallets);
         console.log("IdentityRegistry deployed at:", address(registry));
 
         // Register trusted CA roots (if provided)
