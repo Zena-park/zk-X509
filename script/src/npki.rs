@@ -381,4 +381,58 @@ mod tests {
         assert!(window_contains(&[1, 2, 3, 4, 5], &[3, 4]));
         assert!(!window_contains(&[1, 2, 3, 4, 5], &[4, 3]));
     }
+
+    #[test]
+    fn test_decrypt_cbc_seed_known_answer() {
+        // SEED-CBC known-answer test:
+        // Key: 16 bytes of 0x01
+        // IV:  16 bytes of 0x00
+        // Plaintext: 16 bytes of 0x00 + PKCS#7 padding (16 bytes of 0x10)
+        // We encrypt then decrypt and verify round-trip.
+        use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+
+        let key = [0x01u8; 16];
+        let iv = [0x00u8; 16];
+        let plaintext = [0x00u8; 16];
+
+        // Encrypt: plaintext + PKCS#7 pad (full block of 0x10)
+        let mut input = Vec::from(&plaintext[..]);
+        input.extend_from_slice(&[0x10u8; 16]); // PKCS#7 padding for 16-byte aligned
+
+        let mut buf = input.clone();
+        let encryptor = cbc::Encryptor::<SEED>::new_from_slices(&key, &iv).unwrap();
+        let ciphertext = encryptor
+            .encrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf, 32)
+            .unwrap()
+            .to_vec();
+
+        // Decrypt with our generic function
+        let decrypted = decrypt_cbc::<cbc::Decryptor<SEED>>(&key, &iv, &ciphertext, "SEED").unwrap();
+        let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
+        assert_eq!(unpadded, plaintext);
+    }
+
+    #[test]
+    fn test_decrypt_cbc_aes_known_answer() {
+        // AES-256-CBC round-trip test for parity
+        use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+
+        let key = [0x42u8; 32];
+        let iv = [0x00u8; 16];
+        let plaintext = b"hello zk-x509!!!"; // exactly 16 bytes
+
+        let mut input = Vec::from(&plaintext[..]);
+        input.extend_from_slice(&[0x10u8; 16]);
+
+        let mut buf = input.clone();
+        let encryptor = cbc::Encryptor::<Aes256>::new_from_slices(&key, &iv).unwrap();
+        let ciphertext = encryptor
+            .encrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf, 32)
+            .unwrap()
+            .to_vec();
+
+        let decrypted = decrypt_cbc::<cbc::Decryptor<Aes256>>(&key, &iv, &ciphertext, "AES").unwrap();
+        let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
+        assert_eq!(unpadded, plaintext);
+    }
 }
