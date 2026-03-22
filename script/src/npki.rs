@@ -16,6 +16,7 @@
 use aes::Aes256;
 use cbc::cipher::{BlockDecryptMut, KeyIvInit};
 use hmac::Hmac;
+use kisaseed::SEED;
 use pbkdf2::pbkdf2;
 use sha1::Sha1;
 
@@ -94,17 +95,7 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
     // Decrypt based on cipher type
     let decrypted = match params.cipher {
         CipherType::Aes256Cbc => decrypt_aes256_cbc(&derived_key, &params.iv, &encrypted_data)?,
-        CipherType::SeedCbc => {
-            // SEED-CBC: Korean block cipher
-            // For MVP, we try to use it as AES if key length matches,
-            // or return an error suggesting to convert the cert
-            return Err(NpkiError::UnsupportedAlgorithm(
-                "SEED-CBC is not yet supported natively. \
-                 Please convert your key using: \
-                 openssl pkcs8 -in signPri.key -inform DER -out key.pem -outform PEM"
-                    .to_string(),
-            ));
-        }
+        CipherType::SeedCbc => decrypt_seed_cbc(&derived_key, &params.iv, &encrypted_data)?,
     };
 
     // Remove PKCS#7 padding
@@ -296,6 +287,21 @@ fn decrypt_aes256_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Npk
     let decrypted = decryptor
         .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf)
         .map_err(|e| NpkiError::DecryptionFailed(format!("AES decrypt failed: {}", e)))?;
+
+    Ok(decrypted.to_vec())
+}
+
+/// Decrypt using SEED-CBC (Korean KISA block cipher, 128-bit key).
+fn decrypt_seed_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, NpkiError> {
+    type SeedCbcDec = cbc::Decryptor<SEED>;
+
+    let mut buf = data.to_vec();
+    let decryptor = SeedCbcDec::new_from_slices(key, iv)
+        .map_err(|e| NpkiError::DecryptionFailed(format!("SEED init failed: {}", e)))?;
+
+    let decrypted = decryptor
+        .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf)
+        .map_err(|e| NpkiError::DecryptionFailed(format!("SEED decrypt failed: {}", e)))?;
 
     Ok(decrypted.to_vec())
 }
