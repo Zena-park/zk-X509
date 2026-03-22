@@ -97,7 +97,6 @@ fn main() {
 }
 
 async fn async_main(state: Arc<AppState>) {
-
     let allowed_origins = [
         "http://localhost:3000".parse().unwrap(),
         "http://127.0.0.1:3000".parse().unwrap(),
@@ -160,18 +159,18 @@ async fn execute_handler(
     }
 
     let decrypted_key = maybe_decrypt_key(&req.user_priv_key, &req.password)?;
+    let cert_der = req.cert_der;
 
     let current_timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    // Build cert chain: [intermediates..., root_ca_pub_key]
-    let mut cert_chain: Vec<Vec<u8>> = req.intermediate_certs.clone();
+    let mut cert_chain = req.intermediate_certs;
     cert_chain.push(ca_pub_key);
 
     let mut stdin = SP1Stdin::new();
-    stdin.write(&req.cert_der);
+    stdin.write(&cert_der);
     stdin.write(&decrypted_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
@@ -212,17 +211,18 @@ async fn prove_handler(
     }
 
     let decrypted_key = maybe_decrypt_key(&req.user_priv_key, &req.password)?;
+    let cert_der = req.cert_der;
 
     let current_timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    let mut cert_chain: Vec<Vec<u8>> = req.intermediate_certs.clone();
+    let mut cert_chain = req.intermediate_certs;
     cert_chain.push(ca_pub_key);
 
     let mut stdin = SP1Stdin::new();
-    stdin.write(&req.cert_der);
+    stdin.write(&cert_der);
     stdin.write(&decrypted_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);

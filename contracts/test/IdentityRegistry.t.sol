@@ -196,7 +196,7 @@ contract IdentityRegistryTest is Test {
         assertTrue(registry.isVerified(alice));
 
         // Revoke alice
-        registry.revokeUser(alice, "Certificate expired");
+        registry.revokeUser(alice, keccak256("CERT_EXPIRED"));
         assertFalse(registry.isVerified(alice));
     }
 
@@ -204,7 +204,7 @@ contract IdentityRegistryTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.UserNotVerified.selector, alice)
         );
-        registry.revokeUser(alice, "test");
+        registry.revokeUser(alice, keccak256("TEST"));
     }
 
     function test_RevokedUserCanReRegister() public {
@@ -213,7 +213,7 @@ contract IdentityRegistryTest is Test {
         vm.prank(alice);
         registry.register(hex"1234", publicValues1);
 
-        registry.revokeUser(alice, "Re-issue");
+        registry.revokeUser(alice, keccak256("RE_ISSUE"));
 
         // Re-register with different nullifier (new cert)
         bytes32 nullifier2 = bytes32(uint256(0xBEEF));
