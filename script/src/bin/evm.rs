@@ -28,6 +28,9 @@ struct EVMArgs {
     ca_cert: PathBuf,
     #[arg(long, value_enum, default_value = "groth16")]
     system: ProofSystem,
+    /// Wallet address to bind the proof to (hex, e.g. 0xf39F...).
+    #[arg(long)]
+    registrant: String,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -74,7 +77,11 @@ fn main() {
     stdin.write(&current_timestamp);
     let revoked_serials: Vec<Vec<u8>> = Vec::new();
     stdin.write(&revoked_serials);
-    let registrant_bytes: [u8; 20] = [0u8; 20]; // TODO: accept from CLI
+    let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
+    let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
+        .expect("Invalid registrant address hex")
+        .try_into()
+        .expect("Registrant address must be 20 bytes");
     stdin.write(&registrant_bytes);
 
     println!("Proof System: {:?}", args.system);

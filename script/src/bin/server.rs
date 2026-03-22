@@ -137,6 +137,15 @@ async fn health() -> &'static str {
     "ok"
 }
 
+/// Parse a hex-encoded Ethereum address into [u8; 20].
+fn parse_registrant(registrant_str: &str) -> Result<[u8; 20], (StatusCode, String)> {
+    let hex_str = registrant_str.strip_prefix("0x").unwrap_or(registrant_str);
+    hex::decode(hex_str)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid registrant address".to_string()))?
+        .try_into()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Registrant must be 20 bytes".to_string()))
+}
+
 /// Decrypt the private key if a password is provided.
 fn maybe_decrypt_key(key_bytes: &[u8], password: &str) -> Result<Vec<u8>, (StatusCode, String)> {
     if password.is_empty() {
@@ -179,11 +188,7 @@ async fn execute_handler(
     stdin.write(&current_timestamp);
     let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
     stdin.write(&revoked_serials);
-    let registrant_hex = req.registrant.strip_prefix("0x").unwrap_or(&req.registrant);
-    let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid registrant address".to_string()))?
-        .try_into()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Registrant must be 20 bytes".to_string()))?;
+    let registrant_bytes = parse_registrant(&req.registrant)?;
     stdin.write(&registrant_bytes);
 
     let result = tokio::task::spawn_blocking(move || {
@@ -237,11 +242,7 @@ async fn prove_handler(
     stdin.write(&current_timestamp);
     let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
     stdin.write(&revoked_serials);
-    let registrant_hex = req.registrant.strip_prefix("0x").unwrap_or(&req.registrant);
-    let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid registrant address".to_string()))?
-        .try_into()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Registrant must be 20 bytes".to_string()))?;
+    let registrant_bytes = parse_registrant(&req.registrant)?;
     stdin.write(&registrant_bytes);
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {

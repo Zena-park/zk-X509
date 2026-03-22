@@ -52,8 +52,8 @@ struct Args {
     #[arg(long)]
     crl: Option<PathBuf>,
 
-    /// Wallet address to bind the proof to (hex, e.g. 0xf39F...). Required for on-chain use.
-    #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
+    /// Wallet address to bind the proof to (hex, e.g. 0xf39F...).
+    #[arg(long)]
     registrant: String,
 }
 
