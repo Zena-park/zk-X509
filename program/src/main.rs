@@ -61,6 +61,63 @@ fn assert_cert_valid_at(cert: &X509Certificate, ts: i64, label: &str) {
     );
 }
 
+/// OIDs for X.509 subject fields (DER-encoded).
+const OID_COUNTRY: &[u8]  = &[0x55, 0x04, 0x06]; // 2.5.4.6
+const OID_ORG: &[u8]      = &[0x55, 0x04, 0x0A]; // 2.5.4.10
+const OID_ORG_UNIT: &[u8] = &[0x55, 0x04, 0x0B]; // 2.5.4.11
+const OID_CN: &[u8]       = &[0x55, 0x04, 0x03]; // 2.5.4.3
+
+/// Extract disclosable fields from X.509 subject in a single pass.
+/// hash = SHA-256(len1 ‖ val1 ‖ len2 ‖ val2 ‖ ... ‖ serial)
+/// Length-prefixed encoding prevents concatenation ambiguity.
+/// Salted with cert serial to prevent rainbow table attacks.
+fn extract_subject_field_hashes(
+    subject: &x509_parser::x509::X509Name,
+    mask: u8,
+    serial: &[u8],
+) -> ([u8; 32], [u8; 32], [u8; 32], [u8; 32]) {
+    let zero: [u8; 32] = [0u8; 32];
+    let effective_mask = mask & 0x0F;
+    if effective_mask == 0 { return (zero, zero, zero, zero); }
+
+    let mut country_vals: Vec<&str> = Vec::new();
+    let mut org_vals: Vec<&str> = Vec::new();
+    let mut ou_vals: Vec<&str> = Vec::new();
+    let mut cn_vals: Vec<&str> = Vec::new();
+
+    // Single pass: compare OID bytes directly (no String allocation)
+    for attr in subject.iter_attributes() {
+        let oid_bytes = attr.attr_type().as_bytes();
+        if let Ok(value) = attr.as_str() {
+            if oid_bytes == OID_COUNTRY       { country_vals.push(value); }
+            else if oid_bytes == OID_ORG      { org_vals.push(value); }
+            else if oid_bytes == OID_ORG_UNIT { ou_vals.push(value); }
+            else if oid_bytes == OID_CN       { cn_vals.push(value); }
+        }
+    }
+
+    // Length-prefixed hash: prevents ["ab","c"] == ["a","bc"] collision
+    let hash_field = |vals: &mut Vec<&str>| -> [u8; 32] {
+        if vals.is_empty() { return zero; }
+        vals.sort();
+        let mut preimage = Vec::new();
+        for v in vals.iter() {
+            let len = (v.len() as u32).to_be_bytes();
+            preimage.extend_from_slice(&len);
+            preimage.extend_from_slice(v.as_bytes());
+        }
+        preimage.extend_from_slice(serial);
+        Sha256::digest(&preimage).into()
+    };
+
+    let country  = if effective_mask & 0x01 != 0 { hash_field(&mut country_vals) } else { zero };
+    let org      = if effective_mask & 0x02 != 0 { hash_field(&mut org_vals) } else { zero };
+    let org_unit = if effective_mask & 0x04 != 0 { hash_field(&mut ou_vals) } else { zero };
+    let cn       = if effective_mask & 0x08 != 0 { hash_field(&mut cn_vals) } else { zero };
+
+    (country, org, org_unit, cn)
+}
+
 pub fn main() {
     // ========================================
     // Step 1: Read inputs from the host (prover)
@@ -83,6 +140,9 @@ pub fn main() {
     let wallet_index: u32 = sp1_zkvm::io::read();
     // Max wallets per cert (verified inside ZK circuit)
     let max_wallets: u32 = sp1_zkvm::io::read();
+    // Selective disclosure bitmask: which fields to reveal
+    // bit 0 = country (C), bit 1 = org (O), bit 2 = orgUnit (OU), bit 3 = commonName (CN)
+    let disclosure_mask: u8 = sp1_zkvm::io::read();
 
     assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
     assert!(wallet_index < max_wallets, "wallet_index must be < max_wallets");
@@ -300,8 +360,14 @@ pub fn main() {
     // Using this path ensures version compatibility with the sol! macro output.
     let registrant_addr = alloy_sol_types::private::Address::from_slice(&registrant);
 
-    // Extract certificate expiry as unix timestamp
     let not_after = user_cert.validity().not_after.timestamp() as u64;
+
+    // ========================================
+    // Step 9: Selective Disclosure (single-pass, salted)
+    // ========================================
+    let serial_for_salt = user_cert.tbs_certificate.serial.to_bytes_be();
+    let (country_hash, org_hash, org_unit_hash, cn_hash) =
+        extract_subject_field_hashes(&user_cert.subject(), disclosure_mask, &serial_for_salt);
 
     let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {
         nullifier: nullifier.into(),
@@ -310,6 +376,10 @@ pub fn main() {
         registrant: registrant_addr,
         walletIndex: wallet_index,
         notAfter: not_after,
+        countryHash: country_hash.into(),
+        orgHash: org_hash.into(),
+        orgUnitHash: org_unit_hash.into(),
+        commonNameHash: cn_hash.into(),
     });
 
     sp1_zkvm::io::commit_slice(&bytes);

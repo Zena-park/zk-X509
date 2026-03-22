@@ -32,7 +32,14 @@ Your Certificate → Local ZK Prover → On-Chain Proof → Verified Wallet
 
 **No personal data on-chain. No central server. No hardware. No new credentials needed.**
 
-The ZK circuit verifies six things, all hidden: full certificate chain signatures, temporal validity, signature-based key ownership (the private key never even enters the ZK circuit — only a signature from your OS keychain), trustless CRL revocation checking (CA signature on the CRL verified inside ZK), registrant binding (proof locked to your wallet), and nullifier generation for Sybil resistance.
+The ZK circuit verifies and commits, all privacy-preserving:
+
+- **Certificate chain** — full chain to government root CA, every signature verified
+- **Key ownership** — via OS keychain signature; private key never enters the ZK circuit
+- **Trustless CRL** — revocation list's CA signature verified inside ZK
+- **Registrant binding** — proof locked to your wallet address
+- **Auto-expiry** — certificate expiry (`notAfter`) committed on-chain; identity lapses automatically
+- **Selective disclosure** — choose which attributes to reveal (country, org, department) per proof; everything else stays hidden
 
 ## Why Not DIDs?
 
@@ -59,6 +66,27 @@ Different applications need different rules. A DAO needs "one person, one vote."
 The nullifier is derived from the certificate's public key and wallet index: `SHA-256(cert_public_key ‖ wallet_index)`. The ZK circuit enforces the limit. Regardless of the setting, every wallet is always backed by a real, government-issued certificate.
 
 A single zk-X509 deployment on an L2 can serve multiple protocols — a governance module at `= 1`, a lending protocol at `= 3`, a DEX at `= 10` — all sharing the same identity layer.
+
+## Selective Disclosure: Prove Attributes, Not Identity
+
+This is what transforms zk-X509 from a simple "verified yes/no" tool into a **granular identity layer**.
+
+With a `disclosure_mask` bitmask, users choose which certificate attributes to reveal — per proof, per application:
+
+| Mask | What's Revealed | Use Case |
+|------|----------------|----------|
+| `0x00` | Nothing — just "verified" | Basic Sybil resistance |
+| `0x01` | Country only | "Korean users only" DAO |
+| `0x03` | Country + Organization | Corporate DeFi access |
+| `0x0F` | All fields | Full attribute verification |
+
+Each disclosed field is hashed (`SHA-256("KR")`) — the verifier checks the hash, not the plaintext. Undisclosed fields commit zero, revealing nothing — not even whether the field exists.
+
+**The user decides what to reveal, not the verifier.** Same certificate, different proofs for different apps. Your bank DAO sees your country. Your DEX sees nothing. You control it.
+
+## Auto-Expiry: Identity Follows the Certificate
+
+On-chain identity shouldn't outlive the certificate that created it. zk-X509 commits the certificate's `notAfter` timestamp on-chain. When the cert expires, `isVerified()` automatically returns false. No admin action needed.
 
 ## Security: Formal Proofs, Not Claims
 
