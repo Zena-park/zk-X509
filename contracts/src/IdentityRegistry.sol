@@ -28,6 +28,9 @@ contract IdentityRegistry {
     /// @notice Contract owner (for CA management).
     address public owner;
 
+    /// @notice Pending owner for 2-step transfer.
+    address public pendingOwner;
+
     /// @notice Whether the contract is paused.
     bool public paused;
 
@@ -52,6 +55,7 @@ contract IdentityRegistry {
     error ZeroAddress();
     error ContractPaused();
     error UserNotVerified(address user);
+    error NotPendingOwner();
 
     /// @notice Maximum allowed age of a proof (1 hour).
     uint256 public constant MAX_PROOF_AGE = 1 hours;
@@ -155,11 +159,18 @@ contract IdentityRegistry {
         emit Unpaused(msg.sender);
     }
 
-    /// @notice Transfer contract ownership.
-    /// @param newOwner The new owner address.
+    /// @notice Initiate ownership transfer (2-step: propose then accept).
+    /// @param newOwner The proposed new owner address.
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
+        pendingOwner = newOwner;
+    }
+
+    /// @notice Accept ownership transfer (must be called by pendingOwner).
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotPendingOwner();
+        emit OwnershipTransferred(owner, msg.sender);
+        owner = msg.sender;
+        pendingOwner = address(0);
     }
 }

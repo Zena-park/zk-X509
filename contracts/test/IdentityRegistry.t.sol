@@ -134,13 +134,29 @@ contract IdentityRegistryTest is Test {
         registry.addCARoot(newCA);
     }
 
-    function test_TransferOwnership() public {
+    function test_TwoStepOwnershipTransfer() public {
+        // Step 1: Owner proposes alice
         registry.transferOwnership(alice);
-        assertEq(registry.owner(), alice);
+        // Owner hasn't changed yet
+        assertEq(registry.owner(), address(this));
+        assertEq(registry.pendingOwner(), alice);
 
+        // Random user can't accept
+        vm.prank(bob);
+        vm.expectRevert(IdentityRegistry.NotPendingOwner.selector);
+        registry.acceptOwnership();
+
+        // Step 2: Alice accepts
+        vm.prank(alice);
+        registry.acceptOwnership();
+        assertEq(registry.owner(), alice);
+        assertEq(registry.pendingOwner(), address(0));
+
+        // Old owner can no longer manage
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
         registry.addCARoot(bytes32(uint256(0xFACE)));
 
+        // New owner can
         vm.prank(alice);
         registry.addCARoot(bytes32(uint256(0xFACE)));
     }
