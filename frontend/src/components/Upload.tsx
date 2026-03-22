@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 
 interface UploadProps {
   disabled: boolean;
+  account: string | null;
   onProofGenerated: (result: {
     nullifier: string;
     caRootHash: string;
@@ -11,7 +12,7 @@ interface UploadProps {
   }) => void;
 }
 
-export function Upload({ disabled, onProofGenerated }: UploadProps) {
+export function Upload({ disabled, account, onProofGenerated }: UploadProps) {
   const [certFile, setCertFile] = useState<File | null>(null);
   const [keyFile, setKeyFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
@@ -42,6 +43,10 @@ export function Upload({ disabled, onProofGenerated }: UploadProps) {
       setStatus("인증서와 개인키 파일을 모두 업로드해주세요.");
       return;
     }
+    if (!account) {
+      setStatus("지갑을 먼저 연결해주세요.");
+      return;
+    }
 
     setGenerating(true);
     setStatus("증명 생성 중... (로컬 프루버 서버에 요청 중)");
@@ -60,6 +65,7 @@ export function Upload({ disabled, onProofGenerated }: UploadProps) {
           cert_der: Array.from(new Uint8Array(certBytes)),
           user_priv_key: Array.from(new Uint8Array(keyBytes)),
           password: password,
+          registrant: account || "",
         }),
       });
 

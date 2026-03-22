@@ -49,6 +49,9 @@ struct ProveRequest2 {
     /// Intermediate CA certificates (full X.509 DER), in order from user→root
     #[serde(default)]
     intermediate_certs: Vec<Vec<u8>>,
+    /// Wallet address to bind the proof to (hex string, e.g. "0xf39F...")
+    #[serde(default)]
+    registrant: String,
 }
 
 /// Response sent back to the frontend.
@@ -134,6 +137,15 @@ async fn health() -> &'static str {
     "ok"
 }
 
+/// Parse a hex-encoded Ethereum address into [u8; 20].
+fn parse_registrant(registrant_str: &str) -> Result<[u8; 20], (StatusCode, String)> {
+    let hex_str = registrant_str.strip_prefix("0x").unwrap_or(registrant_str);
+    hex::decode(hex_str)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid registrant address".to_string()))?
+        .try_into()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Registrant must be 20 bytes".to_string()))
+}
+
 /// Decrypt the private key if a password is provided.
 fn maybe_decrypt_key(key_bytes: &[u8], password: &str) -> Result<Vec<u8>, (StatusCode, String)> {
     if password.is_empty() {
@@ -176,6 +188,8 @@ async fn execute_handler(
     stdin.write(&current_timestamp);
     let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
     stdin.write(&revoked_serials);
+    let registrant_bytes = parse_registrant(&req.registrant)?;
+    stdin.write(&registrant_bytes);
 
     let result = tokio::task::spawn_blocking(move || {
         state.client.execute(ZK_X509_ELF, stdin).run()
@@ -228,6 +242,8 @@ async fn prove_handler(
     stdin.write(&current_timestamp);
     let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
     stdin.write(&revoked_serials);
+    let registrant_bytes = parse_registrant(&req.registrant)?;
+    stdin.write(&registrant_bytes);
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;

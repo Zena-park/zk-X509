@@ -98,6 +98,7 @@ export default function Home() {
           </h2>
           <Upload
             disabled={!account}
+            account={account}
             onProofGenerated={setProofResult}
           />
         </section>
