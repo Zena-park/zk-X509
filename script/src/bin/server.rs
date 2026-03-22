@@ -175,6 +175,8 @@ async fn execute_handler(
     stdin.write(&decrypted_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
+    let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
+    stdin.write(&revoked_serials);
 
     let result = tokio::task::spawn_blocking(move || {
         state.client.execute(ZK_X509_ELF, stdin).run()
@@ -224,6 +226,8 @@ async fn prove_handler(
     stdin.write(&decrypted_key);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
+    let revoked_serials: Vec<Vec<u8>> = Vec::new(); // TODO: load from CRL endpoint
+    stdin.write(&revoked_serials);
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;
