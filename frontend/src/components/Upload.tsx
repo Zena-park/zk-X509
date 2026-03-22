@@ -7,7 +7,6 @@ interface CertInfo {
   issuer: string;
   serial_hex: string;
   expires: string;
-  cert_path: string;
 }
 
 interface UploadProps {
@@ -42,7 +41,8 @@ export function Upload({ disabled, account, onProofGenerated }: UploadProps) {
         setCerts(data);
         if (data.length > 0) setSelectedIndex(0);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Failed to load certs:", err);
         setStatus("프루버 서버에 연결할 수 없습니다. 서버를 실행하세요.");
       })
       .finally(() => setLoading(false));
@@ -110,7 +110,7 @@ export function Upload({ disabled, account, onProofGenerated }: UploadProps) {
             className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
           >
             {certs.map((cert, i) => (
-              <option key={i} value={i}>
+              <option key={cert.serial_hex} value={i}>
                 {cert.subject} ({cert.issuer})
               </option>
             ))}

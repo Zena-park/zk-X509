@@ -47,20 +47,21 @@ pub fn scan_npki_certs() -> Vec<NpkiCertEntry> {
 
 /// Get platform-specific NPKI base directories.
 fn npki_base_dirs() -> Vec<PathBuf> {
-    let home = dirs::home_dir().unwrap_or_default();
     let mut dirs = Vec::new();
 
-    // macOS
-    dirs.push(home.join("Library/Preferences/NPKI"));
+    if let Some(home) = dirs::home_dir() {
+        // macOS
+        dirs.push(home.join("Library/Preferences/NPKI"));
+        // Linux
+        dirs.push(home.join(".pki/NPKI"));
+        // Windows
+        dirs.push(home.join("AppData/LocalLow/NPKI"));
+    }
 
-    // Linux
-    dirs.push(home.join(".pki/NPKI"));
-
-    // Windows (via HOME or LOCALAPPDATA)
+    // Windows (via LOCALAPPDATA env)
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         dirs.push(PathBuf::from(local).join("NPKI"));
     }
-    dirs.push(home.join("AppData/LocalLow/NPKI"));
 
     // Also check current directory for test certs
     dirs.push(PathBuf::from("certs"));
@@ -69,7 +70,18 @@ fn npki_base_dirs() -> Vec<PathBuf> {
 }
 
 /// Recursively scan a directory for signCert.der + signPri.key pairs.
+/// Max depth prevents symlink cycles and excessive traversal.
+const MAX_SCAN_DEPTH: usize = 10;
+
 fn scan_dir_recursive(dir: &PathBuf, entries: &mut Vec<NpkiCertEntry>) {
+    scan_dir_with_depth(dir, entries, 0);
+}
+
+fn scan_dir_with_depth(dir: &PathBuf, entries: &mut Vec<NpkiCertEntry>, depth: usize) {
+    if depth > MAX_SCAN_DEPTH {
+        return;
+    }
+
     let read_dir = match std::fs::read_dir(dir) {
         Ok(d) => d,
         Err(_) => return,
@@ -77,8 +89,12 @@ fn scan_dir_recursive(dir: &PathBuf, entries: &mut Vec<NpkiCertEntry>) {
 
     for entry in read_dir.flatten() {
         let path = entry.path();
-        if path.is_dir() {
-            scan_dir_recursive(&path, entries);
+        // Use symlink_metadata to avoid following symlink cycles
+        let is_real_dir = entry.file_type()
+            .map(|ft| ft.is_dir())
+            .unwrap_or(false);
+        if is_real_dir {
+            scan_dir_with_depth(&path, entries, depth + 1);
         }
     }
 

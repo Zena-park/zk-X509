@@ -60,7 +60,7 @@ fn main() {
         println!("  ─────────────────────────────────");
         println!("  1. Scan certificates");
         println!("  2. Select certificate");
-        println!("  3. Prove");
+        println!("  3. Verify (execute mode)");
         println!("  4. Submit on-chain");
         println!("  5. Status");
         println!("  q. Quit");
@@ -182,7 +182,8 @@ fn cmd_prove(session: &mut Session) {
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key];
     let crl_der: Vec<u8> = Vec::new();
 
-    println!("  Generating ZK proof...");
+    println!("  Executing ZK program (verify mode, no proof generation)...");
+    println!("  For full proof, use the prover server's /prove endpoint.");
     let client = ProverClient::from_env();
 
     let mut stdin = SP1Stdin::new();
@@ -203,7 +204,7 @@ fn cmd_prove(session: &mut Session) {
             let ca_hash = format!("0x{}", hex::encode(decoded.caRootHash));
 
             println!();
-            println!("  Proof generated!");
+            println!("  Verification successful! (execute mode — public values below)");
             println!("  ├─ Nullifier:  {}", nullifier);
             println!("  ├─ CA Hash:    {}", ca_hash);
             println!("  ├─ Registrant: {}", registrant);
@@ -220,8 +221,13 @@ fn cmd_prove(session: &mut Session) {
 fn cmd_submit(session: &Session) {
     let output = match &session.proof_output {
         Some(o) => o,
-        None => { println!("  Generate proof first [3]."); return; }
+        None => { println!("  Run verify first [3]."); return; }
     };
+
+    println!("  NOTE: CLI execute mode produces public values but not a real ZK proof.");
+    println!("  For production, use the prover server's /prove endpoint + web frontend.");
+    println!("  Proceeding with mock proof (0x1234) for testing...");
+    println!();
 
     let rpc = prompt("  RPC URL [http://localhost:8545]: ");
     let rpc = if rpc.is_empty() { "http://localhost:8545".to_string() } else { rpc };
@@ -236,15 +242,15 @@ fn cmd_submit(session: &Session) {
 
     println!("  Submitting transaction...");
 
+    // Pass ETH key via env var instead of CLI arg (avoids /proc exposure)
     let status = std::process::Command::new("cast")
         .args([
             "send", &registry,
             "register(bytes,bytes)", "0x1234", &pv_hex,
-            "--private-key", &eth_key,
             "--rpc-url", &rpc,
         ])
+        .env("ETH_PRIVATE_KEY", &eth_key)
         .status();
-    // eth_key goes out of scope here — dropped from memory
 
     match status {
         Ok(s) if s.success() => println!("  Registration successful!"),

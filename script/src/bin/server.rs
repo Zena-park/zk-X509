@@ -152,7 +152,9 @@ async fn health() -> &'static str {
 async fn list_certs_handler(
     state: Arc<AppState>,
 ) -> impl IntoResponse {
-    let certs = state.certs.read().unwrap().clone();
+    let certs = state.certs.read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
     Json(certs)
 }
 
@@ -160,7 +162,7 @@ async fn list_certs_handler(
 async fn refresh_certs_handler(state: Arc<AppState>) -> impl IntoResponse {
     let certs = zk_x509_script::keychain::scan_npki_certs();
     let count = certs.len();
-    *state.certs.write().unwrap() = certs;
+    *state.certs.write().unwrap_or_else(|e| e.into_inner()) = certs;
     Json(serde_json::json!({ "refreshed": count }))
 }
 
@@ -179,7 +181,7 @@ fn load_cert_and_key(
     cert_index: usize,
     password: &str,
 ) -> Result<(Vec<u8>, Vec<u8>), (StatusCode, String)> {
-    let certs = state.certs.read().unwrap();
+    let certs = state.certs.read().unwrap_or_else(|e| e.into_inner());
     let entry = certs.get(cert_index).ok_or_else(|| {
         (StatusCode::BAD_REQUEST, format!("Invalid cert_index: {}", cert_index))
     })?;
@@ -225,18 +227,21 @@ async fn execute_handler(
     Json(req): Json<ProveRequest2>,
     state: Arc<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let (cert_der, key_der) = load_cert_and_key(&state, req.cert_index, &req.password)?;
     let registrant_bytes = parse_registrant(&req.registrant)?;
-
     let ca_pub_key = state.default_ca_pub_key.clone();
     if ca_pub_key.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "CA public key not configured".to_string()));
     }
 
-    let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes);
+    let cert_index = req.cert_index;
+    let password = req.password.clone();
 
     let result = tokio::task::spawn_blocking(move || {
+        let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
+            .map_err(|(_status, msg)| msg)?;
+        let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes);
         state.client.execute(ZK_X509_ELF, stdin).run()
+            .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -258,17 +263,19 @@ async fn prove_handler(
     Json(req): Json<ProveRequest2>,
     state: Arc<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let (cert_der, key_der) = load_cert_and_key(&state, req.cert_index, &req.password)?;
     let registrant_bytes = parse_registrant(&req.registrant)?;
-
     let ca_pub_key = state.default_ca_pub_key.clone();
     if ca_pub_key.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "CA public key not configured".to_string()));
     }
 
-    let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes);
+    let cert_index = req.cert_index;
+    let password = req.password.clone();
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
+        let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
+            .map_err(|(_status, msg)| msg)?;
+        let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes);
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;
         let proof = state.client.prove(&pk, stdin).run().map_err(|e| e.to_string())?;
         state.client.verify(&proof, pk.verifying_key(), None).map_err(|e| e.to_string())?;
