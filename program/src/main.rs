@@ -264,7 +264,7 @@ pub fn main() {
     )
     .expect("Failed to parse certificate's public key");
 
-    let mut ownership_preimage = Vec::new();
+    let mut ownership_preimage = Vec::with_capacity(serial_bytes.len() + 20 + 4);
     ownership_preimage.extend_from_slice(&serial_bytes);
     ownership_preimage.extend_from_slice(&registrant);
     ownership_preimage.extend_from_slice(&wallet_index.to_be_bytes());
@@ -283,7 +283,7 @@ pub fn main() {
     // Same cert = same public key = same nullifier, regardless of registrant.
     // No additional RSA operation needed — saves ~5.7M cycles.
     let cert_pub_key_raw = user_cert.tbs_certificate.subject_pki.raw;
-    let mut nullifier_preimage = Vec::new();
+    let mut nullifier_preimage = Vec::with_capacity(cert_pub_key_raw.len() + 4);
     nullifier_preimage.extend_from_slice(cert_pub_key_raw);
     nullifier_preimage.extend_from_slice(&wallet_index.to_be_bytes());
     let nullifier: [u8; 32] = Sha256::digest(&nullifier_preimage).into();
