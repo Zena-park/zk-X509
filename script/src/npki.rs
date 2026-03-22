@@ -16,6 +16,7 @@
 use aes::Aes256;
 use cbc::cipher::{BlockDecryptMut, KeyIvInit};
 use hmac::Hmac;
+use kisaseed::SEED;
 use pbkdf2::pbkdf2;
 use sha1::Sha1;
 
@@ -93,18 +94,8 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
 
     // Decrypt based on cipher type
     let decrypted = match params.cipher {
-        CipherType::Aes256Cbc => decrypt_aes256_cbc(&derived_key, &params.iv, &encrypted_data)?,
-        CipherType::SeedCbc => {
-            // SEED-CBC: Korean block cipher
-            // For MVP, we try to use it as AES if key length matches,
-            // or return an error suggesting to convert the cert
-            return Err(NpkiError::UnsupportedAlgorithm(
-                "SEED-CBC is not yet supported natively. \
-                 Please convert your key using: \
-                 openssl pkcs8 -in signPri.key -inform DER -out key.pem -outform PEM"
-                    .to_string(),
-            ));
-        }
+        CipherType::Aes256Cbc => decrypt_cbc::<cbc::Decryptor<Aes256>>(&derived_key, &params.iv, &encrypted_data, "AES")?,
+        CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
     };
 
     // Remove PKCS#7 padding
@@ -285,19 +276,22 @@ fn find_integer_after(data: &[u8], salt: &[u8]) -> Option<u32> {
     None
 }
 
-/// Decrypt using AES-256-CBC.
-fn decrypt_aes256_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, NpkiError> {
-    type Aes256CbcDec = cbc::Decryptor<Aes256>;
-
+/// Generic CBC decryption for any block cipher implementing BlockDecryptMut + KeyIvInit.
+fn decrypt_cbc<C: BlockDecryptMut + KeyIvInit>(
+    key: &[u8],
+    iv: &[u8],
+    data: &[u8],
+    cipher_name: &str,
+) -> Result<Vec<u8>, NpkiError> {
     let mut buf = data.to_vec();
-    let decryptor = Aes256CbcDec::new_from_slices(key, iv)
-        .map_err(|e| NpkiError::DecryptionFailed(format!("AES init failed: {}", e)))?;
-
-    let decrypted = decryptor
+    let decryptor = C::new_from_slices(key, iv)
+        .map_err(|e| NpkiError::DecryptionFailed(format!("{} init failed: {}", cipher_name, e)))?;
+    let decrypted_len = decryptor
         .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf)
-        .map_err(|e| NpkiError::DecryptionFailed(format!("AES decrypt failed: {}", e)))?;
-
-    Ok(decrypted.to_vec())
+        .map_err(|e| NpkiError::DecryptionFailed(format!("{} decrypt failed: {}", cipher_name, e)))?
+        .len();
+    buf.truncate(decrypted_len);
+    Ok(buf)
 }
 
 /// Remove PKCS#7 padding.
@@ -386,5 +380,59 @@ mod tests {
     fn test_window_contains() {
         assert!(window_contains(&[1, 2, 3, 4, 5], &[3, 4]));
         assert!(!window_contains(&[1, 2, 3, 4, 5], &[4, 3]));
+    }
+
+    #[test]
+    fn test_decrypt_cbc_seed_known_answer() {
+        // SEED-CBC known-answer test:
+        // Key: 16 bytes of 0x01
+        // IV:  16 bytes of 0x00
+        // Plaintext: 16 bytes of 0x00 + PKCS#7 padding (16 bytes of 0x10)
+        // We encrypt then decrypt and verify round-trip.
+        use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+
+        let key = [0x01u8; 16];
+        let iv = [0x00u8; 16];
+        let plaintext = [0x00u8; 16];
+
+        // Encrypt: plaintext + PKCS#7 pad (full block of 0x10)
+        let mut input = Vec::from(&plaintext[..]);
+        input.extend_from_slice(&[0x10u8; 16]); // PKCS#7 padding for 16-byte aligned
+
+        let mut buf = input.clone();
+        let encryptor = cbc::Encryptor::<SEED>::new_from_slices(&key, &iv).unwrap();
+        let ciphertext = encryptor
+            .encrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf, 32)
+            .unwrap()
+            .to_vec();
+
+        // Decrypt with our generic function
+        let decrypted = decrypt_cbc::<cbc::Decryptor<SEED>>(&key, &iv, &ciphertext, "SEED").unwrap();
+        let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
+        assert_eq!(unpadded, plaintext);
+    }
+
+    #[test]
+    fn test_decrypt_cbc_aes_known_answer() {
+        // AES-256-CBC round-trip test for parity
+        use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+
+        let key = [0x42u8; 32];
+        let iv = [0x00u8; 16];
+        let plaintext = b"hello zk-x509!!!"; // exactly 16 bytes
+
+        let mut input = Vec::from(&plaintext[..]);
+        input.extend_from_slice(&[0x10u8; 16]);
+
+        let mut buf = input.clone();
+        let encryptor = cbc::Encryptor::<Aes256>::new_from_slices(&key, &iv).unwrap();
+        let ciphertext = encryptor
+            .encrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf, 32)
+            .unwrap()
+            .to_vec();
+
+        let decrypted = decrypt_cbc::<cbc::Decryptor<Aes256>>(&key, &iv, &ciphertext, "AES").unwrap();
+        let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
+        assert_eq!(unpadded, plaintext);
     }
 }
