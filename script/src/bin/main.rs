@@ -39,10 +39,14 @@ struct Args {
     #[arg(long, default_value = "certs/signPri.key")]
     key: PathBuf,
 
-    /// Path to the CA certificate/public key file (DER format)
-    /// Path to the CA public key file (SPKI DER format, e.g. ca_pub.der)
+    /// Root CA public key (SPKI DER). Always the last element in the chain.
     #[arg(long, default_value = "certs/ca_pub.der")]
     ca_cert: PathBuf,
+
+    /// Intermediate CA certificates (full X.509 DER), in order from user→root.
+    /// For single-level CA (no intermediates), omit this.
+    #[arg(long)]
+    intermediate: Vec<PathBuf>,
 }
 
 fn main() {
@@ -78,11 +82,25 @@ fn main() {
         .as_secs();
     println!("Current Timestamp: {}", current_timestamp);
 
+    // Build certificate chain: [intermediate_certs..., root_ca_pub_key]
+    let mut cert_chain: Vec<Vec<u8>> = Vec::new();
+    for path in &args.intermediate {
+        let intermediate = std::fs::read(path)
+            .unwrap_or_else(|e| panic!("Failed to read intermediate cert {:?}: {}", path, e));
+        println!("Intermediate CA: {} ({} bytes)", path.display(), intermediate.len());
+        cert_chain.push(intermediate);
+    }
+    cert_chain.push(ca_pub_key.clone());
+    println!("Chain depth: {} ({})",
+        cert_chain.len(),
+        if cert_chain.len() == 1 { "single-level" } else { "multi-level" }
+    );
+
     // Write inputs to SP1 stdin
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&priv_key);
-    stdin.write(&ca_pub_key);
+    stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
 
     if args.execute {

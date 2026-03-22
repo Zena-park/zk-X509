@@ -64,10 +64,13 @@ fn main() {
         .unwrap()
         .as_secs();
 
+    // Single-level chain for now (no intermediates in evm CLI)
+    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key];
+
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&priv_key);
-    stdin.write(&ca_pub_key);
+    stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
 
     println!("Proof System: {:?}", args.system);

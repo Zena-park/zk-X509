@@ -46,6 +46,9 @@ struct ProveRequest2 {
     /// CA public key bytes (optional, uses default Korean NPKI CA if not provided)
     #[serde(default)]
     ca_pub_key: Option<Vec<u8>>,
+    /// Intermediate CA certificates (full X.509 DER), in order from user→root
+    #[serde(default)]
+    intermediate_certs: Vec<Vec<u8>>,
 }
 
 /// Response sent back to the frontend.
@@ -163,10 +166,14 @@ async fn execute_handler(
         .unwrap()
         .as_secs();
 
+    // Build cert chain: [intermediates..., root_ca_pub_key]
+    let mut cert_chain: Vec<Vec<u8>> = req.intermediate_certs.clone();
+    cert_chain.push(ca_pub_key);
+
     let mut stdin = SP1Stdin::new();
     stdin.write(&req.cert_der);
     stdin.write(&decrypted_key);
-    stdin.write(&ca_pub_key);
+    stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
 
     let result = tokio::task::spawn_blocking(move || {
@@ -209,10 +216,13 @@ async fn prove_handler(
         .unwrap()
         .as_secs();
 
+    let mut cert_chain: Vec<Vec<u8>> = req.intermediate_certs.clone();
+    cert_chain.push(ca_pub_key);
+
     let mut stdin = SP1Stdin::new();
     stdin.write(&req.cert_der);
     stdin.write(&decrypted_key);
-    stdin.write(&ca_pub_key);
+    stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
