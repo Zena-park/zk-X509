@@ -1,0 +1,13 @@
+[package]
+name = "zk-x509-program"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alloy-sol-types = { workspace = true }
+sp1-zkvm = { version = "6.0.1" }
+zk-x509-lib = { path = "../lib" }
+x509-parser = { version = "0.16", default-features = false }
+sha1 = { version = "0.10", default-features = false, features = ["oid"] }
+sha2 = { version = "0.10", default-features = false, features = ["oid"] }
+rsa = { version = "0.9", default-features = false }

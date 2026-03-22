@@ -1,0 +1,44 @@
+[package]
+name = "zk-x509-script"
+version = "0.1.0"
+edition = "2021"
+default-run = "zk-x509"
+
+[[bin]]
+name = "zk-x509"
+path = "src/bin/main.rs"
+
+[[bin]]
+name = "evm"
+path = "src/bin/evm.rs"
+
+[[bin]]
+name = "vkey"
+path = "src/bin/vkey.rs"
+
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
+
+[dependencies]
+sp1-sdk = { version = "6.0.1", features = ["blocking"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+serde = { version = "1.0.200", default-features = false, features = ["derive"] }
+clap = { version = "4.0", features = ["derive", "env"] }
+tracing = "0.1.40"
+hex = "0.4.3"
+alloy-sol-types = { workspace = true }
+zk-x509-lib = { path = "../lib" }
+dotenv = "0.15.0"
+axum = { version = "0.7", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors"] }
+sha1 = "0.10"
+pbkdf2 = { version = "0.12", features = ["hmac"] }
+hmac = "0.12"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+rsa = "0.9"
+
+[build-dependencies]
+sp1-build = { version = "6.0.1" }
