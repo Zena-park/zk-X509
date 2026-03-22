@@ -21,6 +21,9 @@
 | 15 | CRL 서명 검증 (zkVM 내부, issuer-scoped, freshness) | [#5](https://github.com/tokamak-network/zk-X509/pull/5) |
 | 16 | SEED-CBC 복호화 (kisaseed) | [#4](https://github.com/tokamak-network/zk-X509/pull/4) |
 | 17 | NPKI 파일 스캔 + MetaMask 웹 플로우 | [#6](https://github.com/tokamak-network/zk-X509/pull/6) |
+| 24 | 서명 기반 소유 증명 (개인키가 zkVM에 진입하지 않음) | feat/signature-ownership |
+| 25 | reRegister() — 관리자 없이 지갑 변경 | feat/configurable-policy |
+| 26 | Configurable Registration Policy (maxWalletsPerCert) | feat/configurable-policy |
 
 ## 미해결
 
@@ -46,31 +49,7 @@
 #### 23. NPKI 스캐너 단위 테스트
 - temp directory로 스캐너 동작 검증 필요
 
-### HIGH
-
-#### 24. 서명 기반 소유 증명 (OS 키체인 연동)
-- 현재: 개인키 원본이 ZK 회로 입력으로 들어감 → 프로세스 메모리에 평문 존재
-- 개선: OS 키체인(macOS Secure Enclave, Windows TPM)이 서명만 수행, 서명값만 ZK 회로에 입력
-- `user_priv_key` 입력 → `ownership_sig`, `nullifier_sig` 입력으로 교체
-- nullifier: `SHA-256(serial ‖ SHA-256(sk))` → `SHA-256(serial ‖ RSA_Sign(serial, sk))`
-- RSA PKCS#1 v1.5는 결정론적 → nullifier 결정성 유지
-- 트레이드오프: ZK 사이클 ~7.2M → ~12.7M (+RSA 검증 1회)
-- 변경 범위: program, script/keychain.rs, script/server.rs
-
-#### 25. reRegister() — 관리자 없이 지갑 변경
-- 현재: revokeUser는 onlyOwner → 중앙화 모순
-- 개선: 사용자가 같은 인증서로 새 proof 생성하여 기존 등록 교체
-- 동일 nullifier의 지갑 주소만 업데이트, 관리자 불필요
-- 변경 범위: contracts (reRegister 함수), 논문 Section 3.5
-
-#### 26. Configurable Registration Policy (maxWalletsPerCert)
-- DAO (1:1) vs DeFi (1:N) 용도별 등록 정책 설정
-- nullifier: `SHA-256(serial ‖ SHA-256(sk) ‖ wallet_index)`
-- ZK 회로에서 `wallet_index < maxWalletsPerCert` 검증
-- 컨트랙트 constructor 파라미터로 설정
-- 변경 범위: lib, program, contracts
-
-### 학술 Novelty / 기능 확장
+### HIGH / 학술 Novelty
 
 #### 29. 인증서 만료일 기반 자동 인증 만료
 - 현재: isVerified가 영구적 — 인증서 만료돼도 true 유지 (문제)
@@ -83,6 +62,14 @@
 - 이름, 주민번호 등 나머지는 공개하지 않음
 - X.509에 대한 ZK 선택적 공개는 아직 미구현 (zk-email은 DKIM 한정)
 - 변경 범위: program (필드별 해싱), lib (선택적 public values)
+
+#### 31. Merkle tree 기반 CA 익명 검증
+- 현재: `caRootHash`가 온체인에 공개 → 어떤 CA(국가/기관)인지 드러남
+- 멀티 국가 배포 시 사용자 국적 노출 문제
+- 개선: 허용 CA 해시들의 Merkle tree 구성, 온체인에는 Merkle root만 저장
+- ZK 회로 안에서 Merkle membership proof → "허용된 CA 중 하나"만 증명
+- caRootHash 대신 Merkle root를 public value로 커밋
+- 변경 범위: contracts (Merkle root 관리), program (Merkle proof 검증), lib (public values)
 
 ### LOW
 

@@ -25,8 +25,8 @@ contract IdentityRegistry {
     /// @notice Nullifiers that have been permanently revoked by admin.
     mapping(bytes32 => bool) public revokedNullifiers;
 
-    /// @notice Verified wallet addresses.
-    mapping(address => bool) public verifiedUsers;
+    /// @notice Verified wallet addresses → certificate expiry timestamp (0 = unverified).
+    mapping(address => uint64) public verifiedUntil;
 
     /// @notice Contract owner (for CA management).
     address public owner;
@@ -100,12 +100,12 @@ contract IdentityRegistry {
     function _validateProof(
         bytes calldata proof,
         bytes calldata publicValues
-    ) internal view returns (bytes32 nullifier, bytes32 caRootHash) {
+    ) internal view returns (bytes32 nullifier, bytes32 caRootHash, uint64 notAfter) {
         address registrant;
         uint64 proofTimestamp;
         uint32 walletIndex;
-        (nullifier, caRootHash, proofTimestamp, registrant, walletIndex) =
-            abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32));
+        (nullifier, caRootHash, proofTimestamp, registrant, walletIndex, notAfter) =
+            abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64));
 
         if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
         if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
@@ -120,44 +120,45 @@ contract IdentityRegistry {
 
     /// @notice Register a verified identity using a ZK proof of X.509 certificate ownership.
     function register(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
-        (bytes32 nullifier, bytes32 caRootHash) = _validateProof(proof, publicValues);
+        (bytes32 nullifier, bytes32 caRootHash, uint64 notAfter) = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         if (nullifierOwner[nullifier] != address(0)) revert AlreadyRegistered(nullifier);
-        // Same address cannot be registered twice (even in multi-wallet mode)
-        if (verifiedUsers[msg.sender]) revert UserAlreadyVerified(msg.sender);
+        if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
         nullifierOwner[nullifier] = msg.sender;
-        verifiedUsers[msg.sender] = true;
+        verifiedUntil[msg.sender] = notAfter;
 
         emit UserRegistered(msg.sender, nullifier, caRootHash);
     }
 
     /// @notice Re-register: move an existing nullifier slot to a new wallet address.
     /// @dev No admin required. User proves ownership of the same certificate with a new wallet.
-    ///      WARNING: If certificate files are compromised, an attacker could re-register.
+    ///      The old wallet's verification is cleared and the new wallet takes over.
+    ///      WARNING: If certificate files are compromised, an attacker could re-register
+    ///      to their own wallet. This is by design — the certificate is the identity anchor.
     function reRegister(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
-        (bytes32 nullifier, ) = _validateProof(proof, publicValues);
+        (bytes32 nullifier,, uint64 notAfter) = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         address oldOwner = nullifierOwner[nullifier];
         if (oldOwner == address(0)) revert NullifierNotRegistered(nullifier);
-        if (verifiedUsers[msg.sender]) revert UserAlreadyVerified(msg.sender);
+        if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
         if (oldOwner != msg.sender) {
-            verifiedUsers[oldOwner] = false;
+            verifiedUntil[oldOwner] = 0;
             nullifierOwner[nullifier] = msg.sender;
         }
-        verifiedUsers[msg.sender] = true;
+        verifiedUntil[msg.sender] = notAfter;
 
         emit UserReRegistered(oldOwner, msg.sender, nullifier);
     }
 
-    /// @notice Check if a wallet address is verified.
+    /// @notice Check if a wallet address is currently verified (not expired).
     /// @param user The wallet address to check.
-    /// @return True if the user has been verified.
+    /// @return True if the user is verified and certificate has not expired.
     function isVerified(address user) external view returns (bool) {
-        return verifiedUsers[user];
+        return verifiedUntil[user] >= block.timestamp;
     }
 
     // ============ Admin Functions ============
@@ -183,7 +184,7 @@ contract IdentityRegistry {
     function revokeIdentity(bytes32 nullifier, bytes32 reason) external onlyOwner {
         address user = nullifierOwner[nullifier];
         if (user == address(0)) revert NullifierNotRegistered(nullifier);
-        verifiedUsers[user] = false;
+        verifiedUntil[user] = 0;
         revokedNullifiers[nullifier] = true;
         emit IdentityRevoked(user, nullifier, reason);
     }
