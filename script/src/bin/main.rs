@@ -130,6 +130,10 @@ fn main() {
         .try_into()
         .expect("Registrant address must be 20 bytes");
     stdin.write(&registrant_bytes);
+    let wallet_index: u32 = 0; // TODO: accept from CLI
+    let max_wallets: u32 = 1;
+    stdin.write(&wallet_index);
+    stdin.write(&max_wallets);
     println!("Registrant: 0x{}", hex::encode(registrant_bytes));
 
     if args.execute {

@@ -25,7 +25,7 @@ contract DeployScript is Script {
         vm.startBroadcast();
 
         // Deploy IdentityRegistry
-        IdentityRegistry registry = new IdentityRegistry(sp1Verifier, programVKey);
+        IdentityRegistry registry = new IdentityRegistry(sp1Verifier, programVKey, 1);
         console.log("IdentityRegistry deployed at:", address(registry));
 
         // Register trusted CA roots (if provided)

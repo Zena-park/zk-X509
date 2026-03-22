@@ -219,6 +219,10 @@ fn build_stdin(
     stdin.write(&timestamp);
     stdin.write(&crl_der);
     stdin.write(registrant_bytes);
+    let wallet_index: u32 = 0; // TODO: accept from request
+    let max_wallets: u32 = 1;
+    stdin.write(&wallet_index);
+    stdin.write(&max_wallets);
     stdin
 }
 

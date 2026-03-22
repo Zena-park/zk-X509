@@ -20,7 +20,7 @@ contract DeployLocalScript is Script {
 
         // Deploy IdentityRegistry
         bytes32 vkey = 0x008382f44d5f06fc1f6280e9584abc5945d185352389fbab4dda8e40436fbdd8;
-        IdentityRegistry registry = new IdentityRegistry(address(mockVerifier), vkey);
+        IdentityRegistry registry = new IdentityRegistry(address(mockVerifier), vkey, 1);
         console.log("IdentityRegistry:", address(registry));
 
         // Add test CA root hash (from our test cert)

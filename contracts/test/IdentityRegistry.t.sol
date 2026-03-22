@@ -22,12 +22,16 @@ contract IdentityRegistryTest is Test {
     address bob = makeAddr("bob");
 
     function _pv(bytes32 nullifier, bytes32 caHash, address sender) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender);
+        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, uint32(0));
+    }
+
+    function _pvIdx(bytes32 nullifier, bytes32 caHash, address sender, uint32 idx) internal view returns (bytes memory) {
+        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, idx);
     }
 
     function setUp() public {
         mockVerifier = new MockSP1Verifier();
-        registry = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY);
+        registry = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 1);
         registry.addCARoot(CA_ROOT_HASH);
     }
 
@@ -94,7 +98,7 @@ contract IdentityRegistryTest is Test {
     function test_RevertProofTooOld() public {
         vm.warp(1700000000);
         uint64 oldTimestamp = uint64(block.timestamp - 2 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, oldTimestamp, alice);
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, oldTimestamp, alice, uint32(0));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -106,7 +110,7 @@ contract IdentityRegistryTest is Test {
 
     function test_RevertProofInFuture() public {
         uint64 futureTimestamp = uint64(block.timestamp + 1 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, futureTimestamp, alice);
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, futureTimestamp, alice, uint32(0));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -273,5 +277,139 @@ contract IdentityRegistryTest is Test {
             abi.encodeWithSelector(IdentityRegistry.UserAlreadyVerified.selector, bob)
         );
         registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+    }
+
+    // ============ Multi-wallet tests ============
+
+    function test_MultiWallet_TwoSlots() public {
+        // Deploy a multi-wallet registry (maxWalletsPerCert = 3)
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        multiReg.addCARoot(CA_ROOT_HASH);
+
+        // Alice registers wallet index 0
+        bytes32 null0 = bytes32(uint256(0xA000));
+        vm.prank(alice);
+        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        assertTrue(multiReg.isVerified(alice));
+
+        // Alice registers wallet index 1 to bob
+        bytes32 null1 = bytes32(uint256(0xA001));
+        vm.prank(bob);
+        multiReg.register(hex"1234", _pvIdx(null1, CA_ROOT_HASH, bob, 1));
+        assertTrue(multiReg.isVerified(bob));
+
+        // Both verified
+        assertTrue(multiReg.isVerified(alice));
+        assertTrue(multiReg.isVerified(bob));
+    }
+
+    function test_MultiWallet_RevertIndexOutOfRange() public {
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 2);
+        multiReg.addCARoot(CA_ROOT_HASH);
+
+        // Index 2 is out of range for max=2 (valid: 0, 1)
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.WalletIndexOutOfRange.selector, uint32(2), uint32(2))
+        );
+        multiReg.register(hex"1234", _pvIdx(NULLIFIER, CA_ROOT_HASH, alice, 2));
+    }
+
+    function test_MultiWallet_SameAddressTwoSlots_Reverts() public {
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        multiReg.addCARoot(CA_ROOT_HASH);
+
+        // Alice registers slot 0
+        bytes32 null0 = bytes32(uint256(0xB000));
+        vm.prank(alice);
+        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+
+        // Alice tries slot 1 with same address → UserAlreadyVerified
+        bytes32 null1 = bytes32(uint256(0xB001));
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.UserAlreadyVerified.selector, alice)
+        );
+        multiReg.register(hex"1234", _pvIdx(null1, CA_ROOT_HASH, alice, 1));
+    }
+
+    function test_MultiWallet_SameNullifierTwice_Reverts() public {
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        multiReg.addCARoot(CA_ROOT_HASH);
+
+        bytes32 null0 = bytes32(uint256(0xC000));
+        vm.prank(alice);
+        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+
+        // Same nullifier again → AlreadyRegistered
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.AlreadyRegistered.selector, null0)
+        );
+        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, bob, 0));
+    }
+
+    function test_MultiWallet_ReRegister() public {
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        multiReg.addCARoot(CA_ROOT_HASH);
+
+        bytes32 null0 = bytes32(uint256(0xD000));
+        vm.prank(alice);
+        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+
+        // Re-register slot 0 from alice to bob
+        vm.prank(bob);
+        multiReg.reRegister(hex"1234", _pvIdx(null0, CA_ROOT_HASH, bob, 0));
+        assertFalse(multiReg.isVerified(alice));
+        assertTrue(multiReg.isVerified(bob));
+    }
+
+    function test_MultiWallet_RevokeOneSlot_OtherUnaffected() public {
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        multiReg.addCARoot(CA_ROOT_HASH);
+
+        bytes32 null0 = bytes32(uint256(0xE000));
+        bytes32 null1 = bytes32(uint256(0xE001));
+
+        vm.prank(alice);
+        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        vm.prank(bob);
+        multiReg.register(hex"1234", _pvIdx(null1, CA_ROOT_HASH, bob, 1));
+
+        // Revoke slot 0 only
+        multiReg.revokeIdentity(null0, keccak256("REVOKED"));
+        assertFalse(multiReg.isVerified(alice));
+        assertTrue(multiReg.isVerified(bob)); // slot 1 unaffected
+        assertTrue(multiReg.revokedNullifiers(null0));
+        assertFalse(multiReg.revokedNullifiers(null1));
+    }
+
+    function test_MultiWallet_BoundaryIndices() public {
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        multiReg.addCARoot(CA_ROOT_HASH);
+
+        // Index 0 (first)
+        bytes32 null0 = bytes32(uint256(0xF000));
+        vm.prank(alice);
+        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        assertTrue(multiReg.isVerified(alice));
+
+        // Index 2 (last valid for max=3)
+        bytes32 null2 = bytes32(uint256(0xF002));
+        vm.prank(bob);
+        multiReg.register(hex"1234", _pvIdx(null2, CA_ROOT_HASH, bob, 2));
+        assertTrue(multiReg.isVerified(bob));
+    }
+
+    function test_MultiWallet_MaxZero_AllReverts() public {
+        IdentityRegistry zeroReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 0);
+        zeroReg.addCARoot(CA_ROOT_HASH);
+
+        // Any index reverts (0 >= 0)
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.WalletIndexOutOfRange.selector, uint32(0), uint32(0))
+        );
+        zeroReg.register(hex"1234", _pvIdx(NULLIFIER, CA_ROOT_HASH, alice, 0));
     }
 }
