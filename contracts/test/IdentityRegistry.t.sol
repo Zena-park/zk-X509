@@ -171,4 +171,39 @@ contract IdentityRegistryTest is Test {
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
         registry.pause();
     }
+
+    function test_RevokeUser() public {
+        // Register alice first
+        bytes memory publicValues = _publicValues(NULLIFIER, CA_ROOT_HASH);
+        vm.prank(alice);
+        registry.register(hex"1234", publicValues);
+        assertTrue(registry.isVerified(alice));
+
+        // Revoke alice
+        registry.revokeUser(alice, "Certificate expired");
+        assertFalse(registry.isVerified(alice));
+    }
+
+    function test_RevertRevokeUnverifiedUser() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.UserNotVerified.selector, alice)
+        );
+        registry.revokeUser(alice, "test");
+    }
+
+    function test_RevokedUserCanReRegister() public {
+        // Register, revoke, then re-register with new nullifier
+        bytes memory publicValues1 = _publicValues(NULLIFIER, CA_ROOT_HASH);
+        vm.prank(alice);
+        registry.register(hex"1234", publicValues1);
+
+        registry.revokeUser(alice, "Re-issue");
+
+        // Re-register with different nullifier (new cert)
+        bytes32 nullifier2 = bytes32(uint256(0xBEEF));
+        bytes memory publicValues2 = _publicValues(nullifier2, CA_ROOT_HASH);
+        vm.prank(alice);
+        registry.register(hex"1234", publicValues2);
+        assertTrue(registry.isVerified(alice));
+    }
 }
