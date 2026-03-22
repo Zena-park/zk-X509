@@ -6,9 +6,11 @@
 //!   RUST_LOG=info cargo run --release --bin server
 //!
 //! Endpoints:
-//!   POST /prove   - Generate a ZK proof from certificate data
-//!   POST /execute - Execute without proof (fast, for testing)
-//!   GET  /health  - Health check
+//!   GET  /certs         - List NPKI certificates (scanned at startup)
+//!   POST /certs/refresh - Re-scan NPKI directories
+//!   POST /prove         - Generate a ZK proof (cert_index + password + registrant)
+//!   POST /execute       - Execute without proof (fast, for testing)
+//!   GET  /health        - Health check
 
 use alloy_sol_types::SolType;
 use axum::{
@@ -33,24 +35,15 @@ use zk_x509_script::npki;
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
 /// Request body from the frontend.
-/// NOTE: Do NOT derive Debug — it would log private key bytes.
+/// NOTE: Do NOT derive Debug — password would be logged.
 #[derive(Deserialize)]
 struct ProveRequest2 {
-    /// DER-encoded certificate bytes (as u8 array)
-    cert_der: Vec<u8>,
-    /// Private key bytes (decrypted, PKCS#1 DER)
-    user_priv_key: Vec<u8>,
-    /// Password for encrypted private key (optional, for NPKI)
+    /// Index from /certs list (server reads files directly)
+    cert_index: usize,
+    /// Password to decrypt the NPKI private key
     #[serde(default)]
     password: String,
-    /// CA public key bytes (optional, uses default Korean NPKI CA if not provided)
-    #[serde(default)]
-    ca_pub_key: Option<Vec<u8>>,
-    /// Intermediate CA certificates (full X.509 DER), in order from user→root
-    #[serde(default)]
-    intermediate_certs: Vec<Vec<u8>>,
     /// Wallet address to bind the proof to (hex string, e.g. "0xf39F...")
-    #[serde(default)]
     registrant: String,
 }
 
@@ -70,6 +63,8 @@ struct AppState {
     client: EnvProver,
     /// Default CA public key (SPKI DER) loaded at startup.
     default_ca_pub_key: Vec<u8>,
+    /// Cached NPKI cert scan results (refreshed on /certs).
+    certs: std::sync::RwLock<Vec<zk_x509_script::keychain::NpkiCertEntry>>,
 }
 
 fn main() {
@@ -89,7 +84,14 @@ fn main() {
     tracing::info!("Initializing SP1 ProverClient...");
     let client = ProverClient::from_env();
 
-    let state = Arc::new(AppState { client, default_ca_pub_key });
+    let certs = zk_x509_script::keychain::scan_npki_certs();
+    tracing::info!("Found {} NPKI certificates", certs.len());
+
+    let state = Arc::new(AppState {
+        client,
+        default_ca_pub_key,
+        certs: std::sync::RwLock::new(certs),
+    });
 
     // Start the async runtime
     tokio::runtime::Builder::new_multi_thread()
@@ -111,6 +113,14 @@ async fn async_main(state: Arc<AppState>) {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/certs", get({
+            let state = Arc::clone(&state);
+            move || list_certs_handler(state)
+        }))
+        .route("/certs/refresh", post({
+            let state = Arc::clone(&state);
+            move || refresh_certs_handler(state)
+        }))
         .route("/prove", post({
             let state = Arc::clone(&state);
             move |body| prove_handler(body, state)
@@ -137,22 +147,77 @@ async fn health() -> &'static str {
     "ok"
 }
 
+/// List NPKI certificates found on the local filesystem.
+/// Returns cached results. Use POST /certs/refresh to re-scan.
+async fn list_certs_handler(
+    state: Arc<AppState>,
+) -> impl IntoResponse {
+    let certs = state.certs.read().unwrap().clone();
+    Json(certs)
+}
+
+/// Re-scan NPKI directories and update cache.
+async fn refresh_certs_handler(state: Arc<AppState>) -> impl IntoResponse {
+    let certs = zk_x509_script::keychain::scan_npki_certs();
+    let count = certs.len();
+    *state.certs.write().unwrap() = certs;
+    Json(serde_json::json!({ "refreshed": count }))
+}
+
 /// Parse a hex-encoded Ethereum address into [u8; 20].
-fn parse_registrant(registrant_str: &str) -> Result<[u8; 20], (StatusCode, String)> {
-    let hex_str = registrant_str.strip_prefix("0x").unwrap_or(registrant_str);
+fn parse_registrant(s: &str) -> Result<[u8; 20], (StatusCode, String)> {
+    let hex_str = s.strip_prefix("0x").unwrap_or(s);
     hex::decode(hex_str)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid registrant address".to_string()))?
         .try_into()
         .map_err(|_| (StatusCode::BAD_REQUEST, "Registrant must be 20 bytes".to_string()))
 }
 
-/// Decrypt the private key if a password is provided.
-fn maybe_decrypt_key(key_bytes: &[u8], password: &str) -> Result<Vec<u8>, (StatusCode, String)> {
-    if password.is_empty() {
-        return Ok(key_bytes.to_vec());
-    }
-    npki::decrypt_npki_key(key_bytes, password)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Key decryption failed: {}", e)))
+/// Load cert+key from NPKI files by index, decrypt key with password.
+fn load_cert_and_key(
+    state: &AppState,
+    cert_index: usize,
+    password: &str,
+) -> Result<(Vec<u8>, Vec<u8>), (StatusCode, String)> {
+    let certs = state.certs.read().unwrap();
+    let entry = certs.get(cert_index).ok_or_else(|| {
+        (StatusCode::BAD_REQUEST, format!("Invalid cert_index: {}", cert_index))
+    })?;
+
+    let cert_der = std::fs::read(&entry.cert_path)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Read cert: {}", e)))?;
+    let key_raw = std::fs::read(&entry.key_path)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Read key: {}", e)))?;
+
+    let key_der = if password.is_empty() {
+        key_raw
+    } else {
+        npki::decrypt_npki_key(&key_raw, password)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Key decryption failed: {}", e)))?
+    };
+
+    Ok((cert_der, key_der))
+}
+
+/// Build SP1 stdin from cert, key, CA, timestamp, registrant.
+fn build_stdin(
+    cert_der: &[u8],
+    key_der: &[u8],
+    ca_pub_key: &[u8],
+    registrant_bytes: &[u8; 20],
+) -> SP1Stdin {
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
+    let crl_der: Vec<u8> = Vec::new();
+
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&cert_der);
+    stdin.write(&key_der);
+    stdin.write(&cert_chain);
+    stdin.write(&timestamp);
+    stdin.write(&crl_der);
+    stdin.write(registrant_bytes);
+    stdin
 }
 
 /// Execute the ZK program without generating a proof (fast, for testing).
@@ -160,36 +225,15 @@ async fn execute_handler(
     Json(req): Json<ProveRequest2>,
     state: Arc<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let ca_pub_key = req.ca_pub_key
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| state.default_ca_pub_key.clone());
+    let (cert_der, key_der) = load_cert_and_key(&state, req.cert_index, &req.password)?;
+    let registrant_bytes = parse_registrant(&req.registrant)?;
+
+    let ca_pub_key = state.default_ca_pub_key.clone();
     if ca_pub_key.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "ca_pub_key is required (provide in request or place certs/ca_pub.der on server)".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, "CA public key not configured".to_string()));
     }
 
-    let decrypted_key = maybe_decrypt_key(&req.user_priv_key, &req.password)?;
-    let cert_der = req.cert_der;
-
-    let current_timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    let mut cert_chain = req.intermediate_certs;
-    cert_chain.push(ca_pub_key);
-
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&cert_der);
-    stdin.write(&decrypted_key);
-    stdin.write(&cert_chain);
-    stdin.write(&current_timestamp);
-    let crl_der: Vec<u8> = Vec::new(); // TODO: accept CRL from request or load from endpoint
-    stdin.write(&crl_der);
-    let registrant_bytes = parse_registrant(&req.registrant)?;
-    stdin.write(&registrant_bytes);
+    let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes);
 
     let result = tokio::task::spawn_blocking(move || {
         state.client.execute(ZK_X509_ELF, stdin).run()
@@ -214,50 +258,20 @@ async fn prove_handler(
     Json(req): Json<ProveRequest2>,
     state: Arc<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let ca_pub_key = req.ca_pub_key
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| state.default_ca_pub_key.clone());
+    let (cert_der, key_der) = load_cert_and_key(&state, req.cert_index, &req.password)?;
+    let registrant_bytes = parse_registrant(&req.registrant)?;
+
+    let ca_pub_key = state.default_ca_pub_key.clone();
     if ca_pub_key.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "ca_pub_key is required (provide in request or place certs/ca_pub.der on server)".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, "CA public key not configured".to_string()));
     }
 
-    let decrypted_key = maybe_decrypt_key(&req.user_priv_key, &req.password)?;
-    let cert_der = req.cert_der;
-
-    let current_timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    let mut cert_chain = req.intermediate_certs;
-    cert_chain.push(ca_pub_key);
-
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&cert_der);
-    stdin.write(&decrypted_key);
-    stdin.write(&cert_chain);
-    stdin.write(&current_timestamp);
-    let crl_der: Vec<u8> = Vec::new(); // TODO: accept CRL from request or load from endpoint
-    stdin.write(&crl_der);
-    let registrant_bytes = parse_registrant(&req.registrant)?;
-    stdin.write(&registrant_bytes);
+    let stdin = build_stdin(&cert_der, &key_der, &ca_pub_key, &registrant_bytes);
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;
-        let proof = state
-            .client
-            .prove(&pk, stdin)
-            .run()
-            .map_err(|e| e.to_string())?;
-
-        state
-            .client
-            .verify(&proof, pk.verifying_key(), None)
-            .map_err(|e| e.to_string())?;
-
+        let proof = state.client.prove(&pk, stdin).run().map_err(|e| e.to_string())?;
+        state.client.verify(&proof, pk.verifying_key(), None).map_err(|e| e.to_string())?;
         let vkey = pk.verifying_key().bytes32().to_string();
         Ok((proof, vkey))
     })
@@ -266,7 +280,6 @@ async fn prove_handler(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let (proof, vkey) = result;
-
     let bytes = proof.public_values.as_slice();
     let decoded = PublicValuesStruct::abi_decode(bytes)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

@@ -20,6 +20,10 @@ path = "src/bin/vkey.rs"
 name = "server"
 path = "src/bin/server.rs"
 
+[[bin]]
+name = "interactive"
+path = "src/bin/interactive.rs"
+
 [dependencies]
 sp1-sdk = { version = "6.0.1", features = ["blocking"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
@@ -41,6 +45,8 @@ kisaseed = "0.1.3"
 cbc = { version = "0.1", features = ["alloc"] }
 rsa = "0.9"
 x509-parser = "0.16"
+dirs = "5.0"
+rpassword = "7.3"
 
 [build-dependencies]
 sp1-build = { version = "6.0.1" }
