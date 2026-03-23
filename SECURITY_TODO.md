@@ -51,7 +51,7 @@
 
 ### 🚨 CRITICAL (논문 리뷰 지적사항)
 
-#### 36. Nullifier 공개키 기반 → 서명 기반으로 변경
+#### 36. ~~Nullifier 공개키 기반 → 서명 기반으로 변경~~ ✅ DONE
 - **문제:** 현재 `nullifier = H(cert.pk_der ‖ wallet_index)` — 인증서 공개키는 공개 데이터(은행, 정부기관 등에 전송됨)이므로 누구나 nullifier를 역산하여 지갑 추적 가능 → Unlinkability 완전 파괴
 - **공격:** cert.pk_der를 아는 공격자가 wallet_index(0,1,2...)를 brute-force → on-chain에서 nullifier→registrant 매핑으로 사용자 식별
 - **해결:** `nullifier = H(deterministic_sig ‖ wallet_index)` — 개인키 없이는 서명 생성 불가, RSA/RFC6979 ECDSA는 결정론적이므로 매번 동일값 보장

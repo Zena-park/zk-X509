@@ -194,10 +194,14 @@ fn cmd_prove(session: &mut Session) {
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &key_der, &registrant_bytes, wallet_index,
     ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });
+    let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
+        &cert_der, &key_der,
+    ).unwrap_or_else(|e| { println!("  Nullifier sign failed: {}", e); std::process::exit(1); });
 
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&ownership_sig);
+    stdin.write(&nullifier_sig);
     stdin.write(&cert_chain);
     stdin.write(&timestamp);
     stdin.write(&crl_der);

@@ -139,17 +139,20 @@ fn main() {
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index,
     ).expect("Failed to sign ownership challenge");
-    println!("Ownership sig: {} bytes", ownership_sig.len());
+    let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
+        &cert_der, &priv_key,
+    ).expect("Failed to sign nullifier domain");
+    println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 
-    // Build CA Merkle tree: all known CA hashes form the leaf set.
-    // For single-CA mode, the tree has one leaf. For multi-CA, pass --ca-cert multiple times.
+    // Build CA Merkle tree
     let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-    let ca_leaves = vec![ca_leaf_hash]; // TODO: support multiple CAs via CLI
+    let ca_leaves = vec![ca_leaf_hash];
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
 
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&ownership_sig);
+    stdin.write(&nullifier_sig);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
     stdin.write(&crl_der);
