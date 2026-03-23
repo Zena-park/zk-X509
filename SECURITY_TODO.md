@@ -32,7 +32,7 @@
 
 ### MEDIUM
 
-#### 18. CRL 오라클 / 온체인 CRL 커밋
+#### 18. ~~CRL 오라클 / 온체인 CRL 커밋~~ → #50으로 흡수
 - CRL 해시를 public values에 포함하거나, 온체인 CRL 오라클 구축
 - 현재 CRL은 프루버 서버가 로컬에서 제공
 
@@ -144,13 +144,19 @@
 
 ### MEDIUM (측정 필요)
 
-#### 50. CRL Merkle Oracle — 대규모 CRL 지원
+#### 50. CRL Merkle Oracle — 대규모 CRL 지원 (← #18 흡수)
 - **문제:** 현재 zkVM 내 CRL 검증은 전체 CRL DER을 입력 → 대규모 CRL(수십 MB)은 비용 비현실적
 - **해결:** 오라클 운영자가 CRL의 폐지 시리얼 번호를 Merkle tree로 구성 → root만 on-chain 저장
 - **zkVM:** "내 시리얼이 이 Merkle tree에 없다"는 non-membership proof 검증
 - **컨트랙트:** `crlMerkleRoot` 상태 + `updateCrlMerkleRoot()` 관리자 함수
 - **장점:** CRL 크기 무관 (수백만 건이어도 Merkle proof는 log(n) 해시만)
 - **변경 범위:** program (Merkle non-membership proof), contracts (crlMerkleRoot 상태), script (CRL → Merkle tree 변환 도구), 오라클 운영 인프라
+
+#### 51. zk-email 벤치마크 재실행 (메모리 설정 필요)
+- **문제:** snarkjs trusted setup이 메모리 부족으로 25분+ 소요 (메모리 102MB 고정)
+- **해결:** `NODE_OPTIONS=--max_old_space_size=8192 npx snarkjs groth16 setup ...`
+- **측정 필요:** trusted setup 시간, proof 생성 시간, zkey 크기
+- **ptau 파일:** 이미 다운로드 완료 (589MB, ptau21.ptau)
 
 #### 49. On-chain gas 실측 (Groth16 verifier)
 - **현재:** 300K gas는 추정치 (SP1 문서 + BN254 pairing 비용 기반)

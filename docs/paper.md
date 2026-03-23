@@ -982,9 +982,10 @@ All measurements were taken on the same machine (macOS, Apple Silicon) for fair 
 | Metric | zk-X509 | zk-email | Polygon ID | Semaphore | zkPassport | Worldcoin |
 |--------|---------|----------|------------|-----------|------------|-----------|
 | **ZK Backend** | SP1 zkVM (RISC-V) | Circom + Groth16 | Circom + Groth16 | Circom + Groth16 | Noir/Circom | Custom |
-| **Constraints / Cycles** | 11.8M cycles (P-256) | 1.26M constraints | ~1M constraints | ~150K constraints | N/A | N/A |
-| **On-Chain Gas** | ~300K (Groth16) | ~300K (Groth16) | ~350K (Groth16) | ~150K (Groth16) | ~250K (est.) | ~200K (est.) |
-| **Test Suite Time** | 96s (execute) | 96s (9 tests) | Partial failure | N/A | N/A | N/A |
+| **Constraints / Cycles** | 11.8M cycles (P-256) | 1.26M constraints (measured) | ~1M constraints (docs) | ~150K constraints (docs) | N/A | N/A |
+| **Proof Generation** | 102s (CPU, multi-core) | TBD | TBD | TBD | TBD | TBD |
+| **Trusted Setup** | Not required (STARK) | Required (Groth16) | Required | Required | TBD | N/A |
+| **On-Chain Gas** | ~300K (est. Groth16) | ~300K (est. Groth16) | ~350K (docs) | ~150K (docs) | ~250K (est.) | ~200K (est.) |
 | **Hardware Required** | None | None | None | None | NFC reader | Orb biometric |
 | **PKI Compatibility** | Any X.509 CA | DKIM (email only) | DID only | None (custom) | Passport chip | None |
 | **Credential Source** | Government PKI | Email providers | New DID issuers | None | Passport | Biometric |
