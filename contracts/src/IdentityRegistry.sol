@@ -141,6 +141,7 @@ contract IdentityRegistry {
     ///      WARNING: If certificate files are compromised, an attacker could re-register
     ///      to their own wallet. This is by design — the certificate is the identity anchor.
     function reRegister(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
+        // Early revert before expensive proof verification (same pattern as register)
         if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
         (bytes32 nullifier, uint64 notAfter) = _validateProof(proof, publicValues);

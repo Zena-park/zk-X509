@@ -297,7 +297,9 @@ const OID_CN: &[u8]       = &[0x55, 0x04, 0x03]; // 2.5.4.3
 /// Salted with cert serial to prevent rainbow table attacks.
 ///
 /// Optimized: fixed-size arrays (no heap Vec), streaming SHA-256 (no preimage Vec).
-const MAX_FIELD_VALUES: usize = 4; // Max multi-valued attributes per field in X.509
+// X.509 subject fields rarely have more than 2 values per OID.
+// Panic if exceeded to prevent silent hash divergence.
+const MAX_FIELD_VALUES: usize = 4;
 
 fn extract_subject_field_hashes(
     subject: &x509_parser::x509::X509Name,
@@ -319,13 +321,17 @@ fn extract_subject_field_hashes(
     for attr in subject.iter_attributes() {
         let oid_bytes = attr.attr_type().as_bytes();
         if let Ok(value) = attr.as_str() {
-            if oid_bytes == OID_COUNTRY && counts[0] < MAX_FIELD_VALUES {
+            if oid_bytes == OID_COUNTRY {
+                assert!(counts[0] < MAX_FIELD_VALUES, "Too many Country values");
                 country_vals[counts[0]] = Some(value); counts[0] += 1;
-            } else if oid_bytes == OID_ORG && counts[1] < MAX_FIELD_VALUES {
+            } else if oid_bytes == OID_ORG {
+                assert!(counts[1] < MAX_FIELD_VALUES, "Too many Org values");
                 org_vals[counts[1]] = Some(value); counts[1] += 1;
-            } else if oid_bytes == OID_ORG_UNIT && counts[2] < MAX_FIELD_VALUES {
+            } else if oid_bytes == OID_ORG_UNIT {
+                assert!(counts[2] < MAX_FIELD_VALUES, "Too many OrgUnit values");
                 ou_vals[counts[2]] = Some(value); counts[2] += 1;
-            } else if oid_bytes == OID_CN && counts[3] < MAX_FIELD_VALUES {
+            } else if oid_bytes == OID_CN {
+                assert!(counts[3] < MAX_FIELD_VALUES, "Too many CN values");
                 cn_vals[counts[3]] = Some(value); counts[3] += 1;
             }
         }
@@ -338,11 +344,9 @@ fn extract_subject_field_hashes(
         let slice = &mut vals[..count];
         slice.sort();
         let mut hasher = Sha256::new();
-        for v in slice.iter() {
-            if let Some(s) = v {
-                hasher.update((s.len() as u32).to_be_bytes());
-                hasher.update(s.as_bytes());
-            }
+        for v in slice.iter().flatten() {
+            hasher.update((v.len() as u32).to_be_bytes());
+            hasher.update(v.as_bytes());
         }
         hasher.update(serial);
         hasher.finalize().into()
