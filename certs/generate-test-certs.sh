@@ -142,9 +142,9 @@ echo "=== Generating ECDSA P-384 CA ==="
 # Generate EC CA private key (P-384)
 openssl ecparam -genkey -name secp384r1 -noout -out ec384_ca.key 2>/dev/null
 
-# Generate self-signed EC CA certificate
+# Generate self-signed EC CA certificate (explicit -sha384)
 openssl req -new -x509 -key ec384_ca.key -out ec384_ca.pem -days 3650 \
-    -subj "/C=KR/O=Test EC384 CA/CN=zk-X509 Test EC384 Root CA" 2>/dev/null
+    -subj "/C=KR/O=Test EC384 CA/CN=zk-X509 Test EC384 Root CA" -sha384 2>/dev/null
 
 # Convert to DER
 openssl x509 -in ec384_ca.pem -outform DER -out ec384_ca.der
@@ -166,9 +166,9 @@ openssl ecparam -genkey -name secp384r1 -noout -out ec384_signPri_raw.key 2>/dev
 openssl req -new -key ec384_signPri_raw.key -out ec384_user.csr \
     -subj "/C=KR/O=Test EC384 User/CN=Park Minsoo/serialNumber=ec384user001" 2>/dev/null
 
-# Sign with EC384 CA
+# Sign with EC384 CA (explicit -sha384 to ensure ecdsa-with-SHA384 OID)
 openssl x509 -req -in ec384_user.csr -CA ec384_ca.pem -CAkey ec384_ca.key \
-    -CAcreateserial -out ec384_signCert.pem -days 365 2>/dev/null
+    -CAcreateserial -out ec384_signCert.pem -days 365 -sha384 2>/dev/null
 
 # Convert to DER
 openssl x509 -in ec384_signCert.pem -outform DER -out ec384_signCert.der

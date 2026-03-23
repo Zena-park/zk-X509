@@ -80,11 +80,8 @@ fn verify_rsa_signature(
 }
 
 /// Verify an ECDSA signature using the signer's raw SPKI DER public key.
-/// Supports P-256 (ecdsa-with-SHA256) and P-384 (ecdsa-with-SHA384).
-///
-/// Note: Maps sig algorithm OID to curve per RFC 5758 convention
-/// (SHA-256 → P-256, SHA-384 → P-384). Non-standard combinations
-/// (e.g. P-256 + SHA-384) are not supported.
+/// Curve is detected from the SPKI's namedCurve OID (not the signature algorithm OID).
+/// Digest algorithm is selected from the signature algorithm OID independently.
 fn verify_ecdsa_signature(
     tbs_der: &[u8],
     signature_bytes: &[u8],
@@ -92,25 +89,67 @@ fn verify_ecdsa_signature(
     signer_spki_der: &[u8],
 ) {
     let ec_point = extract_ec_point_from_spki(signer_spki_der);
+    let curve_oid = extract_curve_oid_from_spki(signer_spki_der);
+
+    // Select digest from signature algorithm OID
     if sig_alg_oid_bytes == OID_BYTES_ECDSA_SHA256 {
+        let digest: [u8; 32] = Sha256::digest(tbs_der).into();
+        verify_ec_with_digest(ec_point, signature_bytes, &digest, curve_oid);
+    } else if sig_alg_oid_bytes == OID_BYTES_ECDSA_SHA384 {
+        let digest: [u8; 48] = sha2::Sha384::digest(tbs_der).into();
+        verify_ec_with_digest(ec_point, signature_bytes, &digest, curve_oid);
+    } else {
+        panic!("Unsupported ECDSA signature algorithm OID");
+    }
+}
+
+/// Verify ECDSA signature with a pre-computed digest, selecting curve from SPKI OID.
+fn verify_ec_with_digest(
+    ec_point: &[u8],
+    signature_bytes: &[u8],
+    digest: &[u8],
+    curve_oid: &[u8],
+) {
+    if curve_oid == OID_BYTES_PRIME256V1 {
         let vk = P256VerifyingKey::from_sec1_bytes(ec_point)
             .expect("Failed to parse P-256 public key");
         let sig = P256Signature::from_der(signature_bytes)
             .expect("Failed to parse P-256 DER signature");
-        let digest: [u8; 32] = Sha256::digest(tbs_der).into();
-        vk.verify_prehash(&digest, &sig)
+        vk.verify_prehash(digest, &sig)
             .expect("P-256 ECDSA signature verification failed");
-    } else if sig_alg_oid_bytes == OID_BYTES_ECDSA_SHA384 {
+    } else if curve_oid == OID_BYTES_SECP384R1 {
         let vk = P384VerifyingKey::from_sec1_bytes(ec_point)
             .expect("Failed to parse P-384 public key");
         let sig = P384Signature::from_der(signature_bytes)
             .expect("Failed to parse P-384 DER signature");
-        let digest: [u8; 48] = sha2::Sha384::digest(tbs_der).into();
-        vk.verify_prehash(&digest, &sig)
+        vk.verify_prehash(digest, &sig)
             .expect("P-384 ECDSA signature verification failed");
     } else {
-        panic!("Unsupported ECDSA signature algorithm OID");
+        panic!("Unsupported EC curve OID: {:?}", curve_oid);
     }
+}
+
+/// Extract the namedCurve OID bytes from an EC SPKI DER structure.
+/// SPKI AlgorithmIdentifier for EC = SEQUENCE { ecPublicKey OID, namedCurve OID }
+fn extract_curve_oid_from_spki(spki_der: &[u8]) -> &[u8] {
+    assert!(spki_der[0] == 0x30, "Expected SEQUENCE tag in SPKI");
+    let (_, seq_offset) = der_read_length(&spki_der[1..]);
+    let inner = &spki_der[1 + seq_offset..];
+
+    // AlgorithmIdentifier SEQUENCE
+    assert!(inner[0] == 0x30, "Expected SEQUENCE for AlgorithmIdentifier");
+    let (alg_len, alg_offset) = der_read_length(&inner[1..]);
+    let alg_content = &inner[1 + alg_offset..1 + alg_offset + alg_len];
+
+    // First element: algorithm OID (ecPublicKey)
+    assert!(alg_content[0] == 0x06, "Expected OID tag for algorithm");
+    let (oid_len, oid_offset) = der_read_length(&alg_content[1..]);
+    let after_alg_oid = &alg_content[1 + oid_offset + oid_len..];
+
+    // Second element: namedCurve OID (parameters)
+    assert!(after_alg_oid[0] == 0x06, "Expected OID tag for namedCurve");
+    let (curve_len, curve_offset) = der_read_length(&after_alg_oid[1..]);
+    &after_alg_oid[1 + curve_offset..1 + curve_offset + curve_len]
 }
 
 /// Extract the EC point bytes from a SubjectPublicKeyInfo DER structure.
