@@ -36,7 +36,7 @@ contract DeployScript is Script {
             console.log("Set CA Merkle root:");
             console.logBytes32(merkleRoot);
         } catch {
-            console.log("No CA_MERKLE_ROOT provided, skipping");
+            console.log("WARNING: No CA_MERKLE_ROOT provided. register() will revert until set.");
         }
 
         vm.stopBroadcast();
