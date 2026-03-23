@@ -3,7 +3,8 @@
 # zk-X509 Cycle Benchmark Script
 #
 # Measures SP1 zkVM cycle counts for all supported configurations.
-# Requires: test certs generated (certs/generate-test-certs.sh)
+# Requires: test certs and CRL generated
+#   cd certs && bash generate-test-certs.sh && bash generate-test-crl.sh
 #
 # Usage:
 #   bash script/bench.sh
@@ -22,9 +23,12 @@ echo ""
 run_bench() {
     local label="$1"
     shift
-    local cycles
+    local cycles status
+    set +e
     cycles=$($BIN --execute "$@" --registrant "$REGISTRANT" 2>&1 | grep "Cycles:" | awk '{print $2}')
-    if [ -n "$cycles" ]; then
+    status=$?
+    set -e
+    if [ "$status" -eq 0 ] && [ -n "$cycles" ]; then
         printf "%-45s %'12d cycles\n" "$label" "$cycles"
     else
         printf "%-45s FAILED\n" "$label"
