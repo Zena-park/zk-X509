@@ -188,8 +188,9 @@ contract IdentityRegistry {
     /// @notice Adjust the maximum proof age (bounded: 5 min to 24 hours).
     /// @param newAge New max proof age in seconds.
     function setMaxProofAge(uint256 newAge) external onlyOwner {
-        if (newAge < MIN_PROOF_AGE || newAge > MAX_PROOF_AGE_LIMIT)
+        if (newAge < MIN_PROOF_AGE || newAge > MAX_PROOF_AGE_LIMIT) {
             revert ProofAgeOutOfRange(newAge, MIN_PROOF_AGE, MAX_PROOF_AGE_LIMIT);
+        }
         uint256 oldAge = maxProofAge;
         maxProofAge = newAge;
         emit MaxProofAgeUpdated(oldAge, newAge);

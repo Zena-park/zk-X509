@@ -493,6 +493,12 @@ contract IdentityRegistryTest is Test {
         assertEq(registry.maxProofAge(), 10 minutes);
     }
 
+    function test_OnlyOwnerCanSetProofAge() public {
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        registry.setMaxProofAge(10 minutes);
+    }
+
     function test_RevertProofAgeOutOfRange_TooShort() public {
         vm.expectRevert(
             abi.encodeWithSelector(
