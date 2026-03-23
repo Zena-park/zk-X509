@@ -1,0 +1,133 @@
+#!/bin/bash
+# ============================================================
+# zk-X509 Local Environment Setup
+#
+# Starts Anvil + deploys contracts + opens interactive CLI.
+#
+# Usage:
+#   bash script/run-local.sh
+#
+# Prerequisites:
+#   - anvil (foundryup)
+#   - forge (foundryup)
+#   - cargo (rustup)
+#   - Test certs generated (cd certs && bash generate-test-certs.sh)
+# ============================================================
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "=== zk-X509 Local Environment ==="
+echo ""
+
+# ========================================
+# Step 1: Start Anvil (background)
+# ========================================
+echo "[1/4] Starting Anvil (local Ethereum)..."
+
+# Kill any existing anvil
+pkill -f "anvil" 2>/dev/null || true
+sleep 1
+
+anvil --silent &
+ANVIL_PID=$!
+sleep 2
+
+if ! kill -0 $ANVIL_PID 2>/dev/null; then
+    echo "❌ Failed to start Anvil"
+    exit 1
+fi
+echo "  ✅ Anvil running (PID: $ANVIL_PID)"
+echo "  RPC: http://localhost:8545"
+echo "  Chain ID: 31337"
+echo ""
+
+# Anvil default account #0
+DEPLOYER_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+DEPLOYER_ADDR="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+
+# ========================================
+# Step 2: Deploy contracts
+# ========================================
+echo "[2/4] Deploying IdentityRegistry..."
+
+cd contracts
+DEPLOY_OUTPUT=$(forge script script/DeployLocal.s.sol --tc DeployLocalScript \
+    --rpc-url http://localhost:8545 \
+    --broadcast \
+    --sender $DEPLOYER_ADDR \
+    --private-key $DEPLOYER_KEY 2>&1)
+
+# Extract contract address from logs
+REGISTRY_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "IdentityRegistry:" | awk '{print $2}')
+if [ -z "$REGISTRY_ADDR" ]; then
+    echo "❌ Deploy failed:"
+    echo "$DEPLOY_OUTPUT"
+    kill $ANVIL_PID 2>/dev/null
+    exit 1
+fi
+echo "  ✅ IdentityRegistry: $REGISTRY_ADDR"
+echo ""
+cd ..
+
+# ========================================
+# Step 3: Verify deployment
+# ========================================
+echo "[3/4] Verifying deployment..."
+
+CA_ROOT=$(cast call $REGISTRY_ADDR "caMerkleRoot()(bytes32)" --rpc-url http://localhost:8545 2>/dev/null)
+echo "  CA Merkle Root: $CA_ROOT"
+
+MAX_AGE=$(cast call $REGISTRY_ADDR "maxProofAge()(uint256)" --rpc-url http://localhost:8545 2>/dev/null)
+echo "  Max Proof Age: $MAX_AGE seconds"
+
+echo "  ✅ Contract verified"
+echo ""
+
+# ========================================
+# Step 4: Print summary
+# ========================================
+echo "=== Environment Ready ==="
+echo ""
+echo "  Anvil PID:          $ANVIL_PID"
+echo "  RPC URL:            http://localhost:8545"
+echo "  Chain ID:           31337"
+echo "  Registry:           $REGISTRY_ADDR"
+echo "  Deployer:           $DEPLOYER_ADDR"
+echo ""
+echo "  Test accounts (10000 ETH each):"
+echo "    #0: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+echo "    #1: 0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+echo ""
+echo "=== Quick Test Commands ==="
+echo ""
+echo "  # Execute mode (no proof, fast):"
+echo "  cargo run --release --bin zk-x509 -- --execute \\"
+echo "    --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \\"
+echo "    --registrant $DEPLOYER_ADDR --chain-id 31337 --contract-address $REGISTRY_ADDR"
+echo ""
+echo "  # Interactive mode:"
+echo "  cargo run --release --bin interactive"
+echo ""
+echo "  # Check if verified:"
+echo "  cast call $REGISTRY_ADDR 'isVerified(address)(bool)' $DEPLOYER_ADDR --rpc-url http://localhost:8545"
+echo ""
+echo "  # Stop Anvil:"
+echo "  kill $ANVIL_PID"
+echo ""
+
+# Save env for other scripts
+cat > .env.local << EOF
+ANVIL_PID=$ANVIL_PID
+RPC_URL=http://localhost:8545
+CHAIN_ID=31337
+REGISTRY_ADDRESS=$REGISTRY_ADDR
+DEPLOYER_ADDRESS=$DEPLOYER_ADDR
+DEPLOYER_KEY=$DEPLOYER_KEY
+EOF
+echo "  Environment saved to .env.local"
+echo ""
+echo "=== Press Ctrl+C to stop Anvil ==="
+
+# Keep running until user stops
+wait $ANVIL_PID

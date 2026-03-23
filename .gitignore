@@ -33,3 +33,4 @@ certs/**/*.key
 certs/**/*.pem
 # DER certs and public keys are tracked for reproducible benchmarks/tests
 # Regenerate: cd certs && bash generate-test-certs.sh && bash generate-test-crl.sh
+.env.local
