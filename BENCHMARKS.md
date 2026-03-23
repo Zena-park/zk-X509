@@ -16,8 +16,9 @@ Measured on SP1 zkVM v6.0.1 (execute mode), macOS, single-level certificate chai
 
 ### Signature Algorithm Impact
 - **P-256 is 32% cheaper than RSA-2048** — recommended for new deployments
-- **P-384 is 2.7× more expensive than RSA-2048** — only use when required by policy
-- The dominant cost is signature verification (ownership + chain), not hashing
+- **P-384 is 2.7× more expensive than RSA-2048** — the larger field (384-bit vs 256-bit)
+  causes ~4× more elliptic curve operations; only use when required by policy (e.g., CNSA Suite)
+- The dominant cost is signature verification (ownership + nullifier + chain), not hashing
 
 ### CRL Verification
 - Adds ~5.8M cycles (+33%) for a small test CRL (<1KB, 1 revoked entry)
