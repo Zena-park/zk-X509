@@ -142,6 +142,14 @@
 - **해결:** challenge = `H(serial ‖ addr ‖ wallet_index ‖ timestamp ‖ chain_id)`, 컨트랙트에서 `require(chainId == block.chainid)`
 - **변경 범위:** program, ownership.rs, contracts (PublicValuesStruct에 chainId 추가)
 
+### MEDIUM (측정 필요)
+
+#### 49. On-chain gas 실측 (Groth16 verifier)
+- **현재:** 300K gas는 추정치 (SP1 문서 + BN254 pairing 비용 기반)
+- **필요:** Anvil에 SP1 Groth16 Verifier 배포 → proof 제출 → 실제 gas 측정
+- **순서:** `--prove`로 proof 생성 (완료) → Anvil 배포 → register() 호출 → gas report
+- **변경 범위:** 테스트만 (코드 변경 없음), BENCHMARKS.md에 실측값 업데이트
+
 ### LOW (논문 작업)
 
 #### 46. ~~CRL 논문 톤다운~~ ✅ DONE
