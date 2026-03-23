@@ -30,13 +30,13 @@ contract DeployScript is Script {
         console.log("Max wallets per cert:", maxWallets);
         console.log("IdentityRegistry deployed at:", address(registry));
 
-        // Register trusted CA roots (if provided)
-        try vm.envBytes32("CA_ROOT_HASH") returns (bytes32 caRootHash) {
-            registry.addCARoot(caRootHash);
-            console.log("Added CA root hash:");
-            console.logBytes32(caRootHash);
+        // Set CA Merkle root (if provided)
+        try vm.envBytes32("CA_MERKLE_ROOT") returns (bytes32 merkleRoot) {
+            registry.updateCaMerkleRoot(merkleRoot);
+            console.log("Set CA Merkle root:");
+            console.logBytes32(merkleRoot);
         } catch {
-            console.log("No CA_ROOT_HASH provided, skipping CA registration");
+            console.log("No CA_MERKLE_ROOT provided, skipping");
         }
 
         vm.stopBroadcast();

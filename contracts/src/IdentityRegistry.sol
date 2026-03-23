@@ -16,8 +16,8 @@ contract IdentityRegistry {
     /// @notice The verification key for the ZK X.509 program.
     bytes32 public immutable programVKey;
 
-    /// @notice Whitelisted CA root hashes (SHA-256 of CA public key).
-    mapping(bytes32 => bool) public validCARoots;
+    /// @notice Merkle root of allowed CA set (hides which specific CA issued the cert).
+    bytes32 public caMerkleRoot;
 
     /// @notice Nullifier → registered wallet address (address(0) = unused).
     mapping(bytes32 => address) public nullifierOwner;
@@ -45,10 +45,9 @@ contract IdentityRegistry {
 
     // ============ Events ============
 
-    event UserRegistered(address indexed user, bytes32 nullifier, bytes32 caRootHash);
+    event UserRegistered(address indexed user, bytes32 nullifier);
     event UserReRegistered(address indexed oldUser, address indexed newUser, bytes32 nullifier);
-    event CARootAdded(bytes32 indexed caRootHash);
-    event CARootRemoved(bytes32 indexed caRootHash);
+    event CaMerkleRootUpdated(bytes32 indexed newRoot);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
     event Paused(address indexed by);
@@ -56,7 +55,7 @@ contract IdentityRegistry {
 
     // ============ Errors ============
 
-    error UnsupportedCA(bytes32 caRootHash);
+    error InvalidCaMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
     error AlreadyRegistered(bytes32 nullifier);
     error UserAlreadyVerified(address user);
     error ProofTooOld(uint64 proofTimestamp, uint256 blockTimestamp);
@@ -100,17 +99,18 @@ contract IdentityRegistry {
     function _validateProof(
         bytes calldata proof,
         bytes calldata publicValues
-    ) internal view returns (bytes32 nullifier, bytes32 caRootHash, uint64 notAfter) {
+    ) internal view returns (bytes32 nullifier, uint64 notAfter) {
+        bytes32 proofMerkleRoot;
         address registrant;
         uint64 proofTimestamp;
         uint32 walletIndex;
-        (nullifier, caRootHash, proofTimestamp, registrant, walletIndex, notAfter) =
+        (nullifier, proofMerkleRoot, proofTimestamp, registrant, walletIndex, notAfter) =
             abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64));
 
         if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
         if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
         if (block.timestamp - proofTimestamp > MAX_PROOF_AGE) revert ProofTooOld(proofTimestamp, block.timestamp);
-        if (!validCARoots[caRootHash]) revert UnsupportedCA(caRootHash);
+        if (proofMerkleRoot != caMerkleRoot) revert InvalidCaMerkleRoot(proofMerkleRoot, caMerkleRoot);
         if (walletIndex >= maxWalletsPerCert) revert WalletIndexOutOfRange(walletIndex, maxWalletsPerCert);
 
         sp1Verifier.verifyProof(programVKey, publicValues, proof);
@@ -120,7 +120,7 @@ contract IdentityRegistry {
 
     /// @notice Register a verified identity using a ZK proof of X.509 certificate ownership.
     function register(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
-        (bytes32 nullifier, bytes32 caRootHash, uint64 notAfter) = _validateProof(proof, publicValues);
+        (bytes32 nullifier, uint64 notAfter) = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         if (nullifierOwner[nullifier] != address(0)) revert AlreadyRegistered(nullifier);
@@ -129,7 +129,7 @@ contract IdentityRegistry {
         nullifierOwner[nullifier] = msg.sender;
         verifiedUntil[msg.sender] = notAfter;
 
-        emit UserRegistered(msg.sender, nullifier, caRootHash);
+        emit UserRegistered(msg.sender, nullifier);
     }
 
     /// @notice Re-register: move an existing nullifier slot to a new wallet address.
@@ -138,7 +138,7 @@ contract IdentityRegistry {
     ///      WARNING: If certificate files are compromised, an attacker could re-register
     ///      to their own wallet. This is by design — the certificate is the identity anchor.
     function reRegister(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
-        (bytes32 nullifier,, uint64 notAfter) = _validateProof(proof, publicValues);
+        (bytes32 nullifier, uint64 notAfter) = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         address oldOwner = nullifierOwner[nullifier];
@@ -163,18 +163,14 @@ contract IdentityRegistry {
 
     // ============ Admin Functions ============
 
-    /// @notice Add a trusted CA root hash.
-    /// @param caRootHash SHA-256 hash of the CA's public key.
-    function addCARoot(bytes32 caRootHash) external onlyOwner {
-        validCARoots[caRootHash] = true;
-        emit CARootAdded(caRootHash);
-    }
-
-    /// @notice Remove a CA root hash from the whitelist.
-    /// @param caRootHash SHA-256 hash of the CA's public key to remove.
-    function removeCARoot(bytes32 caRootHash) external onlyOwner {
-        validCARoots[caRootHash] = false;
-        emit CARootRemoved(caRootHash);
+    /// @notice Update the Merkle root of the allowed CA set.
+    /// @dev Recompute off-chain from the full CA list and submit the new root.
+    ///      Existing proofs generated with the old root will be rejected.
+    /// @param newRoot The new Merkle root of the allowed CA hashes.
+    function updateCaMerkleRoot(bytes32 newRoot) external onlyOwner {
+        require(newRoot != bytes32(0), "Merkle root cannot be zero");
+        caMerkleRoot = newRoot;
+        emit CaMerkleRootUpdated(newRoot);
     }
 
     /// @notice Revoke an identity by nullifier. Permanently disables the nullifier

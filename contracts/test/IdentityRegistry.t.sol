@@ -15,7 +15,7 @@ contract IdentityRegistryTest is Test {
     MockSP1Verifier public mockVerifier;
 
     bytes32 constant PROGRAM_VKEY = bytes32(uint256(0x1234));
-    bytes32 constant CA_ROOT_HASH = bytes32(uint256(0xCAFE));
+    bytes32 constant CA_MERKLE_ROOT = bytes32(uint256(0xCAFE));
     bytes32 constant NULLIFIER = bytes32(uint256(0xDEAD));
 
     address alice = makeAddr("alice");
@@ -39,19 +39,19 @@ contract IdentityRegistryTest is Test {
     function setUp() public {
         mockVerifier = new MockSP1Verifier();
         registry = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 1);
-        registry.addCARoot(CA_ROOT_HASH);
+        registry.updateCaMerkleRoot(CA_MERKLE_ROOT);
     }
 
     function test_Register() public {
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
         assertTrue(registry.isVerified(alice));
         assertTrue(registry.nullifierOwner(NULLIFIER) == alice);
     }
 
     function test_RevertRegistrantMismatch() public {
         // Proof bound to alice, but bob tries to submit it (front-running)
-        bytes memory publicValues = _pv(NULLIFIER, CA_ROOT_HASH, alice);
+        bytes memory publicValues = _pv(NULLIFIER, CA_MERKLE_ROOT, alice);
         vm.prank(bob);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.RegistrantMismatch.selector, alice, bob)
@@ -61,7 +61,7 @@ contract IdentityRegistryTest is Test {
 
     function test_RevertRegistrantMismatchReverse() public {
         // Proof bound to bob, but alice tries to submit it
-        bytes memory publicValues = _pv(NULLIFIER, CA_ROOT_HASH, bob);
+        bytes memory publicValues = _pv(NULLIFIER, CA_MERKLE_ROOT, bob);
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.RegistrantMismatch.selector, bob, alice)
@@ -71,41 +71,41 @@ contract IdentityRegistryTest is Test {
 
     function test_RevertDoubleRegistration() public {
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
 
         // Bob tries with same nullifier but his own address
         vm.prank(bob);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.AlreadyRegistered.selector, NULLIFIER)
         );
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, bob));
     }
 
     function test_RevertUserAlreadyVerified() public {
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
 
         bytes32 nullifier2 = bytes32(uint256(0xBEEF));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.UserAlreadyVerified.selector, alice)
         );
-        registry.register(hex"1234", _pv(nullifier2, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(nullifier2, CA_MERKLE_ROOT, alice));
     }
 
-    function test_RevertUnsupportedCA() public {
-        bytes32 unknownCA = bytes32(uint256(0xBAD));
+    function test_RevertInvalidCaMerkleRoot() public {
+        bytes32 wrongRoot = bytes32(uint256(0xBAD));
         vm.prank(alice);
         vm.expectRevert(
-            abi.encodeWithSelector(IdentityRegistry.UnsupportedCA.selector, unknownCA)
+            abi.encodeWithSelector(IdentityRegistry.InvalidCaMerkleRoot.selector, wrongRoot, CA_MERKLE_ROOT)
         );
-        registry.register(hex"1234", _pv(NULLIFIER, unknownCA, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, wrongRoot, alice));
     }
 
     function test_RevertProofTooOld() public {
         vm.warp(1700000000);
         uint64 oldTimestamp = uint64(block.timestamp - 2 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, oldTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -117,7 +117,7 @@ contract IdentityRegistryTest is Test {
 
     function test_RevertProofInFuture() public {
         uint64 futureTimestamp = uint64(block.timestamp + 1 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_ROOT_HASH, futureTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, futureTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -127,18 +127,16 @@ contract IdentityRegistryTest is Test {
         registry.register(hex"1234", publicValues);
     }
 
-    function test_AddRemoveCARoot() public {
-        bytes32 newCA = bytes32(uint256(0xFACE));
-        registry.addCARoot(newCA);
-        assertTrue(registry.validCARoots(newCA));
-        registry.removeCARoot(newCA);
-        assertFalse(registry.validCARoots(newCA));
+    function test_UpdateCaMerkleRoot() public {
+        bytes32 newRoot = bytes32(uint256(0xFACE));
+        registry.updateCaMerkleRoot(newRoot);
+        assertEq(registry.caMerkleRoot(), newRoot);
     }
 
     function test_OnlyOwnerCanManageCA() public {
         vm.prank(alice);
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
-        registry.addCARoot(bytes32(uint256(0xFACE)));
+        registry.updateCaMerkleRoot(bytes32(uint256(0xFACE)));
     }
 
     function test_TwoStepOwnershipTransfer() public {
@@ -156,10 +154,10 @@ contract IdentityRegistryTest is Test {
         assertEq(registry.pendingOwner(), address(0));
 
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
-        registry.addCARoot(bytes32(uint256(0xFACE)));
+        registry.updateCaMerkleRoot(bytes32(uint256(0xFACE)));
 
         vm.prank(alice);
-        registry.addCARoot(bytes32(uint256(0xFACE)));
+        registry.updateCaMerkleRoot(bytes32(uint256(0xFACE)));
     }
 
     function test_PauseBlocksRegistration() public {
@@ -167,7 +165,7 @@ contract IdentityRegistryTest is Test {
         assertTrue(registry.paused());
         vm.prank(alice);
         vm.expectRevert(IdentityRegistry.ContractPaused.selector);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
     }
 
     function test_UnpauseAllowsRegistration() public {
@@ -175,7 +173,7 @@ contract IdentityRegistryTest is Test {
         registry.unpause();
         assertFalse(registry.paused());
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
         assertTrue(registry.isVerified(alice));
     }
 
@@ -187,7 +185,7 @@ contract IdentityRegistryTest is Test {
 
     function test_RevokeIdentity() public {
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
         assertTrue(registry.isVerified(alice));
 
         registry.revokeIdentity(NULLIFIER, keccak256("CERT_REVOKED"));
@@ -205,7 +203,7 @@ contract IdentityRegistryTest is Test {
     function test_RevokedNullifierCannotReRegister() public {
         // Register then revoke
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
         registry.revokeIdentity(NULLIFIER, keccak256("CERT_REVOKED"));
 
         // Attempt to reRegister the revoked nullifier → should fail
@@ -213,32 +211,32 @@ contract IdentityRegistryTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.NullifierRevoked.selector, NULLIFIER)
         );
-        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, bob));
     }
 
     function test_RevokedNullifierCannotRegister() public {
         // Register, revoke, then try to register same nullifier again
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
         registry.revokeIdentity(NULLIFIER, keccak256("CERT_REVOKED"));
 
         vm.prank(bob);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.NullifierRevoked.selector, NULLIFIER)
         );
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, bob));
     }
 
     function test_RevokedUserCanRegisterWithNewCert() public {
         // Alice registers with NULLIFIER, gets revoked
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
         registry.revokeIdentity(NULLIFIER, keccak256("RE_ISSUE"));
 
         // Alice can register with a different cert (different nullifier)
         bytes32 nullifier2 = bytes32(uint256(0xBEEF));
         vm.prank(alice);
-        registry.register(hex"1234", _pv(nullifier2, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(nullifier2, CA_MERKLE_ROOT, alice));
         assertTrue(registry.isVerified(alice));
     }
 
@@ -247,12 +245,12 @@ contract IdentityRegistryTest is Test {
     function test_ReRegister() public {
         // Alice registers
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
         assertTrue(registry.isVerified(alice));
 
         // Alice re-registers to bob's wallet (same cert/nullifier, new wallet)
         vm.prank(bob);
-        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, bob));
 
         // Alice unverified, bob verified
         assertFalse(registry.isVerified(alice));
@@ -265,25 +263,25 @@ contract IdentityRegistryTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.NullifierNotRegistered.selector, NULLIFIER)
         );
-        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
     }
 
     function test_RevertReRegisterToAlreadyVerifiedWallet() public {
         // Register alice with NULLIFIER
         vm.prank(alice);
-        registry.register(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, alice));
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
 
         // Register bob with different nullifier
         bytes32 nullifier2 = bytes32(uint256(0xBEEF));
         vm.prank(bob);
-        registry.register(hex"1234", _pv(nullifier2, CA_ROOT_HASH, bob));
+        registry.register(hex"1234", _pv(nullifier2, CA_MERKLE_ROOT, bob));
 
         // Try to re-register NULLIFIER to bob (already verified)
         vm.prank(bob);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.UserAlreadyVerified.selector, bob)
         );
-        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_ROOT_HASH, bob));
+        registry.reRegister(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, bob));
     }
 
     // ============ Multi-wallet tests ============
@@ -291,18 +289,18 @@ contract IdentityRegistryTest is Test {
     function test_MultiWallet_TwoSlots() public {
         // Deploy a multi-wallet registry (maxWalletsPerCert = 3)
         IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
-        multiReg.addCARoot(CA_ROOT_HASH);
+        multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Alice registers wallet index 0
         bytes32 null0 = bytes32(uint256(0xA000));
         vm.prank(alice);
-        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        multiReg.register(hex"1234", _pvIdx(null0, CA_MERKLE_ROOT, alice, 0));
         assertTrue(multiReg.isVerified(alice));
 
         // Bob registers wallet index 1 (same cert, different wallet)
         bytes32 null1 = bytes32(uint256(0xA001));
         vm.prank(bob);
-        multiReg.register(hex"1234", _pvIdx(null1, CA_ROOT_HASH, bob, 1));
+        multiReg.register(hex"1234", _pvIdx(null1, CA_MERKLE_ROOT, bob, 1));
         assertTrue(multiReg.isVerified(bob));
 
         // Both verified
@@ -312,24 +310,24 @@ contract IdentityRegistryTest is Test {
 
     function test_MultiWallet_RevertIndexOutOfRange() public {
         IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 2);
-        multiReg.addCARoot(CA_ROOT_HASH);
+        multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Index 2 is out of range for max=2 (valid: 0, 1)
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.WalletIndexOutOfRange.selector, uint32(2), uint32(2))
         );
-        multiReg.register(hex"1234", _pvIdx(NULLIFIER, CA_ROOT_HASH, alice, 2));
+        multiReg.register(hex"1234", _pvIdx(NULLIFIER, CA_MERKLE_ROOT, alice, 2));
     }
 
     function test_MultiWallet_SameAddressTwoSlots_Reverts() public {
         IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
-        multiReg.addCARoot(CA_ROOT_HASH);
+        multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Alice registers slot 0
         bytes32 null0 = bytes32(uint256(0xB000));
         vm.prank(alice);
-        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        multiReg.register(hex"1234", _pvIdx(null0, CA_MERKLE_ROOT, alice, 0));
 
         // Alice tries slot 1 with same address → UserAlreadyVerified
         bytes32 null1 = bytes32(uint256(0xB001));
@@ -337,51 +335,51 @@ contract IdentityRegistryTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.UserAlreadyVerified.selector, alice)
         );
-        multiReg.register(hex"1234", _pvIdx(null1, CA_ROOT_HASH, alice, 1));
+        multiReg.register(hex"1234", _pvIdx(null1, CA_MERKLE_ROOT, alice, 1));
     }
 
     function test_MultiWallet_SameNullifierTwice_Reverts() public {
         IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
-        multiReg.addCARoot(CA_ROOT_HASH);
+        multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xC000));
         vm.prank(alice);
-        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        multiReg.register(hex"1234", _pvIdx(null0, CA_MERKLE_ROOT, alice, 0));
 
         // Same nullifier again → AlreadyRegistered
         vm.prank(bob);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.AlreadyRegistered.selector, null0)
         );
-        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, bob, 0));
+        multiReg.register(hex"1234", _pvIdx(null0, CA_MERKLE_ROOT, bob, 0));
     }
 
     function test_MultiWallet_ReRegister() public {
         IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
-        multiReg.addCARoot(CA_ROOT_HASH);
+        multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xD000));
         vm.prank(alice);
-        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        multiReg.register(hex"1234", _pvIdx(null0, CA_MERKLE_ROOT, alice, 0));
 
         // Re-register slot 0 from alice to bob
         vm.prank(bob);
-        multiReg.reRegister(hex"1234", _pvIdx(null0, CA_ROOT_HASH, bob, 0));
+        multiReg.reRegister(hex"1234", _pvIdx(null0, CA_MERKLE_ROOT, bob, 0));
         assertFalse(multiReg.isVerified(alice));
         assertTrue(multiReg.isVerified(bob));
     }
 
     function test_MultiWallet_RevokeOneSlot_OtherUnaffected() public {
         IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
-        multiReg.addCARoot(CA_ROOT_HASH);
+        multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xE000));
         bytes32 null1 = bytes32(uint256(0xE001));
 
         vm.prank(alice);
-        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        multiReg.register(hex"1234", _pvIdx(null0, CA_MERKLE_ROOT, alice, 0));
         vm.prank(bob);
-        multiReg.register(hex"1234", _pvIdx(null1, CA_ROOT_HASH, bob, 1));
+        multiReg.register(hex"1234", _pvIdx(null1, CA_MERKLE_ROOT, bob, 1));
 
         // Revoke slot 0 only
         multiReg.revokeIdentity(null0, keccak256("REVOKED"));
@@ -393,31 +391,31 @@ contract IdentityRegistryTest is Test {
 
     function test_MultiWallet_BoundaryIndices() public {
         IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
-        multiReg.addCARoot(CA_ROOT_HASH);
+        multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Index 0 (first)
         bytes32 null0 = bytes32(uint256(0xF000));
         vm.prank(alice);
-        multiReg.register(hex"1234", _pvIdx(null0, CA_ROOT_HASH, alice, 0));
+        multiReg.register(hex"1234", _pvIdx(null0, CA_MERKLE_ROOT, alice, 0));
         assertTrue(multiReg.isVerified(alice));
 
         // Index 2 (last valid for max=3)
         bytes32 null2 = bytes32(uint256(0xF002));
         vm.prank(bob);
-        multiReg.register(hex"1234", _pvIdx(null2, CA_ROOT_HASH, bob, 2));
+        multiReg.register(hex"1234", _pvIdx(null2, CA_MERKLE_ROOT, bob, 2));
         assertTrue(multiReg.isVerified(bob));
     }
 
     function test_MultiWallet_MaxZero_AllReverts() public {
         IdentityRegistry zeroReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 0);
-        zeroReg.addCARoot(CA_ROOT_HASH);
+        zeroReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Any index reverts (0 >= 0)
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.WalletIndexOutOfRange.selector, uint32(0), uint32(0))
         );
-        zeroReg.register(hex"1234", _pvIdx(NULLIFIER, CA_ROOT_HASH, alice, 0));
+        zeroReg.register(hex"1234", _pvIdx(NULLIFIER, CA_MERKLE_ROOT, alice, 0));
     }
 
     // ============ Certificate expiry tests ============
@@ -426,7 +424,7 @@ contract IdentityRegistryTest is Test {
         vm.warp(1700000000);
         // Cert expires in 1 year
         uint64 notAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
-        bytes memory pv = abi.encode(NULLIFIER, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), notAfter);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter);
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -437,7 +435,7 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_NotVerifiedAfterExpiry() public {
         vm.warp(1700000000);
         uint64 notAfter = uint64(block.timestamp + 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), notAfter);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter);
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -451,7 +449,7 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_CanReRegisterAfterExpiry() public {
         vm.warp(1700000000);
         uint64 notAfter = uint64(block.timestamp + 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), notAfter);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter);
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -463,7 +461,7 @@ contract IdentityRegistryTest is Test {
         // Alice can register with a new cert (different nullifier)
         bytes32 nullifier2 = bytes32(uint256(0xFEED));
         uint64 newNotAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
-        bytes memory pv2 = abi.encode(nullifier2, CA_ROOT_HASH, uint64(block.timestamp), alice, uint32(0), newNotAfter);
+        bytes memory pv2 = abi.encode(nullifier2, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), newNotAfter);
 
         vm.prank(alice);
         registry.register(hex"1234", pv2);
