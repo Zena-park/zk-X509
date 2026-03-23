@@ -151,8 +151,11 @@
 
 #### 47. Privacy-Preserving Delegated Proving 섹션 추가
 - 개인키가 zkVM에 안 들어가므로 클라우드 prover에 위임 가능
-- 사용자: 로컬에서 서명만 생성 (1초) → 클라우드: 증명 생성 (1~2분 GPU)
-- 논문의 실용성(UX) 장점을 부각하는 핵심 섹션
+- 사용자: 폰/PC에서 서명만 생성 (1초) → 클라우드 GPU: 증명 생성 (1~2분)
+- 클라우드 서버는 서명값만 볼 뿐 개인키를 알 수 없음 → 프라이버시 유지
+- "증명에 10분 소요 → 실용성 없다" 비판을 원천 차단하는 핵심 논거
+- Prover Market (Succinct, Gevulot 등) 연동 가능성도 언급
+- 변경 범위: 논문 (Discussion 또는 Architecture 섹션에 추가)
 
 #### 48. 기존 시스템 대비 정량 비교 테이블 (논문 Evaluation)
 - DID (Polygon ID, Worldcoin), zkPassport, Semaphore, zk-email과 비교
