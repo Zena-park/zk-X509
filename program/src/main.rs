@@ -176,14 +176,11 @@ fn verify_ownership_signature(
     if alg_oid_bytes == OID_BYTES_EC_PUB {
         // Use x509-parser's already-extracted EC point (no redundant DER walk)
         let ec_point = spki.subject_public_key.data.as_ref();
-        // Check curve by comparing OID directly (avoids lifetime issue with as_bytes())
-        let is_p256 = spki.algorithm.parameters.as_ref()
-            .and_then(|p| p.as_oid().ok())
+        // Parse curve OID once, match against known curves
+        let curve_params = spki.algorithm.parameters.as_ref()
+            .and_then(|p| p.as_oid().ok());
+        let is_p256 = curve_params.as_ref()
             .map(|oid| oid.as_bytes() == OID_BYTES_PRIME256V1)
-            .unwrap_or(false);
-        let is_p384 = !is_p256 && spki.algorithm.parameters.as_ref()
-            .and_then(|p| p.as_oid().ok())
-            .map(|oid| oid.as_bytes() == OID_BYTES_SECP384R1)
             .unwrap_or(false);
 
         if is_p256 {
@@ -193,7 +190,7 @@ fn verify_ownership_signature(
                 .expect("Failed to parse P-256 ownership signature");
             vk.verify_prehash(ownership_hash, &sig)
                 .expect("P-256 ownership signature verification failed");
-        } else if is_p384 {
+        } else if curve_params.map(|oid| oid.as_bytes() == OID_BYTES_SECP384R1).unwrap_or(false) {
             let vk = P384VerifyingKey::from_sec1_bytes(ec_point)
                 .expect("Failed to parse P-384 public key for ownership");
             let sig = P384Signature::from_der(ownership_sig)
