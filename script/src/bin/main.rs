@@ -137,7 +137,7 @@ fn main() {
 
     // Sign ownership + nullifier challenges
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
-        &cert_der, &priv_key, &registrant_bytes, args.wallet_index,
+        &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp,
     ).expect("Failed to sign ownership challenge");
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
         &cert_der, &priv_key,

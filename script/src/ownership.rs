@@ -52,12 +52,19 @@ fn parse_and_sign(cert_der: &[u8], key_der: &[u8], prehash: &[u8; 32]) -> Result
     sign_with_parsed_cert(&cert, key_der, prehash)
 }
 
-/// Sign the ownership challenge: SHA-256(cert_serial ‖ registrant ‖ wallet_index)
+/// Sign the ownership challenge:
+///   SHA-256(cert_serial[var bytes] ‖ registrant[20 bytes] ‖ wallet_index[u32 BE] ‖ timestamp[u64 BE])
+///
+/// Encoding: all integers are big-endian. `timestamp` is UNIX seconds (u64).
+/// Timestamp binds the signature to a specific proof generation time,
+/// preventing replay attacks where a prover server reuses a captured signature.
+/// The zkVM program must reconstruct the same hash with identical encoding.
 pub fn sign_ownership(
     cert_der: &[u8],
     key_der: &[u8],
     registrant: &[u8; 20],
     wallet_index: u32,
+    timestamp: u64,
 ) -> Result<Vec<u8>, String> {
     use x509_parser::prelude::FromDer;
     let (_, cert) = x509_parser::certificate::X509Certificate::from_der(cert_der)
@@ -68,6 +75,7 @@ pub fn sign_ownership(
     hasher.update(&serial);
     hasher.update(registrant);
     hasher.update(&wallet_index.to_be_bytes());
+    hasher.update(&timestamp.to_be_bytes());
     let challenge_hash: [u8; 32] = hasher.finalize().into();
 
     sign_with_parsed_cert(&cert, key_der, &challenge_hash)
@@ -170,8 +178,8 @@ mod tests {
         let (cert, key) = load_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig1 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
-        let sig2 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let sig1 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
+        let sig2 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
         assert_eq!(sig1, sig2, "RSA PKCS#1 v1.5 must be deterministic");
     }
 
@@ -181,8 +189,8 @@ mod tests {
         let reg_a = [0xAAu8; 20];
         let reg_b = [0xBBu8; 20];
 
-        let sig_a = sign_ownership(&cert, &key, &reg_a, 0).unwrap();
-        let sig_b = sign_ownership(&cert, &key, &reg_b, 0).unwrap();
+        let sig_a = sign_ownership(&cert, &key, &reg_a, 0, 1700000000).unwrap();
+        let sig_b = sign_ownership(&cert, &key, &reg_b, 0, 1700000000).unwrap();
         assert_ne!(sig_a, sig_b, "Different registrants must produce different signatures");
     }
 
@@ -191,9 +199,19 @@ mod tests {
         let (cert, key) = load_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig_0 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
-        let sig_1 = sign_ownership(&cert, &key, &registrant, 1).unwrap();
+        let sig_0 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
+        let sig_1 = sign_ownership(&cert, &key, &registrant, 1, 1700000000).unwrap();
         assert_ne!(sig_0, sig_1, "Different wallet indices must produce different signatures");
+    }
+
+    #[test]
+    fn test_sign_ownership_different_timestamp() {
+        let (cert, key) = load_test_cert_and_key();
+        let registrant = [0x70u8; 20];
+
+        let sig_t1 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
+        let sig_t2 = sign_ownership(&cert, &key, &registrant, 0, 1700000001).unwrap();
+        assert_ne!(sig_t1, sig_t2, "Different timestamps must produce different signatures (replay defense)");
     }
 
     #[test]
@@ -204,7 +222,7 @@ mod tests {
         let (cert, key) = load_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let sig = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
 
         // Verify with the cert's public key
         use x509_parser::prelude::FromDer;
@@ -214,11 +232,12 @@ mod tests {
         ).unwrap();
 
         let serial = parsed.tbs_certificate.serial.to_bytes_be();
-        let mut preimage = Vec::with_capacity(serial.len() + 20 + 4);
-        preimage.extend_from_slice(&serial);
-        preimage.extend_from_slice(&registrant);
-        preimage.extend_from_slice(&0u32.to_be_bytes());
-        let challenge_hash: [u8; 32] = Sha256::digest(&preimage).into();
+        let mut hasher = Sha256::new();
+        hasher.update(&serial);
+        hasher.update(&registrant);
+        hasher.update(&0u32.to_be_bytes());
+        hasher.update(&1700000000u64.to_be_bytes());
+        let challenge_hash: [u8; 32] = hasher.finalize().into();
 
         let scheme = rsa::Pkcs1v15Sign::new::<sha2::Sha256>();
         pub_key.verify(scheme, &challenge_hash, &sig)
@@ -232,8 +251,8 @@ mod tests {
         let (cert, key) = load_ec_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig1 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
-        let sig2 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let sig1 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
+        let sig2 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
         assert_eq!(sig1, sig2, "ECDSA with deterministic nonce must be deterministic");
     }
 
@@ -243,8 +262,8 @@ mod tests {
         let reg_a = [0xAAu8; 20];
         let reg_b = [0xBBu8; 20];
 
-        let sig_a = sign_ownership(&cert, &key, &reg_a, 0).unwrap();
-        let sig_b = sign_ownership(&cert, &key, &reg_b, 0).unwrap();
+        let sig_a = sign_ownership(&cert, &key, &reg_a, 0, 1700000000).unwrap();
+        let sig_b = sign_ownership(&cert, &key, &reg_b, 0, 1700000000).unwrap();
         assert_ne!(sig_a, sig_b, "Different registrants must produce different EC signatures");
     }
 
@@ -253,8 +272,8 @@ mod tests {
         let (cert, key) = load_ec_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig_0 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
-        let sig_1 = sign_ownership(&cert, &key, &registrant, 1).unwrap();
+        let sig_0 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
+        let sig_1 = sign_ownership(&cert, &key, &registrant, 1, 1700000000).unwrap();
         assert_ne!(sig_0, sig_1, "Different wallet indices must produce different EC signatures");
     }
 
@@ -265,7 +284,7 @@ mod tests {
         let (cert, key) = load_ec_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig_bytes = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let sig_bytes = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
 
         // Verify with the cert's public key
         use x509_parser::prelude::FromDer;
@@ -274,11 +293,12 @@ mod tests {
         let vk = VerifyingKey::from_sec1_bytes(&spki_raw).unwrap();
 
         let serial = parsed.tbs_certificate.serial.to_bytes_be();
-        let mut preimage = Vec::with_capacity(serial.len() + 20 + 4);
-        preimage.extend_from_slice(&serial);
-        preimage.extend_from_slice(&registrant);
-        preimage.extend_from_slice(&0u32.to_be_bytes());
-        let challenge_hash: [u8; 32] = Sha256::digest(&preimage).into();
+        let mut hasher = Sha256::new();
+        hasher.update(&serial);
+        hasher.update(&registrant);
+        hasher.update(&0u32.to_be_bytes());
+        hasher.update(&1700000000u64.to_be_bytes());
+        let challenge_hash: [u8; 32] = hasher.finalize().into();
 
         let sig = Signature::from_der(&sig_bytes).unwrap();
         vk.verify_prehash(&challenge_hash, &sig)
@@ -292,8 +312,8 @@ mod tests {
         let (cert, key) = load_ec384_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig1 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
-        let sig2 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let sig1 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
+        let sig2 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
         assert_eq!(sig1, sig2, "ECDSA P-384 must be deterministic");
     }
 
@@ -302,8 +322,8 @@ mod tests {
         let (cert, key) = load_ec384_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig_0 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
-        let sig_1 = sign_ownership(&cert, &key, &registrant, 1).unwrap();
+        let sig_0 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
+        let sig_1 = sign_ownership(&cert, &key, &registrant, 1, 1700000000).unwrap();
         assert_ne!(sig_0, sig_1, "Different wallet indices must produce different EC384 signatures");
     }
 
@@ -314,7 +334,7 @@ mod tests {
         let (cert, key) = load_ec384_test_cert_and_key();
         let registrant = [0x70u8; 20];
 
-        let sig_bytes = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let sig_bytes = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
 
         use x509_parser::prelude::FromDer;
         let (_, parsed) = x509_parser::certificate::X509Certificate::from_der(&cert).unwrap();
@@ -322,11 +342,12 @@ mod tests {
         let vk = VerifyingKey::from_sec1_bytes(&spki_raw).unwrap();
 
         let serial = parsed.tbs_certificate.serial.to_bytes_be();
-        let mut preimage = Vec::with_capacity(serial.len() + 20 + 4);
-        preimage.extend_from_slice(&serial);
-        preimage.extend_from_slice(&registrant);
-        preimage.extend_from_slice(&0u32.to_be_bytes());
-        let challenge_hash: [u8; 32] = Sha256::digest(&preimage).into();
+        let mut hasher = Sha256::new();
+        hasher.update(&serial);
+        hasher.update(&registrant);
+        hasher.update(&0u32.to_be_bytes());
+        hasher.update(&1700000000u64.to_be_bytes());
+        let challenge_hash: [u8; 32] = hasher.finalize().into();
 
         let sig = Signature::from_der(&sig_bytes).unwrap();
         vk.verify_prehash(&challenge_hash, &sig)
@@ -355,7 +376,7 @@ mod tests {
     fn test_nullifier_sig_differs_from_ownership() {
         let (cert, key) = load_test_cert_and_key();
         let registrant = [0x70u8; 20];
-        let ownership = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let ownership = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
         let nullifier = sign_nullifier(&cert, &key).unwrap();
         assert_ne!(ownership, nullifier, "Nullifier sig must differ from ownership sig");
     }

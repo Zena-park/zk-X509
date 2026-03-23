@@ -192,7 +192,7 @@ fn cmd_prove(session: &mut Session) {
     let max_wallets: u32 = 1;
 
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
-        &cert_der, &key_der, &registrant_bytes, wallet_index,
+        &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp,
     ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
         &cert_der, &key_der,

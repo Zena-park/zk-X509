@@ -224,8 +224,8 @@ fn build_stdin(
     wallet_index: u32,
     max_wallets: u32,
     disclosure_mask: u8,
+    timestamp: u64,
 ) -> SP1Stdin {
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
     let crl_der: Vec<u8> = Vec::new();
 
@@ -262,13 +262,15 @@ fn prepare_stdin(
 ) -> Result<SP1Stdin, String> {
     let (cert_der, key_der) = load_cert_and_key(state, cert_index, password)
         .map_err(|(_status, msg)| msg)?;
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {}", e))?.as_secs();
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
-        &cert_der, &key_der, registrant_bytes, wallet_index)
+        &cert_der, &key_der, registrant_bytes, wallet_index, timestamp)
         .map_err(|e| e.to_string())?;
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
         &cert_der, &key_der)
         .map_err(|e| e.to_string())?;
-    Ok(build_stdin(&cert_der, &ownership_sig, &nullifier_sig, ca_pub_key, registrant_bytes, wallet_index, max_wallets, disclosure_mask))
+    Ok(build_stdin(&cert_der, &ownership_sig, &nullifier_sig, ca_pub_key, registrant_bytes, wallet_index, max_wallets, disclosure_mask, timestamp))
 }
 
 /// Execute the ZK program without generating a proof (fast, for testing).
