@@ -96,7 +96,7 @@
 
 ### MEDIUM
 
-#### 34. Cycle 벤치마크 테이블
+#### 34. ~~Cycle 벤치마크 테이블~~ ✅ DONE
 - RSA vs ECDSA, 2단계 vs 3단계 체인, CRL 유무별 cycle 비용 정량화
 - SP1 SHA-256 precompile vs ZK-friendly hash (Poseidon) 비교 근거
 - 논문의 정량적 성능 분석 섹션에 필수
