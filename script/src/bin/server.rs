@@ -250,6 +250,7 @@ fn build_stdin(
     stdin.write(&ca_merkle_root);
     stdin.write(contract_address);
     stdin.write(&chain_id);
+    zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
     stdin
 }
 

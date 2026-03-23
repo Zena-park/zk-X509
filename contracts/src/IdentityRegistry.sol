@@ -19,6 +19,9 @@ contract IdentityRegistry {
     /// @notice Merkle root of allowed CA set (hides which specific CA issued the cert).
     bytes32 public caMerkleRoot;
 
+    /// @notice CRL Merkle root (bytes32(0) = CRL checking disabled).
+    bytes32 public crlMerkleRoot;
+
     /// @notice Nullifier → registered wallet address (address(0) = unused).
     mapping(bytes32 => address) public nullifierOwner;
 
@@ -51,6 +54,7 @@ contract IdentityRegistry {
     event UserRegistered(address indexed user, bytes32 nullifier);
     event UserReRegistered(address indexed oldUser, address indexed newUser, bytes32 nullifier);
     event CaMerkleRootUpdated(bytes32 indexed newRoot);
+    event CrlMerkleRootUpdated(bytes32 indexed newRoot);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
     event MaxProofAgeUpdated(uint256 oldAge, uint256 newAge);
@@ -76,6 +80,7 @@ contract IdentityRegistry {
     error CertAlreadyExpired(uint64 notAfter, uint256 blockTimestamp);
     error ChainIdMismatch(uint64 proofChainId, uint256 expectedChainId);
     error AppContractMismatch(address proofContract, address expectedContract);
+    error InvalidCrlMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
     error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
 
     // ============ Modifiers ============
@@ -131,6 +136,13 @@ contract IdentityRegistry {
                 abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64, uint64, address));
             if (proofChainId != uint64(block.chainid)) revert ChainIdMismatch(proofChainId, block.chainid);
             if (appContract != address(this)) revert AppContractMismatch(appContract, address(this));
+        }
+
+        // Verify CRL Merkle root (if CRL checking is enabled)
+        if (crlMerkleRoot != bytes32(0)) {
+            (, , , , , , , , bytes32 proofCrlRoot) =
+                abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64, uint64, address, bytes32));
+            if (proofCrlRoot != crlMerkleRoot) revert InvalidCrlMerkleRoot(proofCrlRoot, crlMerkleRoot);
         }
 
         sp1Verifier.verifyProof(programVKey, publicValues, proof);
@@ -195,6 +207,13 @@ contract IdentityRegistry {
         if (newRoot == bytes32(0)) revert ZeroMerkleRoot();
         caMerkleRoot = newRoot;
         emit CaMerkleRootUpdated(newRoot);
+    }
+
+    /// @notice Update the CRL Merkle root. Set bytes32(0) to disable CRL checking.
+    /// @param newRoot The new CRL SMT root (from off-chain Relayer).
+    function updateCrlMerkleRoot(bytes32 newRoot) external onlyOwner {
+        crlMerkleRoot = newRoot;
+        emit CrlMerkleRootUpdated(newRoot);
     }
 
     /// @notice Adjust the maximum proof age (bounded: 5 min to 24 hours).

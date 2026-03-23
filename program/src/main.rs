@@ -273,6 +273,24 @@ fn verify_merkle_membership(leaf: &[u8; 32], proof: &[[u8; 32]]) -> [u8; 32] {
     current
 }
 
+/// Verify CRL Merkle proof with position-aware hashing (NOT sorted-pair).
+/// This preserves leaf ordering for non-inclusion adjacency verification.
+fn verify_crl_merkle_proof(leaf: &[u8; 32], proof: &[[u8; 32]], directions: &[bool]) -> [u8; 32] {
+    let mut current = *leaf;
+    for (sibling, &is_left) in proof.iter().zip(directions.iter()) {
+        let mut hasher = Sha256::new();
+        if is_left {
+            hasher.update(current);
+            hasher.update(sibling);
+        } else {
+            hasher.update(sibling);
+            hasher.update(current);
+        }
+        current = hasher.finalize().into();
+    }
+    current
+}
+
 /// Check that a certificate's validity period covers the given timestamp.
 fn assert_cert_valid_at(cert: &X509Certificate, ts: i64, label: &str) {
     assert!(
@@ -397,6 +415,17 @@ pub fn main() {
     // Domain separation: contract address + chain ID prevent cross-DApp and cross-chain attacks
     let contract_address: [u8; 20] = sp1_zkvm::io::read();
     let chain_id: u64 = sp1_zkvm::io::read();
+    // CRL Merkle Oracle: non-inclusion proof for revocation checking
+    // If crl_merkle_root == [0; 32], CRL checking is disabled (legacy mode)
+    let crl_merkle_root: [u8; 32] = sp1_zkvm::io::read();
+    let crl_left_leaf: [u8; 32] = sp1_zkvm::io::read();
+    let crl_right_leaf: [u8; 32] = sp1_zkvm::io::read();
+    let crl_left_proof: Vec<[u8; 32]> = sp1_zkvm::io::read();
+    let crl_left_dirs: Vec<bool> = sp1_zkvm::io::read();
+    let crl_right_proof: Vec<[u8; 32]> = sp1_zkvm::io::read();
+    let crl_right_dirs: Vec<bool> = sp1_zkvm::io::read();
+    let crl_left_index: u32 = sp1_zkvm::io::read();
+    let crl_right_index: u32 = sp1_zkvm::io::read();
 
     assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
     assert!(wallet_index < max_wallets, "wallet_index must be < max_wallets");
@@ -549,6 +578,33 @@ pub fn main() {
     }
 
     // ========================================
+    // Step 4b: CRL Merkle Oracle (non-inclusion proof)
+    // ========================================
+    // If crl_merkle_root != [0; 32], verify that the user's cert serial
+    // is NOT in the revoked set via Sorted Merkle Tree non-inclusion proof.
+    // This replaces full CRL DER parsing for large-scale CRLs.
+    let zero_root: [u8; 32] = [0u8; 32];
+    if crl_merkle_root != zero_root {
+        let user_serial = user_cert.tbs_certificate.serial.to_bytes_be();
+        let serial_hash: [u8; 32] = Sha256::digest(&user_serial).into();
+
+        // Verify ordering: left < serial_hash < right
+        assert!(crl_left_leaf < serial_hash, "CRL non-inclusion: serial <= left leaf");
+        assert!(serial_hash < crl_right_leaf, "CRL non-inclusion: serial >= right leaf");
+
+        // Verify adjacency
+        assert!(crl_right_index == crl_left_index + 1, "CRL non-inclusion: leaves not adjacent");
+
+        // Verify left leaf's Merkle proof (position-aware, NOT sorted-pair)
+        let left_root = verify_crl_merkle_proof(&crl_left_leaf, &crl_left_proof, &crl_left_dirs);
+        assert!(left_root == crl_merkle_root, "CRL left Merkle proof invalid");
+
+        // Verify right leaf's Merkle proof
+        let right_root = verify_crl_merkle_proof(&crl_right_leaf, &crl_right_proof, &crl_right_dirs);
+        assert!(right_root == crl_merkle_root, "CRL right Merkle proof invalid");
+    }
+
+    // ========================================
     // Step 5: Verify ownership (signature-based)
     // ========================================
     // Host signs challenge = SHA-256(serial ‖ registrant ‖ wallet_index ‖ timestamp ‖ chain_id).
@@ -642,6 +698,7 @@ pub fn main() {
         notAfter: not_after,
         chainId: chain_id,
         appContract: alloy_sol_types::private::Address::from_slice(&contract_address),
+        crlMerkleRoot: crl_merkle_root.into(),
         countryHash: country_hash.into(),
         orgHash: org_hash.into(),
         orgUnitHash: org_unit_hash.into(),

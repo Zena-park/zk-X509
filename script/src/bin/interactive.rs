@@ -222,6 +222,7 @@ fn cmd_prove(session: &mut Session) {
     stdin.write(&ca_merkle_root);
     stdin.write(&contract_address);
     stdin.write(&chain_id);
+    zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
     match client.execute(ZK_X509_ELF, stdin).run() {
         Ok((output, report)) => {
             let decoded = PublicValuesStruct::abi_decode(output.as_slice())

@@ -179,6 +179,7 @@ fn main() {
     stdin.write(&ca_merkle_root);
     stdin.write(&contract_bytes);
     stdin.write(&args.chain_id);
+    zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
     println!("Wallet Index: {} / Max: {} / Disclosure: 0x{:02X}", args.wallet_index, args.max_wallets, args.disclosure_mask);
     println!("Registrant: 0x{}", hex::encode(registrant_bytes));
     println!("Chain ID: {} / Contract: 0x{}", args.chain_id, hex::encode(contract_bytes));
