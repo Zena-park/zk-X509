@@ -49,6 +49,32 @@
 #### 23. NPKI 스캐너 단위 테스트
 - temp directory로 스캐너 동작 검증 필요
 
+### 🚨 CRITICAL (논문 리뷰 지적사항)
+
+#### 36. Nullifier 공개키 기반 → 서명 기반으로 변경
+- **문제:** 현재 `nullifier = H(cert.pk_der ‖ wallet_index)` — 인증서 공개키는 공개 데이터(은행, 정부기관 등에 전송됨)이므로 누구나 nullifier를 역산하여 지갑 추적 가능 → Unlinkability 완전 파괴
+- **공격:** cert.pk_der를 아는 공격자가 wallet_index(0,1,2...)를 brute-force → on-chain에서 nullifier→registrant 매핑으로 사용자 식별
+- **해결:** `nullifier = H(deterministic_sig ‖ wallet_index)` — 개인키 없이는 서명 생성 불가, RSA/RFC6979 ECDSA는 결정론적이므로 매번 동일값 보장
+- **구현:** nullifier_sig = Sign(sk, "zk-X509-Nullifier-v1") → zkVM에서 서명 검증 후 nullifier 도출
+- **변경 범위:** program (nullifier 생성), script/ownership.rs (nullifier 서명 추가), contracts (변경 없음, nullifier 포맷만 변경)
+
+#### 37. Ownership 챌린지에 timestamp 추가 (Replay 방어)
+- **문제:** 현재 챌린지 `H(serial ‖ addr ‖ wallet_index)`가 정적 → 서명값 탈취 시 무한 재사용 가능
+- **공격:** 원격 Prover 모델로 확장 시, Prover 서버가 서명값을 저장 → 사용자 동의 없이 새 proof 생성 가능
+- **해결:** `H(serial ‖ addr ‖ wallet_index ‖ timestamp)` — timestamp를 포함하여 서명의 유효기간 제한
+- **변경 범위:** program (챌린지 해시에 timestamp 추가), script/ownership.rs (서명 시 timestamp 포함)
+
+#### 38. CRL zkVM 검증의 현실성 문제 (논문 기술)
+- **문제:** 실제 NPKI CRL은 수 MB~수십 MB (수백만 폐기 시리얼), zkVM 내 파싱은 수십억 사이클로 비현실적
+- **현상태:** 코드에 CRL 검증 구현은 있으나 테스트 CRL(<1KB)로만 검증됨
+- **대응:** 논문에서 CRL 검증은 "소규모 CRL 또는 OCSP 대응 전용"으로 명시, 대규모 CRL은 온체인 오라클(#18) 또는 OCSP 전환 필요성 기술
+- **변경 범위:** 논문 기술만 (코드 변경 불필요, 기존 구현은 소규모 CRL에 유효)
+
+#### 39. Abstract Gas 비용 수정 (논문)
+- **문제:** Abstract에 "77,000 gas"로 기재 — 이는 Mock Verifier 기준
+- **수정:** 실제 Groth16 검증 기준 ~300,000 gas로 수정 또는 Mock임을 명시
+- **변경 범위:** 논문만
+
 ### HIGH / 학술 Novelty
 
 #### 31. ~~Merkle tree 기반 CA 익명 검증~~ ✅ DONE
@@ -78,11 +104,8 @@
 - 논문의 정량적 성능 분석 섹션에 필수
 - 변경 범위: script (벤치마크 스크립트), 논문
 
-#### 35. Nullifier cross-wallet linkability
-- `nullifier = SHA-256(pubkey || wallet_index)` — 공격자가 pubkey를 알면 wallet_index별 nullifier 연관성 확인 가능
-- 공개키는 인증서에 포함되므로 CA/employer 등이 추적 가능
-- 개선: `nullifier = SHA-256(pubkey || wallet_index || secret)` 또는 blinding factor 도입
-- 변경 범위: program (nullifier 생성), contracts (검증 로직), lib (public values)
+#### 35. ~~Nullifier cross-wallet linkability~~ → #36으로 흡수 (CRITICAL)
+- #36에서 서명 기반 nullifier로 근본적 해결
 
 ### LOW
 
