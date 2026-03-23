@@ -117,10 +117,22 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
         CipherType::Aes256Cbc => decrypt_cbc::<cbc::Decryptor<Aes256>>(&derived_key, &params.iv, &encrypted_data, "AES")?,
         CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
         CipherType::LegacySeedCbc => {
-            // Legacy NPKI OID 1.2.410.200004.1.15:
-            // PBKDF2 produces 32 bytes: key = [0..16], IV = [16..32]
-            let key = &derived_key[0..16];
-            let iv = &derived_key[16..32];
+            // Legacy NPKI pbeWithSHA1AndSEED-CBC (PBKDF1):
+            // hash = SHA1(password || salt), then SHA1(hash) repeated
+            // Key derivation was done by PBKDF2 above but that's wrong for legacy.
+            // Redo with PBKDF1:
+            use sha1::Digest as _;
+            let mut hash = sha1::Sha1::new();
+            hash.update(password.as_bytes());
+            hash.update(&params.salt);
+            let mut dk: [u8; 20] = hash.finalize().into();
+            for _ in 1..params.iterations {
+                let mut h = sha1::Sha1::new();
+                h.update(&dk);
+                dk = h.finalize().into();
+            }
+            let key = &dk[0..16];
+            let iv = &dk[4..20];
             decrypt_cbc::<cbc::Decryptor<SEED>>(key, iv, &encrypted_data, "SEED-legacy")?
         }
     };
@@ -168,13 +180,15 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
         let iterations = find_integer_after(alg_data, &salt)
             .unwrap_or(2048);
 
-        // Legacy NPKI KDF: PBKDF2-HMAC-SHA1 with dkLen=32
-        // key = derived[0..16], IV = derived[16..32]
+        // Legacy NPKI pbeWithSHA1AndSEED-CBC (PBKDF1, NOT PBKDF2):
+        //   1. hash = SHA1(password || salt)
+        //   2. repeat: hash = SHA1(hash) × (iterations - 1)
+        //   3. key = hash[0..16], iv = hash[4..20]
         return Ok(Pbes2Params {
             salt: salt.clone(),
             iterations,
-            key_length: 32, // PBKDF2 output 32 bytes, split into key+IV
-            iv: vec![0u8; 16], // placeholder, derived below
+            key_length: 20, // SHA1 output = 20 bytes
+            iv: vec![0u8; 16], // placeholder, derived in decrypt
             cipher: CipherType::LegacySeedCbc,
             use_sha256_prf: false,
         });
@@ -486,6 +500,104 @@ mod tests {
         let decrypted = decrypt_cbc::<cbc::Decryptor<Aes256>>(&key, &iv, &ciphertext, "AES").unwrap();
         let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
         assert_eq!(unpadded, plaintext);
+    }
+
+    #[test]
+    fn test_legacy_npki_roundtrip() {
+        // Create a legacy-format encrypted key and verify decryption
+        use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+
+        // Read unencrypted PKCS#8 key
+        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let pkcs8_path = base.join("certs/signPri_encrypted.key");
+        if !pkcs8_path.exists() { return; }
+
+        // Get the plaintext PKCS#8 by decrypting with known password
+        let enc_data = std::fs::read(&pkcs8_path).unwrap();
+        let plaintext = super::decrypt_npki_key(&enc_data, "test1234").unwrap();
+
+        // Now encrypt with legacy format: PBKDF2-SHA1, key=dk[0:16], iv=dk[4:20], SEED-CBC
+        let password = b"legacy_test";
+        let salt = [0x11u8, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+        let iterations: u32 = 2048;
+
+        // KDF: PBKDF2-HMAC-SHA1 → 20 bytes
+        let mut dk = vec![0u8; 20];
+        pbkdf2::<Hmac<Sha1>>(password, &salt, iterations, &mut dk).unwrap();
+        let key = &dk[0..16];
+        let iv = &dk[4..20];
+
+        // Wrap plaintext back to PKCS#8 format
+        // The plaintext from decrypt is PKCS#1 RSA key, need to re-wrap
+        // Actually, let's just encrypt the PKCS#1 key directly and test that flow
+
+        // PKCS#7 pad
+        let block_size = 16;
+        let pad_len = block_size - (plaintext.len() % block_size);
+        let mut padded = plaintext.clone();
+        padded.extend(vec![pad_len as u8; pad_len]);
+
+        // SEED-CBC encrypt
+        let encryptor = cbc::Encryptor::<SEED>::new_from_slices(key, iv).unwrap();
+        let encrypted = encryptor.encrypt_padded_vec_mut::<cbc::cipher::block_padding::NoPadding>(&padded);
+
+        // Build ASN.1 DER manually: SEQUENCE { SEQUENCE { OID, SEQUENCE { salt, iter } }, OCTET STRING }
+        let oid_bytes: &[u8] = &[0x06, 0x08, 0x2a, 0x83, 0x1a, 0x8c, 0x9a, 0x44, 0x01, 0x0f];
+        let mut salt_der = vec![0x04, 0x08]; // OCTET STRING, 8 bytes
+        salt_der.extend_from_slice(&salt);
+        let iter_der = vec![0x02, 0x02, 0x08, 0x00]; // INTEGER 2048
+
+        let mut params_seq = vec![0x30]; // SEQUENCE
+        let params_len = salt_der.len() + iter_der.len();
+        params_seq.push(params_len as u8);
+        params_seq.extend_from_slice(&salt_der);
+        params_seq.extend_from_slice(&iter_der);
+
+        let mut alg_seq = vec![0x30]; // AlgorithmIdentifier SEQUENCE
+        let alg_len = oid_bytes.len() + params_seq.len();
+        alg_seq.push(alg_len as u8);
+        alg_seq.extend_from_slice(oid_bytes);
+        alg_seq.extend_from_slice(&params_seq);
+
+        // Encrypted data OCTET STRING
+        let mut enc_octet = vec![0x04];
+        let enc_len = encrypted.len();
+        if enc_len < 128 {
+            enc_octet.push(enc_len as u8);
+        } else if enc_len < 256 {
+            enc_octet.push(0x81);
+            enc_octet.push(enc_len as u8);
+        } else {
+            enc_octet.push(0x82);
+            enc_octet.push((enc_len >> 8) as u8);
+            enc_octet.push((enc_len & 0xff) as u8);
+        }
+        enc_octet.extend_from_slice(&encrypted);
+
+        // Outer SEQUENCE
+        let mut outer = vec![0x30];
+        let total_len = alg_seq.len() + enc_octet.len();
+        if total_len < 128 {
+            outer.push(total_len as u8);
+        } else if total_len < 256 {
+            outer.push(0x81);
+            outer.push(total_len as u8);
+        } else {
+            outer.push(0x82);
+            outer.push((total_len >> 8) as u8);
+            outer.push((total_len & 0xff) as u8);
+        }
+        outer.extend_from_slice(&alg_seq);
+        outer.extend_from_slice(&enc_octet);
+
+        // Now decrypt with our function
+        match super::decrypt_npki_key(&outer, "legacy_test") {
+            Ok(decrypted) => {
+                println!("✅ Legacy roundtrip: {} bytes", decrypted.len());
+                assert_eq!(decrypted, plaintext, "Roundtrip mismatch");
+            }
+            Err(e) => panic!("❌ Legacy decrypt failed: {}", e),
+        }
     }
 
     #[test]
