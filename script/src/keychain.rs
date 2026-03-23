@@ -109,6 +109,14 @@ fn scan_dir_with_depth(dir: &PathBuf, entries: &mut Vec<NpkiCertEntry>, depth: u
     }
 }
 
+/// Scan a specific directory (used by tests).
+#[cfg(test)]
+pub fn scan_dir(dir: &PathBuf) -> Vec<NpkiCertEntry> {
+    let mut entries = Vec::new();
+    scan_dir_recursive(dir, &mut entries);
+    entries
+}
+
 /// Parse certificate DER to extract display info.
 fn parse_cert_info(cert_path: &PathBuf, key_path: &PathBuf) -> Option<NpkiCertEntry> {
     let cert_der = std::fs::read(cert_path).ok()?;
@@ -124,4 +132,94 @@ fn parse_cert_info(cert_path: &PathBuf, key_path: &PathBuf) -> Option<NpkiCertEn
         key_path: key_path.clone(),
         expires: cert.validity().not_after.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// Create a fake NPKI directory structure with real test certs.
+    fn setup_fake_npki(tmp: &std::path::Path) {
+        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        // Create CA/USER/DN/ structure
+        let user_dir = tmp.join("TestCA/USER/TestDN");
+        fs::create_dir_all(&user_dir).unwrap();
+
+        // Copy real test cert + create a dummy key file
+        fs::copy(base.join("certs/signCert.der"), user_dir.join("signCert.der")).unwrap();
+        fs::write(user_dir.join("signPri.key"), b"dummy-key").unwrap();
+    }
+
+    #[test]
+    fn test_scan_finds_cert_in_npki_structure() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_fake_npki(tmp.path());
+
+        let entries = scan_dir(&tmp.path().to_path_buf());
+        assert_eq!(entries.len(), 1, "Should find exactly one cert");
+        assert!(entries[0].subject.contains("Hong Gildong") || !entries[0].subject.is_empty());
+        assert!(!entries[0].serial_hex.is_empty());
+        assert!(entries[0].cert_path.ends_with("signCert.der"));
+        assert!(entries[0].key_path.ends_with("signPri.key"));
+    }
+
+    #[test]
+    fn test_scan_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entries = scan_dir(&tmp.path().to_path_buf());
+        assert!(entries.is_empty(), "Empty dir should return no certs");
+    }
+
+    #[test]
+    fn test_scan_missing_key_skips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        // Only cert, no key
+        fs::copy(base.join("certs/signCert.der"), tmp.path().join("signCert.der")).unwrap();
+
+        let entries = scan_dir(&tmp.path().to_path_buf());
+        assert!(entries.is_empty(), "Missing key should be skipped");
+    }
+
+    #[test]
+    fn test_scan_multiple_certs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        // Two separate cert directories
+        let dir1 = tmp.path().join("CA1/USER/DN1");
+        let dir2 = tmp.path().join("CA2/USER/DN2");
+        fs::create_dir_all(&dir1).unwrap();
+        fs::create_dir_all(&dir2).unwrap();
+
+        fs::copy(base.join("certs/signCert.der"), dir1.join("signCert.der")).unwrap();
+        fs::write(dir1.join("signPri.key"), b"dummy").unwrap();
+
+        fs::copy(base.join("certs/ec_signCert.der"), dir2.join("signCert.der")).unwrap();
+        fs::write(dir2.join("signPri.key"), b"dummy").unwrap();
+
+        let entries = scan_dir(&tmp.path().to_path_buf());
+        assert_eq!(entries.len(), 2, "Should find two certs");
+    }
+
+    #[test]
+    fn test_scan_depth_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        // Create deeply nested directory (beyond MAX_SCAN_DEPTH)
+        let mut deep = tmp.path().to_path_buf();
+        for i in 0..=MAX_SCAN_DEPTH + 2 {
+            deep = deep.join(format!("level{}", i));
+        }
+        fs::create_dir_all(&deep).unwrap();
+        fs::copy(base.join("certs/signCert.der"), deep.join("signCert.der")).unwrap();
+        fs::write(deep.join("signPri.key"), b"dummy").unwrap();
+
+        let entries = scan_dir(&tmp.path().to_path_buf());
+        assert!(entries.is_empty(), "Should not find certs beyond max depth");
+    }
 }
