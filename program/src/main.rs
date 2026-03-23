@@ -547,16 +547,17 @@ pub fn main() {
     // ========================================
     // Step 5: Verify ownership (signature-based)
     // ========================================
-    // Host signs challenge = SHA-256(serial ‖ registrant ‖ wallet_index).
+    // Host signs challenge = SHA-256(serial ‖ registrant ‖ wallet_index ‖ timestamp).
+    // Timestamp prevents replay: signature is bound to this specific proof generation time.
     // ZK circuit verifies signature using the cert's public key.
     // Private key never enters the ZK circuit.
     let serial_bytes = user_cert.tbs_certificate.serial.to_bytes_be();
 
-    // Streaming hash — no intermediate Vec allocation
     let mut ownership_hasher = Sha256::new();
     ownership_hasher.update(&serial_bytes);
     ownership_hasher.update(&registrant);
     ownership_hasher.update(&wallet_index.to_be_bytes());
+    ownership_hasher.update(&current_timestamp.to_be_bytes());
     let ownership_hash: [u8; 32] = ownership_hasher.finalize().into();
 
     verify_ownership_signature(&ownership_hash, &ownership_sig, &user_cert);

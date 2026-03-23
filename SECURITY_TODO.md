@@ -58,7 +58,7 @@
 - **구현:** nullifier_sig = Sign(sk, "zk-X509-Nullifier-v1") → zkVM에서 서명 검증 후 nullifier 도출
 - **변경 범위:** program (nullifier 생성), script/ownership.rs (nullifier 서명 추가), contracts (변경 없음, nullifier 포맷만 변경)
 
-#### 37. Ownership 챌린지에 timestamp 추가 (Replay 방어)
+#### 37. ~~Ownership 챌린지에 timestamp 추가 (Replay 방어)~~ ✅ DONE
 - **문제:** 현재 챌린지 `H(serial ‖ addr ‖ wallet_index)`가 정적 → 서명값 탈취 시 무한 재사용 가능
 - **공격:** 원격 Prover 모델로 확장 시, Prover 서버가 서명값을 저장 → 사용자 동의 없이 새 proof 생성 가능
 - **해결:** `H(serial ‖ addr ‖ wallet_index ‖ timestamp)` — timestamp를 포함하여 서명의 유효기간 제한
