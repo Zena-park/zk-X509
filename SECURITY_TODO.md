@@ -196,6 +196,18 @@
 - 표 + 그래프로 제시 (논문 Evaluation 섹션 핵심)
 - 변경 범위: 논문, BENCHMARKS.md에 비교 데이터 추가
 
+#### 53. 프론트엔드 최신 ABI 동기화
+- PublicValuesStruct에 chainId, appContract, crlMerkleRoot 추가됨
+- 에러 코드 변경 (UnsupportedCA → InvalidCaMerkleRoot 등)
+- 컨트랙트 ABI 재생성 + 프론트엔드 반영
+
+#### 54. 프론트엔드 E2E 테스트
+- run-local.sh → 브라우저 → MetaMask → register() → isVerified 확인
+
+#### 55. ARIA-CBC 지원 (OID 1.2.410.200004.1.34)
+- 신형 NPKI 인증서: pbeWithSHA256AndARIA-CBC
+- `aria` 크레이트 추가 필요
+
 #### 27. LaTeX 변환 (LNCS 템플릿)
 - arXiv preprint + FC 학회 제출용
 - docs/paper.md → .tex 변환
