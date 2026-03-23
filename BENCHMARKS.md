@@ -40,6 +40,20 @@ Measured on SP1 zkVM v6.0.1 (execute mode), macOS, single-level certificate chai
 | Selective disclosure | ~15K | <1% |
 | X.509 parsing + other | ~100K | <1% |
 
+## Reproducing
+
+```bash
+# 1. Generate test certificates
+cd certs && bash generate-test-certs.sh && bash generate-test-crl.sh && cd ..
+
+# 2. Run all benchmarks
+bash script/bench.sh
+```
+
+Benchmarks use SP1 `--execute` mode (real zkVM execution with cycle counting,
+no proof generation). This is NOT a mock — the program runs inside the actual
+RISC-V zkVM with accurate cycle measurement.
+
 ## Environment
 - SP1 zkVM: v6.0.1
 - Certs: RSA-2048, ECDSA P-256, ECDSA P-384
