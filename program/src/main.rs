@@ -161,7 +161,7 @@ fn verify_cert_signature(
     } else if sig_alg_oid_bytes.starts_with(OID_PREFIX_ECDSA) {
         verify_ecdsa_signature(tbs_der, signature_bytes, sig_alg_oid_bytes, signer_spki_der);
     } else {
-        panic!("Unsupported signature algorithm");
+        panic!("Unsupported signature algorithm OID: {:?}", sig_alg_oid_bytes);
     }
 }
 
