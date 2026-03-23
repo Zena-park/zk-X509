@@ -12,7 +12,7 @@ The inherent transparency of public blockchains creates a fundamental tension be
 
 We present **zk-X509**, a fully software-based, privacy-preserving identity system that bridges legacy Public Key Infrastructure (PKI) with public ledgers. Using a RISC-V-based zero-knowledge virtual machine (zkVM), zk-X509 enables users to prove ownership and validity of standard X.509 certificates—from any national PKI worldwide (Korean NPKI, Estonian eID, German eID, etc.) or corporate/TLS CAs—without revealing private keys or personal identifiers. The private key never enters the ZK circuit; ownership is proven via signature verification using the OS keychain (macOS Secure Enclave, Windows TPM). The circuit verifies six properties: (1) the full certificate chain to a trusted root, (2) temporal validity, (3) signature-based key ownership, (4) trustless CRL revocation checking (CA signature verified inside zkVM), (5) binding to a specific blockchain address, and (6) configurable nullifier generation for tunable Sybil resistance. The proof commits only the nullifier, a CA Merkle root (hiding which specific CA issued the certificate), a timestamp, a wallet index, the registrant's address, and the certificate's expiry (`notAfter`) as public values. On-chain verification automatically expires when the certificate does.
 
-We formalize the security model under a Dolev-Yao adversary and prove six properties via game-based definitions: unforgeability, unlinkability, double-registration resistance, front-running immunity, CA anonymity, and non-transferability — with explicit reductions to EUF-CMA signature security and ZK soundness. Our SP1 zkVM implementation achieves 11.8 million cycles for single-level ECDSA P-256 verification (17.4M for RSA-2048), and on-chain verification costs approximately 77,000 gas. Unlike DID-based approaches that require building new credential issuance infrastructure from scratch, zk-X509 leverages government-grade certificates that are already deployed at scale, enabling immediate adoption without new trust establishment. zk-X509 provides a pragmatic, hardware-free pathway to integrate existing trust anchors into decentralized finance while strictly preserving user anonymity.
+We formalize the security model under a Dolev-Yao adversary and prove six properties via game-based definitions: unforgeability, unlinkability, double-registration resistance, front-running immunity, CA anonymity, and non-transferability — with explicit reductions to EUF-CMA signature security and ZK soundness. Our SP1 zkVM implementation achieves 11.8 million cycles for single-level ECDSA P-256 verification (17.4M for RSA-2048), and on-chain verification costs approximately 300,000 gas (Groth16) or 77,000 gas (mock verifier in testing). Unlike DID-based approaches that require building new credential issuance infrastructure from scratch, zk-X509 leverages government-grade certificates that are already deployed at scale, enabling immediate adoption without new trust establishment. zk-X509 provides a pragmatic, hardware-free pathway to integrate existing trust anchors into decentralized finance while strictly preserving user anonymity.
 
 **Keywords:** Zero-Knowledge Proofs, X.509, Digital Identity, zkVM, Ethereum, Korean NPKI, Privacy-Preserving Authentication, Proof of Personhood
 
@@ -213,9 +213,9 @@ Step 1.  P → S:   (cert_index, password, addr, wallet_index?, max_wallets?, di
 Step 2.  S:        (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
                    sk' ← PBES2_Decrypt(sk_enc, password)  // SEED-CBC or AES-256-CBC
                    CRL ← FetchCRL(cert.issuer)             // from CA distribution point
-                   challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t)
+                   challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
                    ownership_sig ← OS_Keychain.Sign(sk', challenge)  // private key stays in keychain
-                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v1"))  // deterministic
+                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v2" ‖ contract_address))  // deterministic
                    Erase(sk')  // private key never reaches SP1
 
 Step 3.  S → Z:   (cert, ownership_sig, nullifier_sig, chain, t, CRL, addr,
@@ -251,14 +251,14 @@ Step 4.  Z:        // Parse and validate user certificate
                      Assert: cert_parsed.serial ∉ crl_parsed.revokedCertificates
 
                    // Verify key ownership (signature-based, RSA or ECDSA)
-                   challenge ← H(cert_parsed.serial ‖ addr ‖ wallet_index ‖ t)
+                   challenge ← H(cert_parsed.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
                    Assert: Sig.Verify(cert_parsed.pk, challenge, ownership_sig)
 
                    // Verify wallet index
                    Assert: wallet_index < max_wallets
 
                    // Verify nullifier signature (deterministic, registrant-independent)
-                   nullifier_domain ← H("zk-X509-Nullifier-v1")
+                   nullifier_domain ← H("zk-X509-Nullifier-v2" ‖ contract_address)
                    Assert: Sig.Verify(cert_parsed.pk, nullifier_domain, nullifier_sig)
 
                    // Compute public outputs
@@ -313,12 +313,14 @@ The shared data structure between the ZK circuit and the smart contract is:
 
 ```solidity
 struct PublicValuesStruct {
-    bytes32 nullifier;       // H(Sign(sk, H("zk-X509-Nullifier-v1")) ‖ walletIndex)
+    bytes32 nullifier;       // H(Sign(sk, H("zk-X509-Nullifier-v2" ‖ appContract)) ‖ walletIndex)
     bytes32 caMerkleRoot;    // Merkle root of allowed CA set (hides which CA issued the cert)
     uint64  timestamp;       // Unix timestamp at proof generation
     address registrant;      // Wallet address bound to this proof
     uint32  walletIndex;     // Wallet slot index (0..maxWalletsPerCert-1)
     uint64  notAfter;        // Certificate expiry (unix timestamp)
+    uint64  chainId;         // EIP-155 chain ID
+    address appContract;     // Target contract address
     bytes32 countryHash;     // H(country) or 0x0 if not disclosed
     bytes32 orgHash;         // H(organization) or 0x0 if not disclosed
     bytes32 orgUnitHash;     // H(organizational unit) or 0x0 if not disclosed
@@ -367,9 +369,9 @@ The circuit asserts `wallet_index < max_wallets` before proceeding. All private 
 
 This design ensures that a malicious host cannot supply a forged or tampered CRL—the ZK proof cryptographically attests that the CRL was signed by the legitimate issuing CA and was fresh at proof time. The CRL data is not committed to public values; the proof attests only that revocation was checked against a valid, CA-signed CRL.
 
-**Signature-Based Key Ownership Verification.** Rather than importing the private key into the zkVM, the prover server signs a challenge using the OS keychain (macOS Secure Enclave, Windows TPM, or software keystore). The challenge is $\mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{timestamp})$, binding the ownership proof to the specific wallet, slot, and proof generation time. The ZK circuit verifies this signature using the certificate's embedded public key:
+**Signature-Based Key Ownership Verification.** Rather than importing the private key into the zkVM, the prover server signs a challenge using the OS keychain (macOS Secure Enclave, Windows TPM, or software keystore). The challenge is $\mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{timestamp} \| \text{chain\_id})$, binding the ownership proof to the specific wallet, slot, proof generation time, and chain. The ZK circuit verifies this signature using the certificate's embedded public key:
 
-$$\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{timestamp}), \text{ownership\_sig})$$
+$$\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{timestamp} \| \text{chain\_id}), \text{ownership\_sig})$$
 
 The ownership verifier supports both RSA (PKCS#1 v1.5 with SHA-256) and ECDSA (P-256, P-384 with RFC 6979 deterministic nonces). The key type is auto-detected from the certificate's SPKI algorithm OID: RSA keys use direct `rsa` crate verification, while ECDSA keys use the `p256`/`p384` crates with the curve determined from the SPKI `namedCurve` parameter.
 
@@ -377,7 +379,7 @@ This approach has three advantages: (1) the private key never exists in the prov
 
 **Nullifier Generation.** The nullifier is derived from a deterministic signature rather than the certificate's public key:
 
-$$\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v1"}))$$
+$$\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address}))$$
 $$\text{nullifier} = \mathcal{H}(\text{nullifier\_sig} \| \text{wallet\_index})$$
 
 The prover signs a fixed domain string with the certificate's private key. RSA PKCS#1 v1.5 and ECDSA with RFC 6979 deterministic nonces are both inherently deterministic — the same key always produces the same signature, ensuring nullifier consistency. The ZK circuit verifies the `nullifier_sig` against the certificate's public key before computing the nullifier.
@@ -814,7 +816,7 @@ where the four terms correspond to: (1) forging the CA's chain signature, (2) fo
 
 *Under assumptions A3 (EUF-CMA security of the signature scheme, SHA-256 collision resistance) and the zero-knowledge property of the SP1 proof system, zk-X509 satisfies unlinkability (Definition 2).*
 
-**Proof.** The nullifier is $n = \mathcal{H}(\text{nullifier\_sig} \| \text{wallet\_index})$, where $\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v1"}))$. The signature is computed using the certificate's private key, which is known only to the certificate holder. The zero-knowledge property of the proof system ensures that both the signature and the certificate contents remain hidden.
+**Proof.** The nullifier is $n = \mathcal{H}(\text{nullifier\_sig} \| \text{wallet\_index})$, where $\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address}))$. The signature is computed using the certificate's private key, which is known only to the certificate holder. The zero-knowledge property of the proof system ensures that both the signature and the certificate contents remain hidden.
 
 To link a nullifier to a specific certificate, $\mathcal{A}$ must determine which `nullifier_sig` was used. $\mathcal{A}$ has three strategies:
 
@@ -832,11 +834,19 @@ This is strictly stronger than a public-key-based nullifier ($\mathcal{H}(\text{
 
 **Caveat.** In the current implementation, `caMerkleRoot` replaces the direct `caRootHash`, so on-chain observers learn only that the certificate was issued by *one of* the whitelisted CAs — the specific CA is hidden by the Merkle membership proof (Section 3.11). This significantly enlarges the anonymity set in multi-national deployments. Furthermore, the signature-based nullifier ensures that even an adversary who independently obtains a user's certificate (which contains the public key) cannot compute the nullifier — the private key is required to produce the deterministic `nullifier_sig`.
 
+**Theorem 7 (Cross-Service Unlinkability).** For any two IdentityRegistry contracts $C_1$ and $C_2$ deployed at different addresses, the nullifiers $\nu_1$ and $\nu_2$ generated by the same user are computationally indistinguishable from nullifiers generated by different users.
+
+*Proof sketch.* The nullifier signature domain includes the contract address: $\text{nullifier\_sig} = \text{Sign}(sk, H(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address}))$. Different contract addresses produce different domain hashes, resulting in different signatures and thus different nullifiers. An adversary without $sk$ cannot link $\nu_1$ to $\nu_2$ without breaking EUF-CMA security of the underlying signature scheme. $\square$
+
+**Theorem 8 (Cross-Chain Replay Resistance).** A valid proof for chain $c_1$ cannot be accepted on chain $c_2 \neq c_1$.
+
+*Proof sketch.* The ownership challenge includes $\text{chain\_id}$: $H(\text{serial} \| \text{addr} \| \text{wallet\_index} \| t \| \text{chain\_id})$. The smart contract verifies $\text{publicValues.chainId} == \text{block.chainid}$. A proof generated for $c_1$ commits $\text{chainId} = c_1$ as a public value, which fails the check on $c_2$. $\square$
+
 #### Theorem 3 (Double-Registration Resistance)
 
 *Under assumption A4 (ZK soundness) and the determinism of SHA-256, zk-X509 satisfies double-registration resistance (Definition 3).*
 
-**Proof.** For a certificate with private key $\text{sk}$ and wallet index $i$, the nullifier is deterministic: $n_i = \mathcal{H}(\text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v1"})) \| i)$. Since RSA PKCS#1 v1.5 and ECDSA with RFC 6979 are deterministic signature schemes, the same key always produces the same signature, and thus the same nullifier. The ZK circuit enforces $i < \text{maxWalletsPerCert}$, limiting the number of distinct nullifiers per certificate. After a registration with nullifier $n_i$ succeeds, the contract sets `nullifierOwner[n_i] = addr`. Any subsequent attempt to register the same nullifier fails because `nullifierOwner[n_i] != address(0)`. The total number of registrations per certificate is bounded by `maxWalletsPerCert`. $\square$
+**Proof.** For a certificate with private key $\text{sk}$ and wallet index $i$, the nullifier is deterministic: $n_i = \mathcal{H}(\text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address})) \| i)$. Since RSA PKCS#1 v1.5 and ECDSA with RFC 6979 are deterministic signature schemes, the same key always produces the same signature, and thus the same nullifier. The ZK circuit enforces $i < \text{maxWalletsPerCert}$, limiting the number of distinct nullifiers per certificate. After a registration with nullifier $n_i$ succeeds, the contract sets `nullifierOwner[n_i] = addr`. Any subsequent attempt to register the same nullifier fails because `nullifierOwner[n_i] != address(0)`. The total number of registrations per certificate is bounded by `maxWalletsPerCert`. $\square$
 
 #### Theorem 4 (Front-Running Immunity)
 
@@ -872,9 +882,9 @@ where $\text{Adv}^{\text{zk}}$ is the advantage of distinguishing real proofs fr
 
 **Proof.** For $\mathcal{A}$ to register using $\mathcal{P}$'s certificate without $\mathcal{P}$'s cooperation, $\mathcal{A}$ must produce a valid proof $\pi^*$ whose witness includes:
 
-(a) **An ownership signature** $\text{ownership\_sig}$ that verifies under $\mathcal{P}$'s public key for a challenge binding $\mathcal{A}$'s address: $\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{serial} \| \text{addr}_A \| \text{wallet\_index} \| t), \text{ownership\_sig})$. Without $\mathcal{P}$'s private key, forging this signature contradicts A3 (EUF-CMA security of RSA/ECDSA).
+(a) **An ownership signature** $\text{ownership\_sig}$ that verifies under $\mathcal{P}$'s public key for a challenge binding $\mathcal{A}$'s address: $\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{serial} \| \text{addr}_A \| \text{wallet\_index} \| t \| \text{chain\_id}), \text{ownership\_sig})$. Without $\mathcal{P}$'s private key, forging this signature contradicts A3 (EUF-CMA security of RSA/ECDSA).
 
-(b) **A nullifier signature** $\text{nullifier\_sig}$ that verifies under $\mathcal{P}$'s public key: $\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{"zk-X509-Nullifier-v1"}), \text{nullifier\_sig})$. Again, forging this without the private key contradicts A3.
+(b) **A nullifier signature** $\text{nullifier\_sig}$ that verifies under $\mathcal{P}$'s public key: $\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address}), \text{nullifier\_sig})$. Again, forging this without the private key contradicts A3.
 
 By A1, $\mathcal{A}$ cannot extract these signatures from $\mathcal{P}$'s machine. By A4, $\mathcal{A}$ cannot produce a valid proof with an invalid witness. Therefore $\mathcal{A}$ cannot register using $\mathcal{P}$'s certificate:
 
@@ -903,13 +913,15 @@ The CRL is verified trustlessly inside the zkVM: its signature (RSA or ECDSA) is
 
 **Residual limitation.** The host selects *which* valid CRL to provide. If the CA has issued a newer CRL revoking the user's certificate, a malicious host could still provide the older (but still temporally valid) CRL that does not yet contain the revocation. This is bounded by the CRL's validity window (typically 24–72 hours for Korean NPKI). The CRL data is not committed to public values, so on-chain consumers cannot independently verify which CRL was used. For stronger guarantees, a CRL oracle (Section 7.2) could maintain an on-chain Merkle root of revoked serials.
 
+**Host-Provided but Cryptographically Authenticated CRL.** While the CRL's cryptographic integrity is verified inside the zkVM (CA signature and temporal validity), CRL *freshness* ultimately depends on the host providing the latest CRL from the CA's distribution point. This creates an **Omission Attack** vector: a prover whose certificate has been revoked can deliberately supply a stale—but still temporally valid per `nextUpdate`—CRL that predates the revocation entry. The maximum attack window equals the CRL update period, which is typically 24 hours for most CAs (up to 72 hours for some Korean NPKI CAs). During this window, a revoked certificate holder can still generate valid proofs. For production deployments requiring immediate revocation, we recommend two complementary mitigations: (1) an **on-chain CRL oracle** (Section 7.2) that maintains a Merkle root of revoked serials updated by a trusted operator or DAO, enabling the circuit to commit the CRL Merkle root as a public value; and (2) the existing `revokeIdentity()` admin function, which provides immediate on-chain revocation independent of CRL propagation delays.
+
 #### 5.5.3 Private Key Isolation
 
 **Architecture.** The private key **never enters the zkVM or the prover's general process memory**. The signature-based ownership scheme (Section 3.4) delegates all private key operations to the OS keychain:
 
 1. The prover server decrypts the NPKI private key file using the user's password.
 2. The decrypted key is passed to the OS keychain signing API (macOS Security.framework, Windows CNG).
-3. The OS keychain signs the ownership challenge: $\mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index})$.
+3. The OS keychain signs the ownership challenge: $\mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{chain\_id})$.
 4. Only the resulting **signature bytes** are passed to the SP1 zkVM as input.
 5. The private key is immediately erased from memory after signing.
 
@@ -983,9 +995,13 @@ The single-owner access control for CA management represents a centralization po
 
 The ZK proof is chain-agnostic. Deploying `IdentityRegistry` on multiple chains with the same verification key would enable cross-chain identity from a single proof generation. Standardizing the public values format could enable interoperability across different ZK identity systems.
 
-### 7.5 Voluntary Delegation
+### 7.5 Privacy-Preserving Delegated Proving
 
-Non-transferability (Theorem 6) holds only when the certificate holder does not cooperate with the adversary. If the holder voluntarily shares their pre-computed signatures (`ownership_sig` and `nullifier_sig`) or private key, a third party can register using the holder's certificate. This is a fundamental limitation of all credential-based systems: a user who gives away their bank certificate file and password cannot be prevented from doing so by any cryptographic mechanism. Possible mitigations include interactive proof protocols (requiring real-time private key access during proving) or hardware-bound keys (where the private key cannot be exported from a TPM/Secure Enclave), but these are outside the scope of the current design.
+A distinctive architectural advantage of zk-X509 is that the private key never enters the zkVM. Only deterministic signatures (`ownership_sig`, `nullifier_sig`) are passed as circuit inputs. This enables a powerful deployment model: **delegated proving**.
+
+The user generates signatures locally (phone/browser, ~1 second) and delegates the computationally intensive SP1 proof generation to an untrusted cloud server or a decentralized prover market (e.g., Succinct, Gevulot). The cloud server receives only the certificate (public data) and signatures—never the private key—so user privacy is preserved even if the prover is malicious.
+
+This architecture reduces the end-to-end user experience from ~10 minutes (local CPU proving) to ~1–2 minutes (GPU-accelerated cloud proving), making zk-X509 practical for interactive authentication workflows. Unlike systems where private inputs enter the circuit (e.g., zk-email, Semaphore), zk-X509's separation of signing and proving enables this delegation without any protocol modification.
 
 ### 7.6 Formal Verification
 
