@@ -129,7 +129,30 @@
 - **참고:** 현 단계에서는 single owner로 충분, 운영 단계에서 전환
 - **변경 범위:** contracts (governance 추가 또는 multi-sig 연동)
 
-### LOW
+### HIGH (취약점 분석 추가)
+
+#### 44. Nullifier 교차 앱 추적 방지 (Cross-DApp Domain Separation)
+- **문제:** nullifier_sig = Sign(sk, H("zk-X509-Nullifier-v1")) — 도메인 분리 없음
+- **공격:** A DAO와 B DeFi에 동일 nullifier 제출 → 온체인 분석으로 동일인 추적 가능
+- **해결:** `Sign(sk, H("zk-X509-Nullifier-v1" ‖ contract_address))` — 앱별 고유 nullifier
+- **변경 범위:** program (nullifier domain에 contract address 포함), lib (NULLIFIER_DOMAIN 변경), host scripts
+
+#### 45. Cross-Chain Replay 방지 (chain_id 추가)
+- **문제:** ownership challenge에 chain_id 없음 → 이더리움 proof를 폴리곤에서 재사용 가능
+- **해결:** challenge = `H(serial ‖ addr ‖ wallet_index ‖ timestamp ‖ chain_id)`, 컨트랙트에서 `require(chainId == block.chainid)`
+- **변경 범위:** program, ownership.rs, contracts (PublicValuesStruct에 chainId 추가)
+
+### LOW (논문 작업)
+
+#### 46. CRL 논문 톤다운
+- "Trustless CRL" → "Host-Provided but Cryptographically Authenticated CRL"
+- Freshness 공격의 한계를 Security Analysis에 명시
+- CRL Oracle을 Future Work이 아닌 권장 아키텍처로 기술
+
+#### 47. Privacy-Preserving Delegated Proving 섹션 추가
+- 개인키가 zkVM에 안 들어가므로 클라우드 prover에 위임 가능
+- 사용자: 로컬에서 서명만 생성 (1초) → 클라우드: 증명 생성 (1~2분 GPU)
+- 논문의 실용성(UX) 장점을 부각하는 핵심 섹션
 
 #### 27. LaTeX 변환 (LNCS 템플릿)
 - arXiv preprint + FC 학회 제출용
