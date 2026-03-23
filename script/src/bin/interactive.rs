@@ -37,7 +37,12 @@ fn prompt(msg: &str) -> String {
 }
 
 fn prompt_password(msg: &str) -> String {
-    rpassword::prompt_password(msg).unwrap_or_default()
+    // Use regular prompt when stdin is piped, rpassword when interactive
+    if atty::is(atty::Stream::Stdin) {
+        rpassword::prompt_password(msg).unwrap_or_default()
+    } else {
+        prompt(msg)
+    }
 }
 
 fn main() {
