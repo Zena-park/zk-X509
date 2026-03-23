@@ -11,7 +11,9 @@ use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::RsaPrivateKey;
 use sha2::{Digest, Sha256};
 
-/// OID constants for key type detection
+/// OID constants for key type detection.
+/// String format is fine here (host-side, not zkVM) — readability over cycle savings.
+/// The zkVM program (program/src/main.rs) uses raw OID bytes for zero-alloc comparison.
 const OID_EC_PUBLIC_KEY: &str = "1.2.840.10045.2.1";
 const OID_PRIME256V1: &str = "1.2.840.10045.3.1.7"; // P-256
 const OID_SECP384R1: &str = "1.3.132.0.34";         // P-384
