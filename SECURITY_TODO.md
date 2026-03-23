@@ -144,6 +144,14 @@
 
 ### MEDIUM (측정 필요)
 
+#### 50. CRL Merkle Oracle — 대규모 CRL 지원
+- **문제:** 현재 zkVM 내 CRL 검증은 전체 CRL DER을 입력 → 대규모 CRL(수십 MB)은 비용 비현실적
+- **해결:** 오라클 운영자가 CRL의 폐지 시리얼 번호를 Merkle tree로 구성 → root만 on-chain 저장
+- **zkVM:** "내 시리얼이 이 Merkle tree에 없다"는 non-membership proof 검증
+- **컨트랙트:** `crlMerkleRoot` 상태 + `updateCrlMerkleRoot()` 관리자 함수
+- **장점:** CRL 크기 무관 (수백만 건이어도 Merkle proof는 log(n) 해시만)
+- **변경 범위:** program (Merkle non-membership proof), contracts (crlMerkleRoot 상태), script (CRL → Merkle tree 변환 도구), 오라클 운영 인프라
+
 #### 49. On-chain gas 실측 (Groth16 verifier)
 - **현재:** 300K gas는 추정치 (SP1 문서 + BN254 pairing 비용 기반)
 - **필요:** Anvil에 SP1 Groth16 Verifier 배포 → proof 제출 → 실제 gas 측정
