@@ -74,6 +74,8 @@ contract IdentityRegistry {
     error NullifierRevoked(bytes32 nullifier);
     error WalletIndexOutOfRange(uint32 walletIndex, uint32 maxAllowed);
     error CertAlreadyExpired(uint64 notAfter, uint256 blockTimestamp);
+    error ChainIdMismatch(uint64 proofChainId, uint256 expectedChainId);
+    error AppContractMismatch(address proofContract, address expectedContract);
     error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
 
     // ============ Modifiers ============
@@ -107,6 +109,7 @@ contract IdentityRegistry {
         bytes calldata proof,
         bytes calldata publicValues
     ) internal view returns (bytes32 nullifier, uint64 notAfter) {
+        // Decode in two steps to avoid "stack too deep"
         bytes32 proofMerkleRoot;
         address registrant;
         uint64 proofTimestamp;
@@ -120,6 +123,15 @@ contract IdentityRegistry {
         if (proofMerkleRoot != caMerkleRoot) revert InvalidCaMerkleRoot(proofMerkleRoot, caMerkleRoot);
         if (walletIndex >= maxWalletsPerCert) revert WalletIndexOutOfRange(walletIndex, maxWalletsPerCert);
         if (notAfter < block.timestamp) revert CertAlreadyExpired(notAfter, block.timestamp);
+
+        // Decode remaining fields (chainId, appContract) in separate scope
+        {
+            // Skip first 6 fields (32+32+8+20+4+8 = 104 bytes padded to 6*32 = 192)
+            (, , , , , , uint64 proofChainId, address appContract) =
+                abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64, uint64, address));
+            if (proofChainId != uint64(block.chainid)) revert ChainIdMismatch(proofChainId, block.chainid);
+            if (appContract != address(this)) revert AppContractMismatch(appContract, address(this));
+        }
 
         sp1Verifier.verifyProof(programVKey, publicValues, proof);
     }

@@ -131,13 +131,13 @@
 
 ### HIGH (취약점 분석 추가)
 
-#### 44. Nullifier 교차 앱 추적 방지 (Cross-DApp Domain Separation)
+#### 44. ~~Nullifier 교차 앱 추적 방지 (Cross-DApp Domain Separation)~~ ✅ DONE
 - **문제:** nullifier_sig = Sign(sk, H("zk-X509-Nullifier-v1")) — 도메인 분리 없음
 - **공격:** A DAO와 B DeFi에 동일 nullifier 제출 → 온체인 분석으로 동일인 추적 가능
 - **해결:** `Sign(sk, H("zk-X509-Nullifier-v1" ‖ contract_address))` — 앱별 고유 nullifier
 - **변경 범위:** program (nullifier domain에 contract address 포함), lib (NULLIFIER_DOMAIN 변경), host scripts
 
-#### 45. Cross-Chain Replay 방지 (chain_id 추가)
+#### 45. ~~Cross-Chain Replay 방지 (chain_id 추가)~~ ✅ DONE
 - **문제:** ownership challenge에 chain_id 없음 → 이더리움 proof를 폴리곤에서 재사용 가능
 - **해결:** challenge = `H(serial ‖ addr ‖ wallet_index ‖ timestamp ‖ chain_id)`, 컨트랙트에서 `require(chainId == block.chainid)`
 - **변경 범위:** program, ownership.rs, contracts (PublicValuesStruct에 chainId 추가)

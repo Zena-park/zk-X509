@@ -1,9 +1,9 @@
 use alloy_sol_types::sol;
 
-/// Domain separator for nullifier generation.
-/// Shared between host (ownership.rs) and zkVM guest (program/src/main.rs).
-/// Changing this value changes all nullifiers — coordinate with contract state.
-pub const NULLIFIER_DOMAIN: &[u8] = b"zk-X509-Nullifier-v1";
+/// Domain separator prefix for nullifier generation.
+/// Full domain = NULLIFIER_DOMAIN ‖ contract_address (20 bytes)
+/// This ensures different dApps get different nullifiers (cross-DApp unlinkability).
+pub const NULLIFIER_DOMAIN: &[u8] = b"zk-X509-Nullifier-v2";
 
 sol! {
     /// Public values output from the ZK program, verified on-chain.
@@ -14,6 +14,8 @@ sol! {
         address registrant;      // Wallet address bound to this proof (anti-front-running)
         uint32 walletIndex;      // Which wallet slot (0..maxWalletsPerCert-1)
         uint64 notAfter;         // Certificate expiry (unix timestamp)
+        uint64 chainId;          // EIP-155 chain ID (prevents cross-chain replay)
+        address appContract;    // Target contract address (prevents cross-DApp nullifier reuse)
         // Selective disclosure: salted hash of each field, or bytes32(0) if not disclosed.
         // hash = SHA-256(len1 ‖ val1 ‖ ... ‖ disclosure_salt) — length-prefixed
         // disclosure_salt = H("zk-X509-Disclosure-Salt-v1" ‖ nullifier_sig) — deterministic, private

@@ -68,6 +68,14 @@ struct Args {
     /// Selective disclosure bitmask: bit 0=C, 1=O, 2=OU, 3=CN. Default 0x0F=all.
     #[arg(long, default_value = "15")]
     disclosure_mask: u8,
+
+    /// Chain ID (EIP-155). Default: 31337 (Anvil local).
+    #[arg(long, default_value = "31337")]
+    chain_id: u64,
+
+    /// IdentityRegistry contract address (hex). For cross-DApp nullifier separation.
+    #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
+    contract_address: String,
 }
 
 fn main() {
@@ -135,12 +143,19 @@ fn main() {
         .try_into()
         .expect("Registrant address must be 20 bytes");
 
+    // Parse contract address
+    let contract_hex = args.contract_address.strip_prefix("0x").unwrap_or(&args.contract_address);
+    let contract_bytes: [u8; 20] = hex::decode(contract_hex)
+        .expect("Invalid contract address hex")
+        .try_into()
+        .expect("Contract address must be 20 bytes");
+
     // Sign ownership + nullifier challenges
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
-        &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp,
+        &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, args.chain_id,
     ).expect("Failed to sign ownership challenge");
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &priv_key,
+        &cert_der, &priv_key, &contract_bytes,
     ).expect("Failed to sign nullifier domain");
     println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 
@@ -162,8 +177,11 @@ fn main() {
     stdin.write(&args.disclosure_mask);
     stdin.write(&ca_merkle_proof);
     stdin.write(&ca_merkle_root);
+    stdin.write(&contract_bytes);
+    stdin.write(&args.chain_id);
     println!("Wallet Index: {} / Max: {} / Disclosure: 0x{:02X}", args.wallet_index, args.max_wallets, args.disclosure_mask);
     println!("Registrant: 0x{}", hex::encode(registrant_bytes));
+    println!("Chain ID: {} / Contract: 0x{}", args.chain_id, hex::encode(contract_bytes));
     println!("CA Merkle Root: 0x{}", hex::encode(ca_merkle_root));
 
     if args.execute {
