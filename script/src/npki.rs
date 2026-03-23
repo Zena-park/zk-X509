@@ -72,6 +72,7 @@ struct Pbes2Params {
 enum CipherType {
     SeedCbc,
     Aes256Cbc,
+    LegacySeedCbc, // OID 1.2.410.200004.1.15
 }
 
 /// Decrypt a Korean NPKI private key file (signPri.key).
@@ -101,6 +102,14 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
     let decrypted = match params.cipher {
         CipherType::Aes256Cbc => decrypt_cbc::<cbc::Decryptor<Aes256>>(&derived_key, &params.iv, &encrypted_data, "AES")?,
         CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
+        CipherType::LegacySeedCbc => {
+            // Legacy NPKI: PBKDF2 produces 20 bytes (SHA1 output)
+            // Key = derived_key[0..16], IV = derived_key[4..20]
+            // This is the KISA standard derivation for OID 1.2.410.200004.1.15
+            let key = &derived_key[0..16];
+            let iv = &derived_key[4..20];
+            decrypt_cbc::<cbc::Decryptor<SEED>>(key, iv, &encrypted_data, "SEED-legacy")?
+        }
     };
 
     // Remove PKCS#7 padding
@@ -140,22 +149,23 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
 
     // Check for legacy NPKI format (OID 1.2.410.200004.1.15 = SEED-CBC-SHA1)
     if window_contains(&data[alg_start..alg_end], OID_NPKI_SEED_CBC_SHA1) {
-        // Legacy format: SEQUENCE { OID, SEQUENCE { salt, iterations } }
-        // Salt and iterations are directly inside the algorithm params
         let alg_data = &data[alg_start..alg_end];
         let salt = find_octet_string_after(alg_data, OID_NPKI_SEED_CBC_SHA1)
             .ok_or_else(|| NpkiError::InvalidFormat("Cannot find legacy NPKI salt".into()))?;
         let iterations = find_integer_after(alg_data, &salt)
             .unwrap_or(2048);
 
-        // Legacy NPKI: IV = first 16 bytes of SHA1(password), or salt is used as IV
-        // Actually in this format, the salt doubles as the IV for SEED-CBC
+        // Legacy NPKI KDF: PBKDF2-HMAC-SHA1 with key_length=20 (SHA1 output),
+        // then truncate to 16 bytes for SEED key.
+        // IV derived separately: PBKDF2(password, salt, iterations, 20)[4..20] or
+        // use the first 8 bytes of salt padded to 16.
+        // Common implementation: PBKDF2 produces 20 bytes, key=first 16, IV from salt.
         return Ok(Pbes2Params {
             salt: salt.clone(),
             iterations,
-            key_length: 16, // SEED key = 16 bytes
-            iv: salt,       // salt is reused as IV in legacy format
-            cipher: CipherType::SeedCbc,
+            key_length: 20, // PBKDF2 output = SHA1 size, will be split into key+IV
+            iv: vec![0u8; 16], // placeholder, will be derived below
+            cipher: CipherType::LegacySeedCbc,
         });
     }
 
@@ -192,6 +202,7 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
     let key_length = match cipher {
         CipherType::Aes256Cbc => 32,
         CipherType::SeedCbc => 16,
+        CipherType::LegacySeedCbc => 20, // unreachable here, handled above
     };
 
     Ok(Pbes2Params {
