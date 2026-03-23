@@ -614,8 +614,9 @@ pub fn main() {
     // - Deterministic: same cert → same nullifier_sig → same salt (no storage needed)
     // - Private: attacker cannot compute salt without the private key
     // - Prevents brute-force on small input spaces (e.g., ~200 country codes)
+    const DISCLOSURE_SALT_DOMAIN: &[u8] = b"zk-X509-Disclosure-Salt-v1";
     let mut salt_hasher = Sha256::new();
-    salt_hasher.update(b"zk-X509-Disclosure-Salt-v1");
+    salt_hasher.update(DISCLOSURE_SALT_DOMAIN);
     salt_hasher.update(&nullifier_sig);
     let disclosure_salt: [u8; 32] = salt_hasher.finalize().into();
 
