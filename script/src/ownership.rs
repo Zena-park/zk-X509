@@ -47,6 +47,9 @@ pub fn sign_ownership(
 }
 
 /// RSA ownership signing (PKCS#1 v1.5 with SHA-256).
+///
+/// Note: Rust's default drop does NOT zero memory.
+/// For production, consider ZeroizeOnDrop or mlock+madvise.
 fn sign_rsa_ownership(key_der: &[u8], challenge_hash: &[u8; 32]) -> Result<Vec<u8>, String> {
     let priv_key = RsaPrivateKey::from_pkcs1_der(key_der)
         .map_err(|e| format!("Parse RSA private key: {}", e))?;
@@ -76,6 +79,7 @@ fn sign_ecdsa_ownership(
                 .map_err(|e| format!("Parse P-256 private key: {}", e))?;
             let sig: p256::ecdsa::Signature = sk.sign_prehash(challenge_hash)
                 .map_err(|e| format!("P-256 sign failed: {}", e))?;
+            drop(sk);
             Ok(sig.to_der().as_bytes().to_vec())
         }
         OID_SECP384R1 => {
@@ -84,6 +88,7 @@ fn sign_ecdsa_ownership(
                 .map_err(|e| format!("Parse P-384 private key: {}", e))?;
             let sig: p384::ecdsa::Signature = sk.sign_prehash(challenge_hash)
                 .map_err(|e| format!("P-384 sign failed: {}", e))?;
+            drop(sk);
             Ok(sig.to_der().as_bytes().to_vec())
         }
         _ => Err(format!("Unsupported EC curve: {}", curve_oid)),
