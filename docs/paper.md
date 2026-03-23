@@ -750,7 +750,7 @@ Game Exp_A^front:
 
 $$\Pr[\text{Exp}_{\mathcal{A}}^{\text{front}} = 1] \leq \text{negl}(\lambda)$$
 
-#### Definition 5 (CA Anonymity)
+#### Definition 5 (CA-Membership Hiding)
 
 Consider the game $\text{Exp}_{\mathcal{A}}^{\text{ca-anon}}$:
 
@@ -768,7 +768,7 @@ Game Exp_A^ca-anon:
   7. A wins if: b' = b
 ```
 
-**zk-X509 satisfies CA anonymity** if for all PPT adversaries $\mathcal{A}$:
+**zk-X509 satisfies CA-membership hiding** if for all PPT adversaries $\mathcal{A}$:
 
 $$\left| \Pr[\text{Exp}_{\mathcal{A}}^{\text{ca-anon}} = 1] - \frac{1}{2} \right| \leq \text{negl}(\lambda)$$
 
@@ -862,9 +862,9 @@ This is strictly stronger than a public-key-based nullifier ($\mathcal{H}(\text{
 
 All strategies fail. $\square$
 
-#### Theorem 5 (CA Anonymity)
+#### Theorem 5 (CA-Membership Hiding)
 
-*Under assumption A4 (ZK soundness) and the zero-knowledge property of the SP1 proof system, zk-X509 satisfies CA anonymity (Definition 5).*
+*Under assumption A4 (ZK soundness) and the zero-knowledge property of the SP1 proof system, zk-X509 satisfies CA-membership hiding (Definition 5). This property holds in the ideal ZK model; side-channel attacks on the prover's execution environment (e.g., timing variations correlated with certificate size) are outside the scope of this model and apply equally to all ZK-based identity systems.*
 
 **Proof.** The ZK circuit computes $\text{caRootHash} = \mathcal{H}(\text{pk}_{\text{root}})$ and verifies a Merkle membership proof against the provided `ca_merkle_root`. Only the Merkle root $M$ is committed as a public value; neither the leaf $\text{caRootHash}$ nor the Merkle proof path appears in the public outputs.
 
