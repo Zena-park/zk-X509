@@ -16,7 +16,7 @@ sol! {
         uint64 notAfter;         // Certificate expiry (unix timestamp)
         uint64 chainId;          // EIP-155 chain ID (prevents cross-chain replay)
         address appContract;    // Target contract address (prevents cross-DApp nullifier reuse)
-        bytes32 crlMerkleRoot;  // CRL SMT root (bytes32(0) = CRL checking disabled)
+        bytes32 crlMerkleRoot;  // CRL sorted Merkle root (bytes32(0) = CRL checking disabled)
         // Selective disclosure: salted hash of each field, or bytes32(0) if not disclosed.
         // hash = SHA-256(len1 ‖ val1 ‖ ... ‖ disclosure_salt) — length-prefixed
         // disclosure_salt = H("zk-X509-Disclosure-Salt-v1" ‖ nullifier_sig) — deterministic, private

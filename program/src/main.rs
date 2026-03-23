@@ -273,6 +273,24 @@ fn verify_merkle_membership(leaf: &[u8; 32], proof: &[[u8; 32]]) -> [u8; 32] {
     current
 }
 
+/// Verify CRL Merkle proof with position-aware hashing (NOT sorted-pair).
+/// This preserves leaf ordering for non-inclusion adjacency verification.
+fn verify_crl_merkle_proof(leaf: &[u8; 32], proof: &[[u8; 32]], directions: &[bool]) -> [u8; 32] {
+    let mut current = *leaf;
+    for (sibling, &is_left) in proof.iter().zip(directions.iter()) {
+        let mut hasher = Sha256::new();
+        if is_left {
+            hasher.update(current);
+            hasher.update(sibling);
+        } else {
+            hasher.update(sibling);
+            hasher.update(current);
+        }
+        current = hasher.finalize().into();
+    }
+    current
+}
+
 /// Check that a certificate's validity period covers the given timestamp.
 fn assert_cert_valid_at(cert: &X509Certificate, ts: i64, label: &str) {
     assert!(
@@ -403,7 +421,9 @@ pub fn main() {
     let crl_left_leaf: [u8; 32] = sp1_zkvm::io::read();
     let crl_right_leaf: [u8; 32] = sp1_zkvm::io::read();
     let crl_left_proof: Vec<[u8; 32]> = sp1_zkvm::io::read();
+    let crl_left_dirs: Vec<bool> = sp1_zkvm::io::read();
     let crl_right_proof: Vec<[u8; 32]> = sp1_zkvm::io::read();
+    let crl_right_dirs: Vec<bool> = sp1_zkvm::io::read();
     let crl_left_index: u32 = sp1_zkvm::io::read();
     let crl_right_index: u32 = sp1_zkvm::io::read();
 
@@ -575,12 +595,12 @@ pub fn main() {
         // Verify adjacency
         assert!(crl_right_index == crl_left_index + 1, "CRL non-inclusion: leaves not adjacent");
 
-        // Verify left leaf's Merkle proof
-        let left_root = verify_merkle_membership(&crl_left_leaf, &crl_left_proof);
+        // Verify left leaf's Merkle proof (position-aware, NOT sorted-pair)
+        let left_root = verify_crl_merkle_proof(&crl_left_leaf, &crl_left_proof, &crl_left_dirs);
         assert!(left_root == crl_merkle_root, "CRL left Merkle proof invalid");
 
         // Verify right leaf's Merkle proof
-        let right_root = verify_merkle_membership(&crl_right_leaf, &crl_right_proof);
+        let right_root = verify_crl_merkle_proof(&crl_right_leaf, &crl_right_proof, &crl_right_dirs);
         assert!(right_root == crl_merkle_root, "CRL right Merkle proof invalid");
     }
 

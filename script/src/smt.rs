@@ -12,16 +12,13 @@ use sha2::{Digest, Sha256};
 
 pub type Hash = [u8; 32];
 
-/// Sorted pair hash (same as merkle.rs)
-fn hash_pair(a: &Hash, b: &Hash) -> Hash {
+/// Position-aware hash: H(left || right) — NOT commutative.
+/// Unlike CA Merkle tree (sorted-pair), CRL tree preserves leaf ordering
+/// so that non-inclusion proofs can verify adjacency.
+fn hash_children(left: &Hash, right: &Hash) -> Hash {
     let mut hasher = Sha256::new();
-    if a <= b {
-        hasher.update(a);
-        hasher.update(b);
-    } else {
-        hasher.update(b);
-        hasher.update(a);
-    }
+    hasher.update(left);
+    hasher.update(right);
     hasher.finalize().into()
 }
 
@@ -34,10 +31,12 @@ pub struct NonInclusionProof {
     pub left_leaf: Hash,
     /// The leaf immediately after the target (or [0xff; 32] if target > all leaves)
     pub right_leaf: Hash,
-    /// Merkle proof for left_leaf
+    /// Merkle proof for left_leaf (sibling hashes + direction bits)
     pub left_proof: Vec<Hash>,
+    pub left_directions: Vec<bool>, // true = sibling is on right
     /// Merkle proof for right_leaf
     pub right_proof: Vec<Hash>,
+    pub right_directions: Vec<bool>,
     /// Index of left_leaf in the sorted array
     pub left_index: usize,
     /// Index of right_leaf in the sorted array
@@ -112,36 +111,42 @@ impl CrlMerkleTree {
         let left_leaf = self.leaves[left_index];
         let right_leaf = self.leaves[right_index];
 
-        let left_proof = self.merkle_proof(left_index);
-        let right_proof = self.merkle_proof(right_index);
+        let (left_proof, left_directions) = self.merkle_proof(left_index);
+        let (right_proof, right_directions) = self.merkle_proof(right_index);
 
         NonInclusionProof {
             left_leaf,
             right_leaf,
             left_proof,
+            left_directions,
             right_proof,
+            right_directions,
             left_index,
             right_index,
         }
     }
 
     /// Generate Merkle proof for a leaf at given index.
-    fn merkle_proof(&self, leaf_index: usize) -> Vec<Hash> {
+    /// Returns (siblings, directions) where direction=true means sibling is on right.
+    fn merkle_proof(&self, leaf_index: usize) -> (Vec<Hash>, Vec<bool>) {
         let mut proof = Vec::new();
+        let mut directions = Vec::new();
         let mut idx = leaf_index;
 
         for layer in &self.layers[..self.layers.len() - 1] {
-            let sibling_idx = if idx % 2 == 0 { idx + 1 } else { idx - 1 };
+            let is_left = idx % 2 == 0;
+            let sibling_idx = if is_left { idx + 1 } else { idx - 1 };
             let sibling = if sibling_idx < layer.len() {
                 layer[sibling_idx]
             } else {
                 layer[idx] // odd: duplicate
             };
             proof.push(sibling);
+            directions.push(is_left); // true = current is left, sibling is right
             idx /= 2;
         }
 
-        proof
+        (proof, directions)
     }
 }
 
@@ -156,9 +161,9 @@ fn build_layers(leaves: &[Hash]) -> Vec<Vec<Hash>> {
         let mut next = Vec::with_capacity((current.len() + 1) / 2);
         for i in (0..current.len()).step_by(2) {
             if i + 1 < current.len() {
-                next.push(hash_pair(&current[i], &current[i + 1]));
+                next.push(hash_children(&current[i], &current[i + 1]));
             } else {
-                next.push(hash_pair(&current[i], &current[i]));
+                next.push(hash_children(&current[i], &current[i]));
             }
         }
         layers.push(next);
@@ -187,13 +192,13 @@ pub fn verify_non_inclusion(
     }
 
     // 3. Verify left_leaf's Merkle proof
-    let left_root = compute_root(&proof.left_leaf, &proof.left_proof);
+    let left_root = compute_root(&proof.left_leaf, &proof.left_proof, &proof.left_directions);
     if left_root != *expected_root {
         return false;
     }
 
     // 4. Verify right_leaf's Merkle proof
-    let right_root = compute_root(&proof.right_leaf, &proof.right_proof);
+    let right_root = compute_root(&proof.right_leaf, &proof.right_proof, &proof.right_directions);
     if right_root != *expected_root {
         return false;
     }
@@ -201,11 +206,15 @@ pub fn verify_non_inclusion(
     true
 }
 
-/// Recompute Merkle root from a leaf and its proof path.
-fn compute_root(leaf: &Hash, proof: &[Hash]) -> Hash {
+/// Recompute Merkle root from a leaf, proof path, and direction bits.
+fn compute_root(leaf: &Hash, proof: &[Hash], directions: &[bool]) -> Hash {
     let mut current = *leaf;
-    for sibling in proof {
-        current = hash_pair(&current, sibling);
+    for (sibling, &is_left) in proof.iter().zip(directions.iter()) {
+        if is_left {
+            current = hash_children(&current, sibling); // current is left child
+        } else {
+            current = hash_children(sibling, &current); // current is right child
+        }
     }
     current
 }
