@@ -975,6 +975,32 @@ This represents a strictly stronger security model than the typical approach of 
 
 zk-X509's unique position is the combination of **no hardware requirement**, **government-grade trust** with full certificate chain verification, **trustless revocation checking**, **immediate deployability** (no new issuance infrastructure), **legal standing** under existing regulations, and **full zero-knowledge privacy**, leveraging an infrastructure base of billions of existing certificates.
 
+### 6.2 Quantitative Comparison
+
+All measurements were taken on the same machine (macOS, Apple Silicon) for fair comparison.
+
+| Metric | zk-X509 | zk-email | Polygon ID | Semaphore | zkPassport | Worldcoin |
+|--------|---------|----------|------------|-----------|------------|-----------|
+| **ZK Backend** | SP1 zkVM (RISC-V) | Circom + Groth16 | Circom + Groth16 | Circom + Groth16 | Noir/Circom | Custom |
+| **Constraints / Cycles** | 11.8M cycles (P-256) | 1.26M constraints | ~1M constraints | ~150K constraints | N/A | N/A |
+| **On-Chain Gas** | ~300K (Groth16) | ~300K (Groth16) | ~350K (Groth16) | ~150K (Groth16) | ~250K (est.) | ~200K (est.) |
+| **Test Suite Time** | 96s (execute) | 96s (9 tests) | Partial failure | N/A | N/A | N/A |
+| **Hardware Required** | None | None | None | None | NFC reader | Orb biometric |
+| **PKI Compatibility** | Any X.509 CA | DKIM (email only) | DID only | None (custom) | Passport chip | None |
+| **Credential Source** | Government PKI | Email providers | New DID issuers | None | Passport | Biometric |
+| **Privacy Level** | Full (Merkle CA) | Partial (reveals domain) | Selective disclosure | Group membership | Partial | Iris hash |
+| **Delegated Proving** | Yes (key never in circuit) | No (DKIM key in circuit) | No | No | No | N/A |
+| **Cross-DApp Unlinkability** | Yes (contract-bound nullifier) | No | Yes | Yes (group-scoped) | No | No |
+| **Cross-Chain Replay Defense** | Yes (chain_id in proof) | No | No | No | No | No |
+| **Immediate Deployability** | Yes (existing certs) | Yes (existing email) | No (new DID infra) | Yes | Partial (NFC) | No (Orb) |
+
+**Key findings:**
+- **zk-X509 is the only system** supporting any X.509 CA worldwide with full CA anonymity
+- **zk-email** has comparable on-chain cost but limited to DKIM email signatures (not government PKI)
+- **Polygon ID** requires building entirely new DID issuance infrastructure
+- **zk-X509's delegated proving** is a unique architectural advantage — no other system allows untrusted cloud proving without privacy loss
+- **SP1 cycle count (11.8M)** is higher than Circom constraint counts, but SP1 provides general-purpose programmability (Rust) vs. Circom's DSL limitations
+
 ---
 
 ## 7. Limitations and Future Work

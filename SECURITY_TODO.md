@@ -157,7 +157,7 @@
 - Prover Market (Succinct, Gevulot 등) 연동 가능성도 언급
 - 변경 범위: 논문 (Discussion 또는 Architecture 섹션에 추가)
 
-#### 48. 기존 시스템 대비 정량 비교 테이블 (논문 Evaluation)
+#### 48. ~~기존 시스템 대비 정량 비교 테이블 (논문 Evaluation)~~ ✅ DONE
 - DID (Polygon ID, Worldcoin), zkPassport, Semaphore, zk-email과 비교
 - 비교 항목: gas cost, ZK cycle count, proof 생성 시간, 프라이버시 수준, PKI 호환성
 - 표 + 그래프로 제시 (논문 Evaluation 섹션 핵심)
