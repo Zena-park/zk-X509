@@ -371,8 +371,8 @@ pub fn main() {
     // Signature-based ownership: host signs a challenge with the private key,
     // only the signature enters the ZK circuit. Private key never touches zkVM.
     let ownership_sig: Vec<u8> = sp1_zkvm::io::read();
-    // Nullifier signature: Sign(sk, H("zk-X509-Nullifier-v1")) — deterministic,
-    // registrant-independent. Used to derive nullifier without exposing public key.
+    // Nullifier signature: Sign(sk, H("zk-X509-Nullifier-v2" ‖ contract_address)) — deterministic,
+    // app-specific. Different contracts get different nullifiers (cross-DApp unlinkability).
     let nullifier_sig: Vec<u8> = sp1_zkvm::io::read();
     // Chain: [intermediate_ca_certs..., root_ca_pub_key_spki_der]
     // Single-level: [root_ca_pub_key_spki_der]
@@ -639,6 +639,7 @@ pub fn main() {
         walletIndex: wallet_index,
         notAfter: not_after,
         chainId: chain_id,
+        appContract: alloy_sol_types::private::Address::from_slice(&contract_address),
         countryHash: country_hash.into(),
         orgHash: org_hash.into(),
         orgUnitHash: org_unit_hash.into(),

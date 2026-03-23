@@ -15,6 +15,7 @@ sol! {
         uint32 walletIndex;      // Which wallet slot (0..maxWalletsPerCert-1)
         uint64 notAfter;         // Certificate expiry (unix timestamp)
         uint64 chainId;          // EIP-155 chain ID (prevents cross-chain replay)
+        address appContract;    // Target contract address (prevents cross-DApp nullifier reuse)
         // Selective disclosure: salted hash of each field, or bytes32(0) if not disclosed.
         // hash = SHA-256(len1 ‖ val1 ‖ ... ‖ disclosure_salt) — length-prefixed
         // disclosure_salt = H("zk-X509-Disclosure-Salt-v1" ‖ nullifier_sig) — deterministic, private
