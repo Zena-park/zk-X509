@@ -39,8 +39,9 @@
 #### 20. Solidity 형식 검증
 - Certora, Halmos 등으로 IdentityRegistry 검증 미실시
 
-#### 21. 다단계 인증서 비용 최적화
-- 3단계 NPKI 체인 ~13M cycles, RSA precompile 활용 등
+#### 21. ~~다단계 인증서 비용 최적화~~ ✅ DONE
+- zkVM: Vec → 스택 배열 (선택적 공개), 스트리밍 SHA-256 (ownership/nullifier)
+- Solidity: register()/reRegister()에서 verifiedUntil 체크를 proof 검증 전으로 이동 (gas 절감)
 
 #### 22. 클라이언트 사이드 프루빙 (SP1 WASM)
 - SP1 WASM prover 지원 대기 중
