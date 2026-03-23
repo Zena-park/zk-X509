@@ -6,6 +6,8 @@
 //!
 //! Supports both RSA and ECDSA (P-256, P-384) certificates.
 
+// DecodePrivateKey trait is needed for SigningKey::from_pkcs8_der() on both curves.
+// p256 and p384 share the same pkcs8 crate, so importing once covers both.
 use p256::pkcs8::DecodePrivateKey as _;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::RsaPrivateKey;
