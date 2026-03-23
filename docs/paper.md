@@ -1019,7 +1019,7 @@ The single-owner access control for CA management represents a centralization po
 
 ### 7.4 Cross-Chain Deployment
 
-The ZK proof is chain-agnostic. Deploying `IdentityRegistry` on multiple chains with the same verification key would enable cross-chain identity from a single proof generation. Standardizing the public values format could enable interoperability across different ZK identity systems.
+zk-X509 supports multi-chain deployment — the same `IdentityRegistry` contract can be deployed on Ethereum, Polygon, Arbitrum, or any EVM-compatible chain with the same verification key. Users generate a chain-specific proof for each network (with the target `chain_id` bound into the ownership challenge), and the same X.509 certificate serves as the identity anchor across all networks. The `chain_id` binding (EIP-155) ensures that proofs cannot be replayed across chains: a proof generated for Ethereum (chain_id=1) is rejected on Polygon (chain_id=137). This design provides both **cross-chain availability** and **replay resistance** without requiring cross-chain messaging infrastructure.
 
 ### 7.5 Privacy-Preserving Delegated Proving
 
