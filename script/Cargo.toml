@@ -50,6 +50,7 @@ p384 = { version = "0.13", features = ["ecdsa"] }
 x509-parser = "0.16"
 dirs = "5.0"
 rpassword = "7.3"
+atty = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
