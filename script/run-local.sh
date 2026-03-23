@@ -148,7 +148,56 @@ DEPLOYER_KEY=$DEPLOYER_KEY
 EOF
 echo "  Environment saved to .env.local"
 echo ""
-echo "=== Press Ctrl+C to stop Anvil ==="
+# ========================================
+# Step 5/5: Start prover server + frontend
+# ========================================
+echo "[5/5] Starting services..."
 
-# Keep running until user stops
+# Start prover server (background)
+echo "  Starting prover server on :8080..."
+cargo run --release --bin server &
+SERVER_PID=$!
+sleep 3
+echo "  ✅ Prover server: http://localhost:8080"
+
+# Start frontend (background)
+if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+    echo "  Starting frontend on :3000..."
+    cd frontend
+    npm install --silent 2>/dev/null
+    npm run dev &
+    FRONTEND_PID=$!
+    cd ..
+    sleep 3
+    echo "  ✅ Frontend: http://localhost:3000"
+else
+    FRONTEND_PID=""
+    echo "  ⚠️  Frontend not found, skipping"
+fi
+
+echo ""
+echo "=== All Services Running ==="
+echo "  Anvil:    http://localhost:8545 (PID: $ANVIL_PID)"
+echo "  Server:   http://localhost:8080 (PID: $SERVER_PID)"
+if [ -n "$FRONTEND_PID" ]; then
+echo "  Frontend: http://localhost:3000 (PID: $FRONTEND_PID)"
+fi
+echo "  Registry: $REGISTRY_ADDR"
+echo ""
+echo "  Open http://localhost:3000 in browser"
+echo "  Connect MetaMask to http://localhost:8545 (Chain ID: 31337)"
+echo ""
+echo "=== Press Ctrl+C to stop all ==="
+
+# Cleanup on exit
+cleanup() {
+    echo ""
+    echo "Stopping services..."
+    kill $ANVIL_PID 2>/dev/null
+    kill $SERVER_PID 2>/dev/null
+    [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID 2>/dev/null
+    echo "Done."
+}
+trap cleanup EXIT
+
 wait $ANVIL_PID
