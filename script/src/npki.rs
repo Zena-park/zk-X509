@@ -104,25 +104,9 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
         CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
         CipherType::LegacySeedCbc => {
             // Legacy NPKI OID 1.2.410.200004.1.15:
-            // PBKDF2-HMAC-SHA1(password, salt, iterations) → 20 bytes
-            // Then derive key and IV using SHA1-based key stretching:
-            //   hash_a = SHA1(derived_key_20 || 0x01)
-            //   hash_b = SHA1(derived_key_20 || 0x02)
-            //   key = hash_a[0..16]
-            //   iv  = hash_b[0..16]
-            use sha1::Digest as _;
-            let mut ha = sha1::Sha1::new();
-            ha.update(&derived_key);
-            ha.update(&[0x01]);
-            let hash_a: [u8; 20] = ha.finalize().into();
-
-            let mut hb = sha1::Sha1::new();
-            hb.update(&derived_key);
-            hb.update(&[0x02]);
-            let hash_b: [u8; 20] = hb.finalize().into();
-
-            let key = &hash_a[0..16];
-            let iv = &hash_b[0..16];
+            // PBKDF2 produces 32 bytes: key = [0..16], IV = [16..32]
+            let key = &derived_key[0..16];
+            let iv = &derived_key[16..32];
             decrypt_cbc::<cbc::Decryptor<SEED>>(key, iv, &encrypted_data, "SEED-legacy")?
         }
     };
@@ -170,16 +154,13 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
         let iterations = find_integer_after(alg_data, &salt)
             .unwrap_or(2048);
 
-        // Legacy NPKI KDF: PBKDF2-HMAC-SHA1 with key_length=20 (SHA1 output),
-        // then truncate to 16 bytes for SEED key.
-        // IV derived separately: PBKDF2(password, salt, iterations, 20)[4..20] or
-        // use the first 8 bytes of salt padded to 16.
-        // Common implementation: PBKDF2 produces 20 bytes, key=first 16, IV from salt.
+        // Legacy NPKI KDF: PBKDF2-HMAC-SHA1 with dkLen=32
+        // key = derived[0..16], IV = derived[16..32]
         return Ok(Pbes2Params {
             salt: salt.clone(),
             iterations,
-            key_length: 20, // PBKDF2 output = SHA1 size, will be split into key+IV
-            iv: vec![0u8; 16], // placeholder, will be derived below
+            key_length: 32, // PBKDF2 output 32 bytes, split into key+IV
+            iv: vec![0u8; 16], // placeholder, derived below
             cipher: CipherType::LegacySeedCbc,
         });
     }
