@@ -24,29 +24,32 @@ const OID_EC_PUBLIC_KEY: &str = "1.2.840.10045.2.1";
 const OID_PRIME256V1: &str = "1.2.840.10045.3.1.7"; // P-256
 const OID_SECP384R1: &str = "1.3.132.0.34";         // P-384
 
-/// Domain separator for nullifier generation — must match zkVM program's NULLIFIER_DOMAIN.
-const NULLIFIER_DOMAIN: &[u8] = b"zk-X509-Nullifier-v1";
+use zk_x509_lib::NULLIFIER_DOMAIN;
 
 /// Sign a prehash with the certificate's private key (shared logic).
-/// Detects RSA vs ECDSA from cert, dispatches accordingly.
-/// RSA PKCS#1 v1.5 is inherently deterministic; ECDSA uses RFC 6979 nonces.
-fn sign_with_cert_key(
-    cert_der: &[u8],
+/// Accepts a pre-parsed cert to avoid redundant DER parsing.
+fn sign_with_parsed_cert(
+    cert: &x509_parser::certificate::X509Certificate,
     key_der: &[u8],
     prehash: &[u8; 32],
 ) -> Result<Vec<u8>, String> {
-    use x509_parser::prelude::FromDer;
-    let (_, cert) = x509_parser::certificate::X509Certificate::from_der(cert_der)
-        .map_err(|e| format!("Parse cert: {:?}", e))?;
     let alg_oid = cert.tbs_certificate.subject_pki.algorithm.algorithm.to_id_string();
 
     if alg_oid == OID_EC_PUBLIC_KEY {
-        sign_ecdsa_ownership(&cert, key_der, prehash)
+        sign_ecdsa_ownership(cert, key_der, prehash)
     } else if alg_oid == OID_RSA_ENCRYPTION {
         sign_rsa_ownership(key_der, prehash)
     } else {
         Err(format!("Unsupported key algorithm: {}", alg_oid))
     }
+}
+
+/// Parse cert once, then sign a prehash.
+fn parse_and_sign(cert_der: &[u8], key_der: &[u8], prehash: &[u8; 32]) -> Result<Vec<u8>, String> {
+    use x509_parser::prelude::FromDer;
+    let (_, cert) = x509_parser::certificate::X509Certificate::from_der(cert_der)
+        .map_err(|e| format!("Parse cert: {:?}", e))?;
+    sign_with_parsed_cert(&cert, key_der, prehash)
 }
 
 /// Sign the ownership challenge: SHA-256(cert_serial ‖ registrant ‖ wallet_index)
@@ -67,9 +70,7 @@ pub fn sign_ownership(
     hasher.update(&wallet_index.to_be_bytes());
     let challenge_hash: [u8; 32] = hasher.finalize().into();
 
-    // Note: cert is parsed again inside sign_with_cert_key for key type detection.
-    // This is acceptable since ownership signing is host-side (not cycle-sensitive).
-    sign_with_cert_key(cert_der, key_der, &challenge_hash)
+    sign_with_parsed_cert(&cert, key_der, &challenge_hash)
 }
 
 /// Sign the nullifier domain string. Returns a deterministic, registrant-independent
@@ -79,7 +80,7 @@ pub fn sign_nullifier(
     key_der: &[u8],
 ) -> Result<Vec<u8>, String> {
     let message_hash: [u8; 32] = Sha256::digest(NULLIFIER_DOMAIN).into();
-    sign_with_cert_key(cert_der, key_der, &message_hash)
+    parse_and_sign(cert_der, key_der, &message_hash)
 }
 
 /// RSA ownership signing (PKCS#1 v1.5 with SHA-256).

@@ -15,7 +15,7 @@ use rsa::pkcs8::DecodePublicKey;
 use rsa::{Pkcs1v15Sign, RsaPublicKey};
 use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
-use zk_x509_lib::PublicValuesStruct;
+use zk_x509_lib::{PublicValuesStruct, NULLIFIER_DOMAIN};
 
 // ECDSA imports
 use p256::ecdsa::{
@@ -574,8 +574,6 @@ pub fn main() {
     //
     // The nullifier_sig is verified against the cert's public key to ensure
     // it was produced by the legitimate key holder.
-    /// Domain separator for nullifier — must match host-side NULLIFIER_DOMAIN in ownership.rs
-    const NULLIFIER_DOMAIN: &[u8] = b"zk-X509-Nullifier-v1";
     let nullifier_domain_hash: [u8; 32] = Sha256::digest(NULLIFIER_DOMAIN).into();
     // Reuses verify_ownership_signature — it verifies any prehash against the cert's public key
     verify_ownership_signature(&nullifier_domain_hash, &nullifier_sig, &user_cert);
