@@ -52,10 +52,13 @@ fn parse_and_sign(cert_der: &[u8], key_der: &[u8], prehash: &[u8; 32]) -> Result
     sign_with_parsed_cert(&cert, key_der, prehash)
 }
 
-/// Sign the ownership challenge: SHA-256(cert_serial ‖ registrant ‖ wallet_index ‖ timestamp)
+/// Sign the ownership challenge:
+///   SHA-256(cert_serial[var bytes] ‖ registrant[20 bytes] ‖ wallet_index[u32 BE] ‖ timestamp[u64 BE])
 ///
+/// Encoding: all integers are big-endian. `timestamp` is UNIX seconds (u64).
 /// Timestamp binds the signature to a specific proof generation time,
 /// preventing replay attacks where a prover server reuses a captured signature.
+/// The zkVM program must reconstruct the same hash with identical encoding.
 pub fn sign_ownership(
     cert_der: &[u8],
     key_der: &[u8],
@@ -199,6 +202,16 @@ mod tests {
         let sig_0 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
         let sig_1 = sign_ownership(&cert, &key, &registrant, 1, 1700000000).unwrap();
         assert_ne!(sig_0, sig_1, "Different wallet indices must produce different signatures");
+    }
+
+    #[test]
+    fn test_sign_ownership_different_timestamp() {
+        let (cert, key) = load_test_cert_and_key();
+        let registrant = [0x70u8; 20];
+
+        let sig_t1 = sign_ownership(&cert, &key, &registrant, 0, 1700000000).unwrap();
+        let sig_t2 = sign_ownership(&cert, &key, &registrant, 0, 1700000001).unwrap();
+        assert_ne!(sig_t1, sig_t2, "Different timestamps must produce different signatures (replay defense)");
     }
 
     #[test]

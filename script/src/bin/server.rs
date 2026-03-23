@@ -262,7 +262,8 @@ fn prepare_stdin(
 ) -> Result<SP1Stdin, String> {
     let (cert_der, key_der) = load_cert_and_key(state, cert_index, password)
         .map_err(|(_status, msg)| msg)?;
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {}", e))?.as_secs();
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &key_der, registrant_bytes, wallet_index, timestamp)
         .map_err(|e| e.to_string())?;
