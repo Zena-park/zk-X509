@@ -47,7 +47,7 @@
 - SP1 WASM prover 지원 대기 중
 
 #### 23. ~~NPKI 스캐너 단위 테스트~~ ✅ DONE
-- temp directory로 스캐너 동작 검증 필요
+- temp directory로 스캐너 동작 검증 완료 (5개 테스트)
 
 ### 🚨 CRITICAL (논문 리뷰 지적사항)
 

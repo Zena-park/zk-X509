@@ -111,9 +111,9 @@ fn scan_dir_with_depth(dir: &PathBuf, entries: &mut Vec<NpkiCertEntry>, depth: u
 
 /// Scan a specific directory (used by tests).
 #[cfg(test)]
-pub fn scan_dir(dir: &PathBuf) -> Vec<NpkiCertEntry> {
+fn scan_dir(dir: &std::path::Path) -> Vec<NpkiCertEntry> {
     let mut entries = Vec::new();
-    scan_dir_recursive(dir, &mut entries);
+    scan_dir_recursive(&dir.to_path_buf(), &mut entries);
     entries
 }
 
@@ -139,9 +139,14 @@ mod tests {
     use super::*;
     use std::fs;
 
+    /// Project root for test cert paths.
+    fn project_root() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+    }
+
     /// Create a fake NPKI directory structure with real test certs.
     fn setup_fake_npki(tmp: &std::path::Path) {
-        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let base = project_root();
 
         // Create CA/USER/DN/ structure
         let user_dir = tmp.join("TestCA/USER/TestDN");
@@ -157,9 +162,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         setup_fake_npki(tmp.path());
 
-        let entries = scan_dir(&tmp.path().to_path_buf());
+        let entries = scan_dir(tmp.path());
         assert_eq!(entries.len(), 1, "Should find exactly one cert");
-        assert!(entries[0].subject.contains("Hong Gildong") || !entries[0].subject.is_empty());
+        assert!(!entries[0].subject.is_empty(), "Subject must not be empty");
         assert!(!entries[0].serial_hex.is_empty());
         assert!(entries[0].cert_path.ends_with("signCert.der"));
         assert!(entries[0].key_path.ends_with("signPri.key"));
@@ -168,26 +173,26 @@ mod tests {
     #[test]
     fn test_scan_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let entries = scan_dir(&tmp.path().to_path_buf());
+        let entries = scan_dir(tmp.path());
         assert!(entries.is_empty(), "Empty dir should return no certs");
     }
 
     #[test]
     fn test_scan_missing_key_skips() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let base = project_root();
 
         // Only cert, no key
         fs::copy(base.join("certs/signCert.der"), tmp.path().join("signCert.der")).unwrap();
 
-        let entries = scan_dir(&tmp.path().to_path_buf());
+        let entries = scan_dir(tmp.path());
         assert!(entries.is_empty(), "Missing key should be skipped");
     }
 
     #[test]
     fn test_scan_multiple_certs() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let base = project_root();
 
         // Two separate cert directories
         let dir1 = tmp.path().join("CA1/USER/DN1");
@@ -201,14 +206,14 @@ mod tests {
         fs::copy(base.join("certs/ec_signCert.der"), dir2.join("signCert.der")).unwrap();
         fs::write(dir2.join("signPri.key"), b"dummy").unwrap();
 
-        let entries = scan_dir(&tmp.path().to_path_buf());
+        let entries = scan_dir(tmp.path());
         assert_eq!(entries.len(), 2, "Should find two certs");
     }
 
     #[test]
     fn test_scan_depth_limit() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let base = project_root();
 
         // Create deeply nested directory (beyond MAX_SCAN_DEPTH)
         let mut deep = tmp.path().to_path_buf();
@@ -219,7 +224,7 @@ mod tests {
         fs::copy(base.join("certs/signCert.der"), deep.join("signCert.der")).unwrap();
         fs::write(deep.join("signPri.key"), b"dummy").unwrap();
 
-        let entries = scan_dir(&tmp.path().to_path_buf());
+        let entries = scan_dir(tmp.path());
         assert!(entries.is_empty(), "Should not find certs beyond max depth");
     }
 }
