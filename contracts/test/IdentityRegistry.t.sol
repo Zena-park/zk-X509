@@ -485,4 +485,49 @@ contract IdentityRegistryTest is Test {
         );
         registry.register(hex"1234", pv);
     }
+
+    // ============ Dynamic proof age tests ============
+
+    function test_SetMaxProofAge() public {
+        registry.setMaxProofAge(10 minutes);
+        assertEq(registry.maxProofAge(), 10 minutes);
+    }
+
+    function test_RevertProofAgeOutOfRange_TooShort() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IdentityRegistry.ProofAgeOutOfRange.selector,
+                1 minutes, 5 minutes, 24 hours
+            )
+        );
+        registry.setMaxProofAge(1 minutes);
+    }
+
+    function test_RevertProofAgeOutOfRange_TooLong() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IdentityRegistry.ProofAgeOutOfRange.selector,
+                48 hours, 5 minutes, 24 hours
+            )
+        );
+        registry.setMaxProofAge(48 hours);
+    }
+
+    function test_ShorterProofAge_RejectsOldProof() public {
+        vm.warp(1700000000);
+        // Set proof age to 5 minutes
+        registry.setMaxProofAge(5 minutes);
+
+        // Proof generated 10 minutes ago
+        uint64 oldTimestamp = uint64(block.timestamp - 10 minutes);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0),
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER,
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.ProofTooOld.selector, oldTimestamp, block.timestamp)
+        );
+        registry.register(hex"1234", pv);
+    }
 }

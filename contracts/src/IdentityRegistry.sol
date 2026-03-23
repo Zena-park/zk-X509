@@ -37,8 +37,11 @@ contract IdentityRegistry {
     /// @notice Whether the contract is paused.
     bool public paused;
 
-    /// @notice Maximum allowed age of a proof (1 hour).
-    uint256 public constant MAX_PROOF_AGE = 1 hours;
+    /// @notice Maximum allowed age of a proof (adjustable by owner).
+    uint256 public maxProofAge = 1 hours;
+
+    uint256 public constant MIN_PROOF_AGE = 5 minutes;
+    uint256 public constant MAX_PROOF_AGE_LIMIT = 24 hours;
 
     /// @notice Max wallets per certificate (1 = strict 1:1, N = multi-wallet).
     uint32 public immutable maxWalletsPerCert;
@@ -50,6 +53,7 @@ contract IdentityRegistry {
     event CaMerkleRootUpdated(bytes32 indexed newRoot);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
+    event MaxProofAgeUpdated(uint256 oldAge, uint256 newAge);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
 
@@ -70,6 +74,7 @@ contract IdentityRegistry {
     error NullifierRevoked(bytes32 nullifier);
     error WalletIndexOutOfRange(uint32 walletIndex, uint32 maxAllowed);
     error CertAlreadyExpired(uint64 notAfter, uint256 blockTimestamp);
+    error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
 
     // ============ Modifiers ============
 
@@ -111,7 +116,7 @@ contract IdentityRegistry {
 
         if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
         if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
-        if (block.timestamp - proofTimestamp > MAX_PROOF_AGE) revert ProofTooOld(proofTimestamp, block.timestamp);
+        if (block.timestamp - proofTimestamp > maxProofAge) revert ProofTooOld(proofTimestamp, block.timestamp);
         if (proofMerkleRoot != caMerkleRoot) revert InvalidCaMerkleRoot(proofMerkleRoot, caMerkleRoot);
         if (walletIndex >= maxWalletsPerCert) revert WalletIndexOutOfRange(walletIndex, maxWalletsPerCert);
         if (notAfter < block.timestamp) revert CertAlreadyExpired(notAfter, block.timestamp);
@@ -178,6 +183,16 @@ contract IdentityRegistry {
         if (newRoot == bytes32(0)) revert ZeroMerkleRoot();
         caMerkleRoot = newRoot;
         emit CaMerkleRootUpdated(newRoot);
+    }
+
+    /// @notice Adjust the maximum proof age (bounded: 5 min to 24 hours).
+    /// @param newAge New max proof age in seconds.
+    function setMaxProofAge(uint256 newAge) external onlyOwner {
+        if (newAge < MIN_PROOF_AGE || newAge > MAX_PROOF_AGE_LIMIT)
+            revert ProofAgeOutOfRange(newAge, MIN_PROOF_AGE, MAX_PROOF_AGE_LIMIT);
+        uint256 oldAge = maxProofAge;
+        maxProofAge = newAge;
+        emit MaxProofAgeUpdated(oldAge, newAge);
     }
 
     /// @notice Revoke an identity by nullifier. Permanently disables the nullifier
