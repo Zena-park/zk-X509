@@ -249,6 +249,28 @@ fn build_stdin(
     stdin
 }
 
+/// Shared logic: load cert, sign ownership + nullifier, build stdin.
+fn prepare_stdin(
+    state: &AppState,
+    cert_index: usize,
+    password: &str,
+    registrant_bytes: &[u8; 20],
+    ca_pub_key: &[u8],
+    wallet_index: u32,
+    max_wallets: u32,
+    disclosure_mask: u8,
+) -> Result<SP1Stdin, String> {
+    let (cert_der, key_der) = load_cert_and_key(state, cert_index, password)
+        .map_err(|(_status, msg)| msg)?;
+    let ownership_sig = zk_x509_script::ownership::sign_ownership(
+        &cert_der, &key_der, registrant_bytes, wallet_index)
+        .map_err(|e| e.to_string())?;
+    let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
+        &cert_der, &key_der)
+        .map_err(|e| e.to_string())?;
+    Ok(build_stdin(&cert_der, &ownership_sig, &nullifier_sig, ca_pub_key, registrant_bytes, wallet_index, max_wallets, disclosure_mask))
+}
+
 /// Execute the ZK program without generating a proof (fast, for testing).
 async fn execute_handler(
     Json(req): Json<ProveRequest2>,
@@ -267,15 +289,7 @@ async fn execute_handler(
     let disclosure_mask = req.disclosure_mask;
 
     let result = tokio::task::spawn_blocking(move || {
-        let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
-            .map_err(|(_status, msg)| msg)?;
-        let ownership_sig = zk_x509_script::ownership::sign_ownership(
-            &cert_der, &key_der, &registrant_bytes, wallet_index)
-            .map_err(|e| e.to_string())?;
-        let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-            &cert_der, &key_der)
-            .map_err(|e| e.to_string())?;
-        let stdin = build_stdin(&cert_der, &ownership_sig, &nullifier_sig, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets, disclosure_mask);
+        let stdin = prepare_stdin(&state, cert_index, &password, &registrant_bytes, &ca_pub_key, wallet_index, max_wallets, disclosure_mask)?;
         state.client.execute(ZK_X509_ELF, stdin).run()
             .map_err(|e| e.to_string())
     })
@@ -312,15 +326,7 @@ async fn prove_handler(
     let disclosure_mask = req.disclosure_mask;
 
     let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
-        let (cert_der, key_der) = load_cert_and_key(&state, cert_index, &password)
-            .map_err(|(_status, msg)| msg)?;
-        let ownership_sig = zk_x509_script::ownership::sign_ownership(
-            &cert_der, &key_der, &registrant_bytes, wallet_index)
-            .map_err(|e| e.to_string())?;
-        let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-            &cert_der, &key_der)
-            .map_err(|e| e.to_string())?;
-        let stdin = build_stdin(&cert_der, &ownership_sig, &nullifier_sig, &ca_pub_key, &registrant_bytes, wallet_index, max_wallets, disclosure_mask);
+        let stdin = prepare_stdin(&state, cert_index, &password, &registrant_bytes, &ca_pub_key, wallet_index, max_wallets, disclosure_mask)?;
         let pk = state.client.setup(ZK_X509_ELF).map_err(|e| e.to_string())?;
         let proof = state.client.prove(&pk, stdin).run().map_err(|e| e.to_string())?;
         state.client.verify(&proof, pk.verifying_key(), None).map_err(|e| e.to_string())?;
