@@ -155,7 +155,7 @@ fn main() {
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, args.chain_id,
     ).expect("Failed to sign ownership challenge");
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &priv_key, &contract_bytes,
+        &cert_der, &priv_key, &contract_bytes, args.chain_id,
     ).expect("Failed to sign nullifier domain");
     println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 

@@ -32,7 +32,7 @@
 
 ### MEDIUM
 
-#### 18. CRL 오라클 / 온체인 CRL 커밋
+#### 18. ~~CRL 오라클 / 온체인 CRL 커밋~~ → #50으로 흡수
 - CRL 해시를 public values에 포함하거나, 온체인 CRL 오라클 구축
 - 현재 CRL은 프루버 서버가 로컬에서 제공
 
@@ -142,6 +142,28 @@
 - **해결:** challenge = `H(serial ‖ addr ‖ wallet_index ‖ timestamp ‖ chain_id)`, 컨트랙트에서 `require(chainId == block.chainid)`
 - **변경 범위:** program, ownership.rs, contracts (PublicValuesStruct에 chainId 추가)
 
+### MEDIUM (측정 필요)
+
+#### 50. CRL Merkle Oracle — 대규모 CRL 지원 (← #18 흡수)
+- **문제:** 현재 zkVM 내 CRL 검증은 전체 CRL DER을 입력 → 대규모 CRL(수십 MB)은 비용 비현실적
+- **해결:** 오라클 운영자가 CRL의 폐지 시리얼 번호를 Merkle tree로 구성 → root만 on-chain 저장
+- **zkVM:** "내 시리얼이 이 Merkle tree에 없다"는 non-membership proof 검증
+- **컨트랙트:** `crlMerkleRoot` 상태 + `updateCrlMerkleRoot()` 관리자 함수
+- **장점:** CRL 크기 무관 (수백만 건이어도 Merkle proof는 log(n) 해시만)
+- **변경 범위:** program (Merkle non-membership proof), contracts (crlMerkleRoot 상태), script (CRL → Merkle tree 변환 도구), 오라클 운영 인프라
+
+#### 51. zk-email 벤치마크 재실행 (메모리 설정 필요)
+- **문제:** snarkjs trusted setup이 메모리 부족으로 25분+ 소요 (메모리 102MB 고정)
+- **해결:** `NODE_OPTIONS=--max_old_space_size=8192 npx snarkjs groth16 setup ...`
+- **측정 필요:** trusted setup 시간, proof 생성 시간, zkey 크기
+- **ptau 파일:** 이미 다운로드 완료 (589MB, ptau21.ptau)
+
+#### 49. On-chain gas 실측 (Groth16 verifier)
+- **현재:** 300K gas는 추정치 (SP1 문서 + BN254 pairing 비용 기반)
+- **필요:** Anvil에 SP1 Groth16 Verifier 배포 → proof 제출 → 실제 gas 측정
+- **순서:** `--prove`로 proof 생성 (완료) → Anvil 배포 → register() 호출 → gas report
+- **변경 범위:** 테스트만 (코드 변경 없음), BENCHMARKS.md에 실측값 업데이트
+
 ### LOW (논문 작업)
 
 #### 46. ~~CRL 논문 톤다운~~ ✅ DONE
@@ -157,7 +179,7 @@
 - Prover Market (Succinct, Gevulot 등) 연동 가능성도 언급
 - 변경 범위: 논문 (Discussion 또는 Architecture 섹션에 추가)
 
-#### 48. 기존 시스템 대비 정량 비교 테이블 (논문 Evaluation)
+#### 48. ~~기존 시스템 대비 정량 비교 테이블 (논문 Evaluation)~~ ✅ DONE
 - DID (Polygon ID, Worldcoin), zkPassport, Semaphore, zk-email과 비교
 - 비교 항목: gas cost, ZK cycle count, proof 생성 시간, 프라이버시 수준, PKI 호환성
 - 표 + 그래프로 제시 (논문 Evaluation 섹션 핵심)

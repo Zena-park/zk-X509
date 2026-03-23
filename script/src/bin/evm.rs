@@ -87,7 +87,7 @@ fn main() {
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, chain_id,
     ).expect("Failed to sign");
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &priv_key, &contract_address,
+        &cert_der, &priv_key, &contract_address, chain_id,
     ).expect("Failed to sign nullifier");
 
     let crl_der: Vec<u8> = Vec::new();
