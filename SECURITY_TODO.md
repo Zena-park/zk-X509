@@ -107,10 +107,10 @@
 
 ### MEDIUM (취약점 분석 추가)
 
-#### 40. 동적 MAX_PROOF_AGE + L2 timestamp 조작 방어
+#### 40. ~~동적 MAX_PROOF_AGE + L2 timestamp 조작 방어~~ ✅ DONE
 - **문제:** MAX_PROOF_AGE=1h 고정값. L2/사이드체인에서 블록 빌더가 timestamp을 조작할 수 있음
-- **해결:** `setMaxProofAge(uint32)` 관리자 함수 추가 (범위: 5분~24시간)
-- **변경 범위:** contracts (MAX_PROOF_AGE를 immutable → mutable)
+- **해결:** `setMaxProofAge(uint256)` 관리자 함수 추가 (범위: 5분~24시간)
+- **변경 범위:** contracts (constant → mutable, 범위 제한)
 
 #### 41. CA Merkle root 갱신 시 grace period
 - **문제:** `updateCaMerkleRoot()` 호출 시 이전 root로 생성된 미제출 proof가 즉시 무효화
