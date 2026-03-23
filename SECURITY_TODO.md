@@ -144,6 +144,17 @@
 
 ### MEDIUM (측정 필요)
 
+#### 52. Delegated Proving을 메인 아키텍처로 격상
+- **현재:** Section 7.5 (Future Work)에 위임 증명 기술
+- **변경:** 메인 아키텍처(Section 3)로 이동 — 시스템의 권장 배포 모델로 명시
+- **이유:**
+  - 증명 시간 해결 (10분 → 1~2분 GPU)
+  - CRL 강제 적용 (클라우드가 CA에서 직접 다운로드)
+  - 개인키 안전 (서명만 전송, 키는 로컬)
+  - 서명 탈취 안전 (addr + timestamp + chain_id 바인딩)
+- **변경 범위:** 논문 구조 변경 (Section 3에 Delegated Proving 추가, Section 7.5에서 이동)
+- **코드:** 현재 server.rs가 이미 위임형 구조 (서명 받아서 proof 생성)
+
 #### 50. CRL Merkle Oracle — 대규모 CRL 지원 (← #18 흡수)
 - **문제:** 현재 zkVM 내 CRL 검증은 전체 CRL DER을 입력 → 대규모 CRL(수십 MB)은 비용 비현실적
 - **해결:** 오라클 운영자가 CRL의 폐지 시리얼 번호를 Merkle tree로 구성 → root만 on-chain 저장

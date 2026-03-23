@@ -479,7 +479,27 @@ zk-X509 resolves this by committing the certificate's `notAfter` timestamp as a 
 
 This design has two advantages: (1) on-chain identity tracks the real-world credential lifecycle without manual intervention, and (2) it creates a natural re-verification cycle that limits the damage window if a certificate is compromised — the compromised identity expires automatically.
 
-### 3.10 Selective Attribute Disclosure
+### 3.10 Delegated Proving Architecture
+
+A critical design decision in zk-X509 is that the **private key never enters the zkVM**. The circuit receives only two deterministic signatures (`ownership_sig`, `nullifier_sig`) as inputs, both generated on the user's local device. This architectural separation of signing and proving enables **delegated proving** as the recommended deployment model:
+
+1. **User (phone/browser):** Generates `ownership_sig` and `nullifier_sig` using the OS keychain (~1 second). The private key remains in the Secure Enclave / TPM.
+
+2. **Cloud prover (untrusted):** Receives the signatures + certificate (public data) and generates the SP1 proof using GPU acceleration (~1–2 minutes). The cloud never sees the private key.
+
+3. **User:** Submits the proof to the blockchain via `register()`.
+
+This model solves three problems simultaneously:
+
+- **Performance.** Local CPU proving takes ~10 minutes. Cloud GPU proving reduces this to ~1–2 minutes, making the system practical for interactive workflows.
+
+- **CRL enforcement.** The cloud prover downloads the latest CRL directly from the CA and includes it in the proof. Unlike local proving where the user can omit the CRL, the cloud prover enforces CRL checking — a user with a revoked certificate cannot bypass revocation by simply not providing the CRL.
+
+- **Security.** Even if the cloud prover is malicious, it cannot forge signatures (no private key), register to a different wallet (address-bound `ownership_sig`), or reuse the proof later (timestamp-bound) or on another chain (chain_id-bound).
+
+**Comparison with other systems.** In zk-email and Semaphore, private inputs (DKIM key, secret identity) enter the circuit directly, making delegation impossible without exposing sensitive data. zk-X509's signature-based architecture is unique in enabling privacy-preserving delegation.
+
+### 3.11 Selective Attribute Disclosure
 
 Prior sections describe a binary identity model: the verifier learns only "this wallet holds a valid certificate" without any attributes. While this suffices for simple Sybil resistance, real-world applications often require **granular attribute verification**: "this user is from country X" or "this user belongs to organization Y" — without revealing other attributes like name or ID number.
 
@@ -498,7 +518,7 @@ For each bit set in the mask, the circuit extracts the corresponding field from 
 
 **Privacy guarantee.** Fields with mask bit = 0 produce a zero hash in the public values, revealing no information. The ZK zero-knowledge property ensures that even the *existence* of undisclosed fields is hidden — the verifier cannot distinguish "field is empty in the certificate" from "field exists but was not disclosed."
 
-### 3.11 CA-Anonymous Verification via Merkle Tree
+### 3.12 CA-Anonymous Verification via Merkle Tree
 
 In a multi-national deployment, directly revealing `caRootHash` (the SHA-256 hash of the root CA's public key) as a public value discloses which CA issued the certificate — effectively revealing the user's jurisdiction (e.g., "Korean CA" vs "Estonian CA"). This narrows the anonymity set and may be unacceptable for privacy-sensitive applications.
 
@@ -1028,13 +1048,9 @@ zk-X509 supports multi-chain deployment — `IdentityRegistry` can be deployed o
 
 If cross-chain identity linkage is desired (e.g., for unified reputation), the user can voluntarily reveal their nullifiers on both chains. However, this is an opt-in decision that the protocol does not enforce, preserving privacy by default.
 
-### 7.5 Privacy-Preserving Delegated Proving
+### 7.5 Prover Marketplace Integration
 
-A distinctive architectural advantage of zk-X509 is that the private key never enters the zkVM. Only deterministic signatures (`ownership_sig`, `nullifier_sig`) are passed as circuit inputs. This enables a powerful deployment model: **delegated proving**.
-
-The user generates signatures locally (phone/browser, ~1 second) and delegates the computationally intensive SP1 proof generation to an untrusted cloud server or a decentralized prover market (e.g., Succinct, Gevulot). The cloud server receives only the certificate (public data) and signatures—never the private key—so user privacy is preserved even if the prover is malicious.
-
-This architecture reduces the end-to-end user experience from ~10 minutes (local CPU proving) to ~1–2 minutes (GPU-accelerated cloud proving), making zk-X509 practical for interactive authentication workflows. Unlike systems where private inputs enter the circuit (e.g., zk-email, Semaphore), zk-X509's separation of signing and proving enables this delegation without any protocol modification.
+The delegated proving architecture described in Section 3.10 can be extended to decentralized prover marketplaces (e.g., Succinct Network, Gevulot) where multiple competing provers bid on proof generation. This would further reduce costs through market competition and eliminate reliance on a single cloud provider.
 
 ### 7.6 Formal Verification
 
