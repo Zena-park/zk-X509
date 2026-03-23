@@ -317,20 +317,22 @@ fn extract_subject_field_hashes(
     let mut cn_vals: [Option<&str>; MAX_FIELD_VALUES] = [None; MAX_FIELD_VALUES];
     let mut counts = [0usize; 4]; // [country, org, ou, cn]
 
-    // Single pass: compare OID bytes directly (no String allocation)
+    // Single pass: only collect fields included in disclosure mask.
+    // Undisclosed fields are skipped entirely (no assert, no DoS on valid certs).
+    // Disclosed fields assert on overflow to prevent silent hash divergence.
     for attr in subject.iter_attributes() {
         let oid_bytes = attr.attr_type().as_bytes();
         if let Ok(value) = attr.as_str() {
-            if oid_bytes == OID_COUNTRY {
+            if oid_bytes == OID_COUNTRY && effective_mask & 0x01 != 0 {
                 assert!(counts[0] < MAX_FIELD_VALUES, "Too many Country values");
                 country_vals[counts[0]] = Some(value); counts[0] += 1;
-            } else if oid_bytes == OID_ORG {
+            } else if oid_bytes == OID_ORG && effective_mask & 0x02 != 0 {
                 assert!(counts[1] < MAX_FIELD_VALUES, "Too many Org values");
                 org_vals[counts[1]] = Some(value); counts[1] += 1;
-            } else if oid_bytes == OID_ORG_UNIT {
+            } else if oid_bytes == OID_ORG_UNIT && effective_mask & 0x04 != 0 {
                 assert!(counts[2] < MAX_FIELD_VALUES, "Too many OrgUnit values");
                 ou_vals[counts[2]] = Some(value); counts[2] += 1;
-            } else if oid_bytes == OID_CN {
+            } else if oid_bytes == OID_CN && effective_mask & 0x08 != 0 {
                 assert!(counts[3] < MAX_FIELD_VALUES, "Too many CN values");
                 cn_vals[counts[3]] = Some(value); counts[3] += 1;
             }

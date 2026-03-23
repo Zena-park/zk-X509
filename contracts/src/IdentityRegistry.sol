@@ -69,6 +69,7 @@ contract IdentityRegistry {
     error NullifierNotRegistered(bytes32 nullifier);
     error NullifierRevoked(bytes32 nullifier);
     error WalletIndexOutOfRange(uint32 walletIndex, uint32 maxAllowed);
+    error CertAlreadyExpired(uint64 notAfter, uint256 blockTimestamp);
 
     // ============ Modifiers ============
 
@@ -113,6 +114,7 @@ contract IdentityRegistry {
         if (block.timestamp - proofTimestamp > MAX_PROOF_AGE) revert ProofTooOld(proofTimestamp, block.timestamp);
         if (proofMerkleRoot != caMerkleRoot) revert InvalidCaMerkleRoot(proofMerkleRoot, caMerkleRoot);
         if (walletIndex >= maxWalletsPerCert) revert WalletIndexOutOfRange(walletIndex, maxWalletsPerCert);
+        if (notAfter < block.timestamp) revert CertAlreadyExpired(notAfter, block.timestamp);
 
         sp1Verifier.verifyProof(programVKey, publicValues, proof);
     }

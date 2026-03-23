@@ -472,4 +472,17 @@ contract IdentityRegistryTest is Test {
         registry.register(hex"1234", pv2);
         assertTrue(registry.isVerified(alice));
     }
+
+    function test_RevertCertAlreadyExpired() public {
+        vm.warp(1700000000);
+        // Certificate expired 1 hour ago
+        uint64 expiredNotAfter = uint64(block.timestamp - 1 hours);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), expiredNotAfter);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.CertAlreadyExpired.selector, expiredNotAfter, block.timestamp)
+        );
+        registry.register(hex"1234", pv);
+    }
 }
