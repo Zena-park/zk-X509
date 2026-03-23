@@ -33,6 +33,9 @@ const OID_SEED_CBC: &[u8] = &[0x06, 0x08, 0x2a, 0x83, 0x1a, 0x8c, 0x9a, 0x44, 0x
 const OID_AES256_CBC: &[u8] =
     &[0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x01, 0x2a];
 
+/// OID for hmacWithSHA256: 1.2.840.113549.2.9
+const OID_HMAC_SHA256: &[u8] = &[0x06, 0x08, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x02, 0x09];
+
 /// OID for legacy NPKI SEED-CBC-SHA1: 1.2.410.200004.1.15
 /// Combined KDF+cipher OID (not PBES2 wrapped). Used by older Korean NPKI keys.
 const OID_NPKI_SEED_CBC_SHA1: &[u8] =
@@ -67,6 +70,7 @@ struct Pbes2Params {
     key_length: usize,
     iv: Vec<u8>,
     cipher: CipherType,
+    use_sha256_prf: bool, // true = HMAC-SHA256, false = HMAC-SHA1
 }
 
 enum CipherType {
@@ -90,13 +94,23 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
 
     // Derive the encryption key using PBKDF2
     let mut derived_key = vec![0u8; params.key_length];
-    pbkdf2::<Hmac<Sha1>>(
-        password.as_bytes(),
-        &params.salt,
-        params.iterations,
-        &mut derived_key,
-    )
-    .map_err(|e| NpkiError::DecryptionFailed(format!("PBKDF2 failed: {}", e)))?;
+    if params.use_sha256_prf {
+        pbkdf2::<Hmac<sha2::Sha256>>(
+            password.as_bytes(),
+            &params.salt,
+            params.iterations,
+            &mut derived_key,
+        )
+        .map_err(|e| NpkiError::DecryptionFailed(format!("PBKDF2-SHA256 failed: {}", e)))?;
+    } else {
+        pbkdf2::<Hmac<Sha1>>(
+            password.as_bytes(),
+            &params.salt,
+            params.iterations,
+            &mut derived_key,
+        )
+        .map_err(|e| NpkiError::DecryptionFailed(format!("PBKDF2-SHA1 failed: {}", e)))?;
+    }
 
     // Decrypt based on cipher type
     let decrypted = match params.cipher {
@@ -162,6 +176,7 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
             key_length: 32, // PBKDF2 output 32 bytes, split into key+IV
             iv: vec![0u8; 16], // placeholder, derived below
             cipher: CipherType::LegacySeedCbc,
+            use_sha256_prf: false,
         });
     }
 
@@ -201,12 +216,16 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
         CipherType::LegacySeedCbc => 20, // unreachable here, handled above
     };
 
+    // Detect PRF: check for hmacWithSHA256 OID in the algorithm section
+    let use_sha256_prf = window_contains(&data[alg_start..alg_end], OID_HMAC_SHA256);
+
     Ok(Pbes2Params {
         salt,
         iterations,
         key_length,
         iv,
         cipher,
+        use_sha256_prf,
     })
 }
 
