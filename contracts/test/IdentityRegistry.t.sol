@@ -26,13 +26,13 @@ contract IdentityRegistryTest is Test {
 
     function _pv(bytes32 nullifier, bytes32 caHash, address sender) internal view returns (bytes memory) {
         return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, uint32(0),
-            uint64(block.timestamp) + DEFAULT_NOT_AFTER,
-            bytes32(0), bytes32(0), bytes32(0), bytes32(0)); // selective disclosure: none
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
     function _pvIdx(bytes32 nullifier, bytes32 caHash, address sender, uint32 idx) internal view returns (bytes memory) {
         return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, idx,
-            uint64(block.timestamp) + DEFAULT_NOT_AFTER,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid),
             bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
@@ -105,7 +105,7 @@ contract IdentityRegistryTest is Test {
     function test_RevertProofTooOld() public {
         vm.warp(1700000000);
         uint64 oldTimestamp = uint64(block.timestamp - 2 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -117,7 +117,7 @@ contract IdentityRegistryTest is Test {
 
     function test_RevertProofInFuture() public {
         uint64 futureTimestamp = uint64(block.timestamp + 1 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, futureTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER);
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, futureTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -429,7 +429,7 @@ contract IdentityRegistryTest is Test {
         vm.warp(1700000000);
         // Cert expires in 1 year
         uint64 notAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -440,7 +440,7 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_NotVerifiedAfterExpiry() public {
         vm.warp(1700000000);
         uint64 notAfter = uint64(block.timestamp + 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -454,7 +454,7 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_CanReRegisterAfterExpiry() public {
         vm.warp(1700000000);
         uint64 notAfter = uint64(block.timestamp + 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -466,7 +466,7 @@ contract IdentityRegistryTest is Test {
         // Alice can register with a new cert (different nullifier)
         bytes32 nullifier2 = bytes32(uint256(0xFEED));
         uint64 newNotAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
-        bytes memory pv2 = abi.encode(nullifier2, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), newNotAfter);
+        bytes memory pv2 = abi.encode(nullifier2, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), newNotAfter, uint64(block.chainid));
 
         vm.prank(alice);
         registry.register(hex"1234", pv2);
@@ -477,7 +477,7 @@ contract IdentityRegistryTest is Test {
         vm.warp(1700000000);
         // Certificate expired 1 hour ago
         uint64 expiredNotAfter = uint64(block.timestamp - 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), expiredNotAfter);
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), expiredNotAfter, uint64(block.chainid));
 
         vm.prank(alice);
         vm.expectRevert(
@@ -527,7 +527,7 @@ contract IdentityRegistryTest is Test {
         // Proof generated 10 minutes ago
         uint64 oldTimestamp = uint64(block.timestamp - 10 minutes);
         bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0),
-            uint64(block.timestamp) + DEFAULT_NOT_AFTER,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid),
             bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);

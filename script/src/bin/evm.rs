@@ -81,11 +81,13 @@ fn main() {
         .try_into()
         .expect("Registrant address must be 20 bytes");
 
+    let chain_id: u64 = 31337; // TODO: make configurable
+    let contract_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
-        &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp,
+        &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, chain_id,
     ).expect("Failed to sign");
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &priv_key,
+        &cert_der, &priv_key, &contract_address,
     ).expect("Failed to sign nullifier");
 
     let crl_der: Vec<u8> = Vec::new();
@@ -107,6 +109,8 @@ fn main() {
     stdin.write(&args.disclosure_mask);
     stdin.write(&ca_merkle_proof);
     stdin.write(&ca_merkle_root);
+    stdin.write(&contract_address);
+    stdin.write(&chain_id);
     println!("Proof System: {:?}", args.system);
 
     let proof = match args.system {

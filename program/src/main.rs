@@ -394,6 +394,9 @@ pub fn main() {
     // Merkle proof for CA anonymity: proves CA membership without revealing which CA
     let ca_merkle_proof: Vec<[u8; 32]> = sp1_zkvm::io::read();
     let ca_merkle_root: [u8; 32] = sp1_zkvm::io::read();
+    // Domain separation: contract address + chain ID prevent cross-DApp and cross-chain attacks
+    let contract_address: [u8; 20] = sp1_zkvm::io::read();
+    let chain_id: u64 = sp1_zkvm::io::read();
 
     assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
     assert!(wallet_index < max_wallets, "wallet_index must be < max_wallets");
@@ -548,8 +551,8 @@ pub fn main() {
     // ========================================
     // Step 5: Verify ownership (signature-based)
     // ========================================
-    // Host signs challenge = SHA-256(serial ‖ registrant ‖ wallet_index ‖ timestamp).
-    // Timestamp prevents replay: signature is bound to this specific proof generation time.
+    // Host signs challenge = SHA-256(serial ‖ registrant ‖ wallet_index ‖ timestamp ‖ chain_id).
+    // Includes chain_id (EIP-155) to prevent cross-chain replay attacks.
     // ZK circuit verifies signature using the cert's public key.
     // Private key never enters the ZK circuit.
     let serial_bytes = user_cert.tbs_certificate.serial.to_bytes_be();
@@ -559,6 +562,7 @@ pub fn main() {
     ownership_hasher.update(&registrant);
     ownership_hasher.update(&wallet_index.to_be_bytes());
     ownership_hasher.update(&current_timestamp.to_be_bytes());
+    ownership_hasher.update(&chain_id.to_be_bytes());
     let ownership_hash: [u8; 32] = ownership_hasher.finalize().into();
 
     verify_ownership_signature(&ownership_hash, &ownership_sig, &user_cert);
@@ -576,8 +580,12 @@ pub fn main() {
     //
     // The nullifier_sig is verified against the cert's public key to ensure
     // it was produced by the legitimate key holder.
-    let nullifier_domain_hash: [u8; 32] = Sha256::digest(NULLIFIER_DOMAIN).into();
-    // Reuses verify_ownership_signature — it verifies any prehash against the cert's public key
+    // Domain includes contract_address for cross-DApp unlinkability:
+    // different dApps → different nullifier_sig → different nullifier.
+    let mut domain_hasher = Sha256::new();
+    domain_hasher.update(NULLIFIER_DOMAIN);
+    domain_hasher.update(&contract_address);
+    let nullifier_domain_hash: [u8; 32] = domain_hasher.finalize().into();
     verify_ownership_signature(&nullifier_domain_hash, &nullifier_sig, &user_cert);
 
     let mut nullifier_hasher = Sha256::new();
@@ -630,6 +638,7 @@ pub fn main() {
         registrant: registrant_addr,
         walletIndex: wallet_index,
         notAfter: not_after,
+        chainId: chain_id,
         countryHash: country_hash.into(),
         orgHash: org_hash.into(),
         orgUnitHash: org_unit_hash.into(),

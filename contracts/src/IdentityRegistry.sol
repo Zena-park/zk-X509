@@ -74,6 +74,7 @@ contract IdentityRegistry {
     error NullifierRevoked(bytes32 nullifier);
     error WalletIndexOutOfRange(uint32 walletIndex, uint32 maxAllowed);
     error CertAlreadyExpired(uint64 notAfter, uint256 blockTimestamp);
+    error ChainIdMismatch(uint64 proofChainId, uint256 expectedChainId);
     error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
 
     // ============ Modifiers ============
@@ -111,10 +112,12 @@ contract IdentityRegistry {
         address registrant;
         uint64 proofTimestamp;
         uint32 walletIndex;
-        (nullifier, proofMerkleRoot, proofTimestamp, registrant, walletIndex, notAfter) =
-            abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64));
+        uint64 proofChainId;
+        (nullifier, proofMerkleRoot, proofTimestamp, registrant, walletIndex, notAfter, proofChainId) =
+            abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64, uint64));
 
         if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
+        if (proofChainId != uint64(block.chainid)) revert ChainIdMismatch(proofChainId, block.chainid);
         if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
         if (block.timestamp - proofTimestamp > maxProofAge) revert ProofTooOld(proofTimestamp, block.timestamp);
         if (proofMerkleRoot != caMerkleRoot) revert InvalidCaMerkleRoot(proofMerkleRoot, caMerkleRoot);

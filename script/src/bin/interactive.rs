@@ -191,11 +191,13 @@ fn cmd_prove(session: &mut Session) {
     let wallet_index: u32 = idx_str.parse().unwrap_or(0);
     let max_wallets: u32 = 1;
 
+    let chain_id: u64 = 31337; // TODO: make configurable
+    let contract_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
-        &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp,
+        &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp, chain_id,
     ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &key_der,
+        &cert_der, &key_der, &contract_address,
     ).unwrap_or_else(|e| { println!("  Nullifier sign failed: {}", e); std::process::exit(1); });
 
     let mut stdin = SP1Stdin::new();
@@ -218,6 +220,8 @@ fn cmd_prove(session: &mut Session) {
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
     stdin.write(&ca_merkle_proof);
     stdin.write(&ca_merkle_root);
+    stdin.write(&contract_address);
+    stdin.write(&chain_id);
     match client.execute(ZK_X509_ELF, stdin).run() {
         Ok((output, report)) => {
             let decoded = PublicValuesStruct::abi_decode(output.as_slice())
