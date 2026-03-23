@@ -28,7 +28,8 @@ contracts/cache/
 contracts/out/
 contracts/broadcast/
 
-# Test certs (all generated cert files, including subdirs)
+# Test certs — private keys and PEM intermediates excluded
 certs/**/*.key
 certs/**/*.pem
-certs/**/*.der
+# DER certs and public keys are tracked for reproducible benchmarks/tests
+# Regenerate: cd certs && bash generate-test-certs.sh && bash generate-test-crl.sh
