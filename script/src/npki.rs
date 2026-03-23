@@ -103,11 +103,26 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
         CipherType::Aes256Cbc => decrypt_cbc::<cbc::Decryptor<Aes256>>(&derived_key, &params.iv, &encrypted_data, "AES")?,
         CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
         CipherType::LegacySeedCbc => {
-            // Legacy NPKI: PBKDF2 produces 20 bytes (SHA1 output)
-            // Key = derived_key[0..16], IV = derived_key[4..20]
-            // This is the KISA standard derivation for OID 1.2.410.200004.1.15
-            let key = &derived_key[0..16];
-            let iv = &derived_key[4..20];
+            // Legacy NPKI OID 1.2.410.200004.1.15:
+            // PBKDF2-HMAC-SHA1(password, salt, iterations) → 20 bytes
+            // Then derive key and IV using SHA1-based key stretching:
+            //   hash_a = SHA1(derived_key_20 || 0x01)
+            //   hash_b = SHA1(derived_key_20 || 0x02)
+            //   key = hash_a[0..16]
+            //   iv  = hash_b[0..16]
+            use sha1::Digest as _;
+            let mut ha = sha1::Sha1::new();
+            ha.update(&derived_key);
+            ha.update(&[0x01]);
+            let hash_a: [u8; 20] = ha.finalize().into();
+
+            let mut hb = sha1::Sha1::new();
+            hb.update(&derived_key);
+            hb.update(&[0x02]);
+            let hash_b: [u8; 20] = hb.finalize().into();
+
+            let key = &hash_a[0..16];
+            let iv = &hash_b[0..16];
             decrypt_cbc::<cbc::Decryptor<SEED>>(key, iv, &encrypted_data, "SEED-legacy")?
         }
     };
