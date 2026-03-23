@@ -180,7 +180,7 @@ fn cmd_prove(session: &mut Session) {
     session.registrant = Some(registrant.clone());
 
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key];
+    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.clone()];
     let crl_der: Vec<u8> = Vec::new();
 
     println!("  Executing ZK program (verify mode, no proof generation)...");
