@@ -81,6 +81,10 @@ fn verify_rsa_signature(
 
 /// Verify an ECDSA signature using the signer's raw SPKI DER public key.
 /// Supports P-256 (ecdsa-with-SHA256) and P-384 (ecdsa-with-SHA384).
+///
+/// Note: Maps sig algorithm OID to curve per RFC 5758 convention
+/// (SHA-256 → P-256, SHA-384 → P-384). Non-standard combinations
+/// (e.g. P-256 + SHA-384) are not supported.
 fn verify_ecdsa_signature(
     tbs_der: &[u8],
     signature_bytes: &[u8],
