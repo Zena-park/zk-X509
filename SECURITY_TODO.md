@@ -154,6 +154,12 @@
 - 사용자: 로컬에서 서명만 생성 (1초) → 클라우드: 증명 생성 (1~2분 GPU)
 - 논문의 실용성(UX) 장점을 부각하는 핵심 섹션
 
+#### 48. 기존 시스템 대비 정량 비교 테이블 (논문 Evaluation)
+- DID (Polygon ID, Worldcoin), zkPassport, Semaphore, zk-email과 비교
+- 비교 항목: gas cost, ZK cycle count, proof 생성 시간, 프라이버시 수준, PKI 호환성
+- 표 + 그래프로 제시 (논문 Evaluation 섹션 핵심)
+- 변경 범위: 논문, BENCHMARKS.md에 비교 데이터 추가
+
 #### 27. LaTeX 변환 (LNCS 템플릿)
 - arXiv preprint + FC 학회 제출용
 - docs/paper.md → .tex 변환
