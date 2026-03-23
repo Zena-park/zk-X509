@@ -185,8 +185,8 @@ openssl verify -CAfile ec384_ca.pem ec384_signCert.pem && echo "  EC384 Certific
 echo ""
 echo "=== Cleanup temporary files ==="
 rm -f user.csr ca.srl signPri_rsa.key
-rm -f ec_user.csr ec_ca.srl ec_signPri_raw.key
-rm -f ec384_user.csr ec384_ca.srl ec384_signPri_raw.key
+rm -f ec_user.csr ec_ca.srl ec_signPri_raw.key ec_ca.pem ec_signCert.pem
+rm -f ec384_user.csr ec384_ca.srl ec384_signPri_raw.key ec384_ca.pem ec384_signCert.pem
 
 echo ""
 echo "Done! Files ready for zk-X509 testing:"
