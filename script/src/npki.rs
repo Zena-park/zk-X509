@@ -118,9 +118,9 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
         CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
         CipherType::LegacySeedCbc => {
             // Legacy NPKI pbeWithSHA1AndSEED-CBC (PBKDF1):
-            // hash = SHA1(password || salt), then SHA1(hash) repeated
-            // Key derivation was done by PBKDF2 above but that's wrong for legacy.
-            // Redo with PBKDF1:
+            // Source: PyPinkSign, NPKICracker (verified against real NPKI keys)
+            //
+            // Step 1: PBKDF1 — SHA1(password || salt), then iterate SHA1
             use sha1::Digest as _;
             let mut hash = sha1::Sha1::new();
             hash.update(password.as_bytes());
@@ -131,14 +131,25 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
                 h.update(&dk);
                 dk = h.finalize().into();
             }
+            // Step 2: key = dk[0:16]
             let key = &dk[0..16];
-            let iv = &dk[4..20];
+            // Step 3: iv = SHA1(dk[16:20])[0:16]  ← NOT dk[4:20]!
+            let mut iv_hash = sha1::Sha1::new();
+            iv_hash.update(&dk[16..20]);
+            let iv_full: [u8; 20] = iv_hash.finalize().into();
+            let iv = &iv_full[0..16];
             decrypt_cbc::<cbc::Decryptor<SEED>>(key, iv, &encrypted_data, "SEED-legacy")?
         }
     };
 
     // Remove PKCS#7 padding
     let decrypted = remove_pkcs7_padding(&decrypted)?;
+
+    // Debug: log first few bytes to identify format
+    if decrypted.len() > 4 {
+        eprintln!("[NPKI debug] Decrypted {} bytes, first 4: {:02x} {:02x} {:02x} {:02x}",
+            decrypted.len(), decrypted[0], decrypted[1], decrypted[2], decrypted[3]);
+    }
 
     // The decrypted data should be a PKCS#8 PrivateKeyInfo
     // Extract the RSA private key from it
