@@ -9,6 +9,7 @@
 //! - Proof size: 2 * log2(n) hashes (two adjacent proofs)
 
 use sha2::{Digest, Sha256};
+use sp1_sdk::SP1Stdin;
 
 pub type Hash = [u8; 32];
 
@@ -20,6 +21,23 @@ fn hash_children(left: &Hash, right: &Hash) -> Hash {
     hasher.update(left);
     hasher.update(right);
     hasher.finalize().into()
+}
+
+/// Write default CRL inputs (disabled mode) to SP1 stdin.
+/// Shared across all host scripts to avoid code duplication.
+pub fn write_disabled_crl_inputs(stdin: &mut SP1Stdin) {
+    let zero: [u8; 32] = [0u8; 32];
+    let empty_hashes: Vec<[u8; 32]> = Vec::new();
+    let empty_dirs: Vec<bool> = Vec::new();
+    stdin.write(&zero);          // crl_merkle_root
+    stdin.write(&zero);          // crl_left_leaf
+    stdin.write(&zero);          // crl_right_leaf
+    stdin.write(&empty_hashes);  // crl_left_proof
+    stdin.write(&empty_dirs);    // crl_left_directions
+    stdin.write(&empty_hashes);  // crl_right_proof
+    stdin.write(&empty_dirs);    // crl_right_directions
+    stdin.write(&0u32);          // crl_left_index
+    stdin.write(&0u32);          // crl_right_index
 }
 
 /// Non-inclusion proof: proves a key is NOT in the sorted leaf set.

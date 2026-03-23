@@ -111,13 +111,7 @@ fn main() {
     stdin.write(&ca_merkle_root);
     stdin.write(&contract_address);
     stdin.write(&chain_id);
-    let crl_zero: [u8; 32] = [0u8; 32];
-    let crl_empty: Vec<[u8; 32]> = Vec::new();
-    let crl_dirs: Vec<bool> = Vec::new();
-    stdin.write(&crl_zero); stdin.write(&crl_zero); stdin.write(&crl_zero);
-    stdin.write(&crl_empty); stdin.write(&crl_dirs);
-    stdin.write(&crl_empty); stdin.write(&crl_dirs);
-    stdin.write(&0u32); stdin.write(&0u32);
+    zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
     println!("Proof System: {:?}", args.system);
 
     let proof = match args.system {
