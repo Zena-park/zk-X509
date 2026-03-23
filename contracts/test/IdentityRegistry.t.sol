@@ -133,6 +133,11 @@ contract IdentityRegistryTest is Test {
         assertEq(registry.caMerkleRoot(), newRoot);
     }
 
+    function test_RevertZeroMerkleRoot() public {
+        vm.expectRevert(IdentityRegistry.ZeroMerkleRoot.selector);
+        registry.updateCaMerkleRoot(bytes32(0));
+    }
+
     function test_OnlyOwnerCanManageCA() public {
         vm.prank(alice);
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);

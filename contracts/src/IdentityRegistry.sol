@@ -56,6 +56,7 @@ contract IdentityRegistry {
     // ============ Errors ============
 
     error InvalidCaMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
+    error ZeroMerkleRoot();
     error AlreadyRegistered(bytes32 nullifier);
     error UserAlreadyVerified(address user);
     error ProofTooOld(uint64 proofTimestamp, uint256 blockTimestamp);
@@ -168,7 +169,7 @@ contract IdentityRegistry {
     ///      Existing proofs generated with the old root will be rejected.
     /// @param newRoot The new Merkle root of the allowed CA hashes.
     function updateCaMerkleRoot(bytes32 newRoot) external onlyOwner {
-        require(newRoot != bytes32(0), "Merkle root cannot be zero");
+        if (newRoot == bytes32(0)) revert ZeroMerkleRoot();
         caMerkleRoot = newRoot;
         emit CaMerkleRootUpdated(newRoot);
     }
