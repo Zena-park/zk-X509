@@ -33,6 +33,11 @@ const OID_SEED_CBC: &[u8] = &[0x06, 0x08, 0x2a, 0x83, 0x1a, 0x8c, 0x9a, 0x44, 0x
 const OID_AES256_CBC: &[u8] =
     &[0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x01, 0x2a];
 
+/// OID for legacy NPKI SEED-CBC-SHA1: 1.2.410.200004.1.15
+/// Combined KDF+cipher OID (not PBES2 wrapped). Used by older Korean NPKI keys.
+const OID_NPKI_SEED_CBC_SHA1: &[u8] =
+    &[0x06, 0x08, 0x2a, 0x83, 0x1a, 0x8c, 0x9a, 0x44, 0x01, 0x0f];
+
 /// Errors that can occur during NPKI key decryption.
 #[derive(Debug)]
 pub enum NpkiError {
@@ -133,10 +138,31 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
     let alg_start = pos;
     let alg_end = pos + alg_len;
 
+    // Check for legacy NPKI format (OID 1.2.410.200004.1.15 = SEED-CBC-SHA1)
+    if window_contains(&data[alg_start..alg_end], OID_NPKI_SEED_CBC_SHA1) {
+        // Legacy format: SEQUENCE { OID, SEQUENCE { salt, iterations } }
+        // Salt and iterations are directly inside the algorithm params
+        let alg_data = &data[alg_start..alg_end];
+        let salt = find_octet_string_after(alg_data, OID_NPKI_SEED_CBC_SHA1)
+            .ok_or_else(|| NpkiError::InvalidFormat("Cannot find legacy NPKI salt".into()))?;
+        let iterations = find_integer_after(alg_data, &salt)
+            .unwrap_or(2048);
+
+        // Legacy NPKI: IV = first 16 bytes of SHA1(password), or salt is used as IV
+        // Actually in this format, the salt doubles as the IV for SEED-CBC
+        return Ok(Pbes2Params {
+            salt: salt.clone(),
+            iterations,
+            key_length: 16, // SEED key = 16 bytes
+            iv: salt,       // salt is reused as IV in legacy format
+            cipher: CipherType::SeedCbc,
+        });
+    }
+
     // Check for PBES2 OID
     if !window_contains(&data[alg_start..alg_end], OID_PBES2) {
         return Err(NpkiError::UnsupportedAlgorithm(
-            "Expected PBES2 algorithm".into(),
+            format!("Expected PBES2 or legacy NPKI algorithm, found unknown OID at offset {}", alg_start),
         ));
     }
 
