@@ -64,13 +64,13 @@
 - **해결:** `H(serial ‖ addr ‖ wallet_index ‖ timestamp)` — timestamp를 포함하여 서명의 유효기간 제한
 - **변경 범위:** program (챌린지 해시에 timestamp 추가), script/ownership.rs (서명 시 timestamp 포함)
 
-#### 38. CRL zkVM 검증의 현실성 문제 (논문 기술)
+#### 38. ~~CRL zkVM 검증의 현실성 문제 (논문 기술)~~ ✅ DONE
 - **문제:** 실제 NPKI CRL은 수 MB~수십 MB (수백만 폐기 시리얼), zkVM 내 파싱은 수십억 사이클로 비현실적
 - **현상태:** 코드에 CRL 검증 구현은 있으나 테스트 CRL(<1KB)로만 검증됨
 - **대응:** 논문에서 CRL 검증은 "소규모 CRL 또는 OCSP 대응 전용"으로 명시, 대규모 CRL은 온체인 오라클(#18) 또는 OCSP 전환 필요성 기술
 - **변경 범위:** 논문 기술만 (코드 변경 불필요, 기존 구현은 소규모 CRL에 유효)
 
-#### 39. Abstract Gas 비용 수정 (논문)
+#### 39. ~~Abstract Gas 비용 수정 (논문)~~ ✅ DONE
 - **문제:** Abstract에 "77,000 gas"로 기재 — 이는 Mock Verifier 기준
 - **수정:** 실제 Groth16 검증 기준 ~300,000 gas로 수정 또는 Mock임을 명시
 - **변경 범위:** 논문만
@@ -88,7 +88,7 @@
 - 결정론적 (같은 인증서 = 같은 salt, 저장 불필요), 개인키 없으면 계산 불가
 - `SHA-256(len ‖ value ‖ disclosure_salt)` — brute-force 불가
 
-#### 33. Semi-formal security model (논문용)
+#### 33. ~~Semi-formal security model (논문용)~~ ✅ DONE
 - Anonymity, Unforgeability, Unlinkability, Non-transferability에 대한 security game 정의
 - SP1 soundness로의 reduction argument
 - Merkle CA (#31) 없이는 Anonymity game이 성립하지 않음을 명시
@@ -144,12 +144,12 @@
 
 ### LOW (논문 작업)
 
-#### 46. CRL 논문 톤다운
+#### 46. ~~CRL 논문 톤다운~~ ✅ DONE
 - "Trustless CRL" → "Host-Provided but Cryptographically Authenticated CRL"
 - Freshness 공격의 한계를 Security Analysis에 명시
 - CRL Oracle을 Future Work이 아닌 권장 아키텍처로 기술
 
-#### 47. Privacy-Preserving Delegated Proving 섹션 추가
+#### 47. ~~Privacy-Preserving Delegated Proving 섹션 추가~~ ✅ DONE
 - 개인키가 zkVM에 안 들어가므로 클라우드 prover에 위임 가능
 - 사용자: 폰/PC에서 서명만 생성 (1초) → 클라우드 GPU: 증명 생성 (1~2분)
 - 클라우드 서버는 서명값만 볼 뿐 개인키를 알 수 없음 → 프라이버시 유지
