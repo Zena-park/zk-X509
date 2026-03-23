@@ -215,7 +215,7 @@ Step 2.  S:        (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
                    CRL ← FetchCRL(cert.issuer)             // from CA distribution point
                    challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
                    ownership_sig ← OS_Keychain.Sign(sk', challenge)  // private key stays in keychain
-                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v2" ‖ contract_address))  // deterministic
+                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v2" ‖ contract_address ‖ chain_id))  // deterministic
                    Erase(sk')  // private key never reaches SP1
 
 Step 3.  S → Z:   (cert, ownership_sig, nullifier_sig, chain, t, CRL, addr,
@@ -258,7 +258,7 @@ Step 4.  Z:        // Parse and validate user certificate
                    Assert: wallet_index < max_wallets
 
                    // Verify nullifier signature (deterministic, registrant-independent)
-                   nullifier_domain ← H("zk-X509-Nullifier-v2" ‖ contract_address)
+                   nullifier_domain ← H("zk-X509-Nullifier-v2" ‖ contract_address ‖ chain_id)
                    Assert: Sig.Verify(cert_parsed.pk, nullifier_domain, nullifier_sig)
 
                    // Compute public outputs
@@ -379,7 +379,7 @@ This approach has three advantages: (1) the private key never exists in the prov
 
 **Nullifier Generation.** The nullifier is derived from a deterministic signature rather than the certificate's public key:
 
-$$\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address}))$$
+$$\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address} \| \text{chain\_id}))$$
 $$\text{nullifier} = \mathcal{H}(\text{nullifier\_sig} \| \text{wallet\_index})$$
 
 The prover signs a fixed domain string with the certificate's private key. RSA PKCS#1 v1.5 and ECDSA with RFC 6979 deterministic nonces are both inherently deterministic — the same key always produces the same signature, ensuring nullifier consistency. The ZK circuit verifies the `nullifier_sig` against the certificate's public key before computing the nullifier.
@@ -816,7 +816,7 @@ where the four terms correspond to: (1) forging the CA's chain signature, (2) fo
 
 *Under assumptions A3 (EUF-CMA security of the signature scheme, SHA-256 collision resistance) and the zero-knowledge property of the SP1 proof system, zk-X509 satisfies unlinkability (Definition 2).*
 
-**Proof.** The nullifier is $n = \mathcal{H}(\text{nullifier\_sig} \| \text{wallet\_index})$, where $\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address}))$. The signature is computed using the certificate's private key, which is known only to the certificate holder. The zero-knowledge property of the proof system ensures that both the signature and the certificate contents remain hidden.
+**Proof.** The nullifier is $n = \mathcal{H}(\text{nullifier\_sig} \| \text{wallet\_index})$, where $\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address} \| \text{chain\_id}))$. The signature is computed using the certificate's private key, which is known only to the certificate holder. The zero-knowledge property of the proof system ensures that both the signature and the certificate contents remain hidden.
 
 To link a nullifier to a specific certificate, $\mathcal{A}$ must determine which `nullifier_sig` was used. $\mathcal{A}$ has three strategies:
 
@@ -846,7 +846,7 @@ This is strictly stronger than a public-key-based nullifier ($\mathcal{H}(\text{
 
 *Under assumption A4 (ZK soundness) and the determinism of SHA-256, zk-X509 satisfies double-registration resistance (Definition 3).*
 
-**Proof.** For a certificate with private key $\text{sk}$ and wallet index $i$, the nullifier is deterministic: $n_i = \mathcal{H}(\text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address})) \| i)$. Since RSA PKCS#1 v1.5 and ECDSA with RFC 6979 are deterministic signature schemes, the same key always produces the same signature, and thus the same nullifier. The ZK circuit enforces $i < \text{maxWalletsPerCert}$, limiting the number of distinct nullifiers per certificate. After a registration with nullifier $n_i$ succeeds, the contract sets `nullifierOwner[n_i] = addr`. Any subsequent attempt to register the same nullifier fails because `nullifierOwner[n_i] != address(0)`. The total number of registrations per certificate is bounded by `maxWalletsPerCert`. $\square$
+**Proof.** For a certificate with private key $\text{sk}$ and wallet index $i$, the nullifier is deterministic: $n_i = \mathcal{H}(\text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address} \| \text{chain\_id})) \| i)$. Since RSA PKCS#1 v1.5 and ECDSA with RFC 6979 are deterministic signature schemes, the same key always produces the same signature, and thus the same nullifier. The ZK circuit enforces $i < \text{maxWalletsPerCert}$, limiting the number of distinct nullifiers per certificate. After a registration with nullifier $n_i$ succeeds, the contract sets `nullifierOwner[n_i] = addr`. Any subsequent attempt to register the same nullifier fails because `nullifierOwner[n_i] != address(0)`. The total number of registrations per certificate is bounded by `maxWalletsPerCert`. $\square$
 
 #### Theorem 4 (Front-Running Immunity)
 

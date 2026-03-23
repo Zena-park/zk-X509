@@ -81,15 +81,17 @@ pub fn sign_ownership(
 }
 
 /// Sign the nullifier domain: H(NULLIFIER_DOMAIN ‖ contract_address).
-/// contract_address ensures different dApps get different nullifiers (cross-DApp unlinkability).
+/// contract_address + chain_id ensures cross-DApp and cross-chain nullifier unlinkability.
 pub fn sign_nullifier(
     cert_der: &[u8],
     key_der: &[u8],
     contract_address: &[u8; 20],
+    chain_id: u64,
 ) -> Result<Vec<u8>, String> {
     let mut domain_hasher = Sha256::new();
     domain_hasher.update(NULLIFIER_DOMAIN);
     domain_hasher.update(contract_address);
+    domain_hasher.update(&chain_id.to_be_bytes());
     let message_hash: [u8; 32] = domain_hasher.finalize().into();
     parse_and_sign(cert_der, key_der, &message_hash)
 }
@@ -365,16 +367,16 @@ mod tests {
     #[test]
     fn test_nullifier_sig_deterministic() {
         let (cert, key) = load_test_cert_and_key();
-        let sig1 = sign_nullifier(&cert, &key, &[0u8; 20]).unwrap();
-        let sig2 = sign_nullifier(&cert, &key, &[0u8; 20]).unwrap();
+        let sig1 = sign_nullifier(&cert, &key, &[0u8; 20], 31337).unwrap();
+        let sig2 = sign_nullifier(&cert, &key, &[0u8; 20], 31337).unwrap();
         assert_eq!(sig1, sig2, "Nullifier signature must be deterministic (RSA)");
     }
 
     #[test]
     fn test_nullifier_sig_ec_deterministic() {
         let (cert, key) = load_ec_test_cert_and_key();
-        let sig1 = sign_nullifier(&cert, &key, &[0u8; 20]).unwrap();
-        let sig2 = sign_nullifier(&cert, &key, &[0u8; 20]).unwrap();
+        let sig1 = sign_nullifier(&cert, &key, &[0u8; 20], 31337).unwrap();
+        let sig2 = sign_nullifier(&cert, &key, &[0u8; 20], 31337).unwrap();
         assert_eq!(sig1, sig2, "Nullifier signature must be deterministic (P-256)");
     }
 
@@ -383,7 +385,7 @@ mod tests {
         let (cert, key) = load_test_cert_and_key();
         let registrant = [0x70u8; 20];
         let ownership = sign_ownership(&cert, &key, &registrant, 0, 1700000000, 31337).unwrap();
-        let nullifier = sign_nullifier(&cert, &key, &[0u8; 20]).unwrap();
+        let nullifier = sign_nullifier(&cert, &key, &[0u8; 20], 31337).unwrap();
         assert_ne!(ownership, nullifier, "Nullifier sig must differ from ownership sig");
     }
 
@@ -391,9 +393,9 @@ mod tests {
     fn test_nullifier_sig_independent_of_registrant() {
         let (cert, key) = load_ec_test_cert_and_key();
         // sign_nullifier doesn't take registrant — same cert always produces same sig
-        let sig = sign_nullifier(&cert, &key, &[0u8; 20]).unwrap();
+        let sig = sign_nullifier(&cert, &key, &[0u8; 20], 31337).unwrap();
         // Compare with a second call — still same (no registrant dependency)
-        let sig2 = sign_nullifier(&cert, &key, &[0u8; 20]).unwrap();
+        let sig2 = sign_nullifier(&cert, &key, &[0u8; 20], 31337).unwrap();
         assert_eq!(sig, sig2);
     }
 }

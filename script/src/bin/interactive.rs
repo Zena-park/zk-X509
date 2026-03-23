@@ -197,7 +197,7 @@ fn cmd_prove(session: &mut Session) {
         &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp, chain_id,
     ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &key_der, &contract_address,
+        &cert_der, &key_der, &contract_address, chain_id,
     ).unwrap_or_else(|e| { println!("  Nullifier sign failed: {}", e); std::process::exit(1); });
 
     let mut stdin = SP1Stdin::new();

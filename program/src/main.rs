@@ -580,11 +580,13 @@ pub fn main() {
     //
     // The nullifier_sig is verified against the cert's public key to ensure
     // it was produced by the legitimate key holder.
-    // Domain includes contract_address for cross-DApp unlinkability:
-    // different dApps → different nullifier_sig → different nullifier.
+    // Domain includes contract_address + chain_id for defense in depth:
+    // - contract_address → cross-DApp unlinkability
+    // - chain_id → cross-chain unlinkability (redundant with ownership, but defense in depth)
     let mut domain_hasher = Sha256::new();
     domain_hasher.update(NULLIFIER_DOMAIN);
     domain_hasher.update(&contract_address);
+    domain_hasher.update(&chain_id.to_be_bytes());
     let nullifier_domain_hash: [u8; 32] = domain_hasher.finalize().into();
     verify_ownership_signature(&nullifier_domain_hash, &nullifier_sig, &user_cert);
 
