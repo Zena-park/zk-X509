@@ -46,8 +46,8 @@
 #### 22. 클라이언트 사이드 프루빙 (SP1 WASM)
 - SP1 WASM prover 지원 대기 중
 
-#### 23. NPKI 스캐너 단위 테스트
-- temp directory로 스캐너 동작 검증 필요
+#### 23. ~~NPKI 스캐너 단위 테스트~~ ✅ DONE
+- temp directory로 스캐너 동작 검증 완료 (5개 테스트)
 
 ### 🚨 CRITICAL (논문 리뷰 지적사항)
 
@@ -104,6 +104,30 @@
 
 #### 35. ~~Nullifier cross-wallet linkability~~ → #36으로 흡수 (CRITICAL)
 - #36에서 서명 기반 nullifier로 근본적 해결
+
+### MEDIUM (취약점 분석 추가)
+
+#### 40. 동적 MAX_PROOF_AGE + L2 timestamp 조작 방어
+- **문제:** MAX_PROOF_AGE=1h 고정값. L2/사이드체인에서 블록 빌더가 timestamp을 조작할 수 있음
+- **해결:** `setMaxProofAge(uint32)` 관리자 함수 추가 (범위: 5분~24시간)
+- **변경 범위:** contracts (MAX_PROOF_AGE를 immutable → mutable)
+
+#### 41. CA Merkle root 갱신 시 grace period
+- **문제:** `updateCaMerkleRoot()` 호출 시 이전 root로 생성된 미제출 proof가 즉시 무효화
+- **해결:** 이전 root를 grace period(예: 24시간) 동안 유지, 이후 자동 만료
+- **변경 범위:** contracts (activeCARoots 배열 또는 deprecatedAt 타임스탬프)
+
+#### 42. 컨트랙트 업그레이드 경로 (Proxy 패턴)
+- **문제:** sp1Verifier, programVKey, maxWalletsPerCert가 immutable → 버그 수정/회로 업데이트 불가
+- **해결:** TransparentUpgradeableProxy + initializer 패턴으로 전환
+- **참고:** 현 단계(개발/테스트)에서는 불필요, mainnet 배포 전에 필요
+- **변경 범위:** contracts (전면 리팩터), 배포 스크립트
+
+#### 43. CA 관리 탈중앙화 (Multi-sig / DAO)
+- **문제:** owner 단일 키 탈취 시 악의적 CA 추가/제거 가능
+- **해결:** OpenZeppelin Governor + TimelockController, 또는 최소 multi-sig (Gnosis Safe)
+- **참고:** 현 단계에서는 single owner로 충분, 운영 단계에서 전환
+- **변경 범위:** contracts (governance 추가 또는 multi-sig 연동)
 
 ### LOW
 

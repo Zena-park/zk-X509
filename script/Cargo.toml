@@ -51,5 +51,8 @@ x509-parser = "0.16"
 dirs = "5.0"
 rpassword = "7.3"
 
+[dev-dependencies]
+tempfile = "3"
+
 [build-dependencies]
 sp1-build = { version = "6.0.1" }

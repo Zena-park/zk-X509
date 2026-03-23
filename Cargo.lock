@@ -7154,6 +7154,7 @@ dependencies = [
  "sha2",
  "sp1-build",
  "sp1-sdk",
+ "tempfile",
  "tokio",
  "tower-http 0.5.2",
  "tracing",
