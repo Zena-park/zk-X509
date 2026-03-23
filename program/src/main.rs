@@ -139,6 +139,7 @@ fn der_read_length(data: &[u8]) -> (usize, usize) {
         (data[0] as usize, 1)
     } else {
         let num_bytes = (data[0] & 0x7F) as usize;
+        assert!(data.len() >= 1 + num_bytes, "DER length field: truncated long-form length");
         let mut len: usize = 0;
         for i in 0..num_bytes {
             len = (len << 8) | (data[1 + i] as usize);
