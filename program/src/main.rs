@@ -292,9 +292,10 @@ const OID_ORG_UNIT: &[u8] = &[0x55, 0x04, 0x0B]; // 2.5.4.11
 const OID_CN: &[u8]       = &[0x55, 0x04, 0x03]; // 2.5.4.3
 
 /// Extract disclosable fields from X.509 subject in a single pass.
-/// hash = SHA-256(len1 ‖ val1 ‖ len2 ‖ val2 ‖ ... ‖ serial)
+/// hash = SHA-256(len1 ‖ val1 ‖ len2 ‖ val2 ‖ ... ‖ salt)
 /// Length-prefixed encoding prevents concatenation ambiguity.
-/// Salted with cert serial to prevent rainbow table attacks.
+/// Salted with a deterministic secret (derived from nullifier_sig) to prevent
+/// brute-force on small input spaces (e.g., ~200 country codes).
 ///
 /// Optimized: fixed-size arrays (no heap Vec), streaming SHA-256 (no preimage Vec).
 // X.509 subject fields rarely have more than 2 values per OID.
@@ -609,9 +610,17 @@ pub fn main() {
     // ========================================
     // Step 9: Selective Disclosure (single-pass, salted)
     // ========================================
-    let serial_for_salt = user_cert.tbs_certificate.serial.to_bytes_be();
+    // Disclosure salt = H("zk-X509-Disclosure-Salt-v1" ‖ nullifier_sig)
+    // - Deterministic: same cert → same nullifier_sig → same salt (no storage needed)
+    // - Private: attacker cannot compute salt without the private key
+    // - Prevents brute-force on small input spaces (e.g., ~200 country codes)
+    let mut salt_hasher = Sha256::new();
+    salt_hasher.update(b"zk-X509-Disclosure-Salt-v1");
+    salt_hasher.update(&nullifier_sig);
+    let disclosure_salt: [u8; 32] = salt_hasher.finalize().into();
+
     let (country_hash, org_hash, org_unit_hash, cn_hash) =
-        extract_subject_field_hashes(&user_cert.subject(), disclosure_mask, &serial_for_salt);
+        extract_subject_field_hashes(&user_cert.subject(), disclosure_mask, &disclosure_salt);
 
     let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {
         nullifier: nullifier.into(),

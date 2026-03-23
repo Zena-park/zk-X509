@@ -83,7 +83,7 @@
 - ZK 회로 내 Merkle membership proof 검증 (sorted-pair SHA-256)
 - 컨트랙트: `updateCaMerkleRoot()`, 개별 CA hash 노출 없음
 
-#### 32. Selective Disclosure entropy 보강 (user salt)
+#### 32. ~~Selective Disclosure entropy 보강 (user salt)~~ ✅ DONE
 - 현재: `SHA-256(len || value || cert_serial)` — serial은 CA가 공개하는 값
 - 국가코드(~200개) 등 입력 공간이 작은 필드는 brute-force 가능
 - 개선: 사용자 제공 random salt 추가 → `SHA-256(len || value || cert_serial || user_salt)`
