@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 /// OID constants for key type detection.
 /// String format is fine here (host-side, not zkVM) — readability over cycle savings.
 /// The zkVM program (program/src/main.rs) uses raw OID bytes for zero-alloc comparison.
+const OID_RSA_ENCRYPTION: &str = "1.2.840.113549.1.1.1";
 const OID_EC_PUBLIC_KEY: &str = "1.2.840.10045.2.1";
 const OID_PRIME256V1: &str = "1.2.840.10045.3.1.7"; // P-256
 const OID_SECP384R1: &str = "1.3.132.0.34";         // P-384
@@ -23,7 +24,8 @@ const OID_SECP384R1: &str = "1.3.132.0.34";         // P-384
 /// Sign the ownership challenge: SHA-256(cert_serial ‖ registrant ‖ wallet_index)
 ///
 /// Detects key type from certificate (RSA or ECDSA) and signs accordingly.
-/// RSA PKCS#1 v1.5 and ECDSA are both deterministic.
+/// RSA PKCS#1 v1.5 is inherently deterministic; ECDSA is deterministic here
+/// because PrehashSigner uses RFC 6979 deterministic nonces.
 pub fn sign_ownership(
     cert_der: &[u8],
     key_der: &[u8],
@@ -45,8 +47,10 @@ pub fn sign_ownership(
 
     if alg_oid == OID_EC_PUBLIC_KEY {
         sign_ecdsa_ownership(&cert, key_der, &challenge_hash)
-    } else {
+    } else if alg_oid == OID_RSA_ENCRYPTION {
         sign_rsa_ownership(key_der, &challenge_hash)
+    } else {
+        Err(format!("Unsupported key algorithm: {}", alg_oid))
     }
 }
 
