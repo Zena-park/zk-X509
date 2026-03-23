@@ -305,7 +305,7 @@ const MAX_FIELD_VALUES: usize = 4;
 fn extract_subject_field_hashes(
     subject: &x509_parser::x509::X509Name,
     mask: u8,
-    serial: &[u8],
+    salt: &[u8],
 ) -> ([u8; 32], [u8; 32], [u8; 32], [u8; 32]) {
     let zero: [u8; 32] = [0u8; 32];
     let effective_mask = mask & 0x0F;
@@ -351,7 +351,7 @@ fn extract_subject_field_hashes(
             hasher.update((v.len() as u32).to_be_bytes());
             hasher.update(v.as_bytes());
         }
-        hasher.update(serial);
+        hasher.update(salt);
         hasher.finalize().into()
     };
 
