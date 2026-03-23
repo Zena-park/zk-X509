@@ -135,5 +135,5 @@
 - arXiv preprint + FC 학회 제출용
 - docs/paper.md → .tex 변환
 
-#### 28. LICENSE 파일 추가
-- MIT 라이선스 (미결정)
+#### 28. ~~LICENSE 파일 추가~~ ✅ DONE
+- MIT 라이선스 추가
