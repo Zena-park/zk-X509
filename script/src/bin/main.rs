@@ -8,6 +8,7 @@
 //!     --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der
 
 use alloy_sol_types::SolType;
+use sha2::Digest;
 use clap::Parser;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
@@ -140,6 +141,12 @@ fn main() {
     ).expect("Failed to sign ownership challenge");
     println!("Ownership sig: {} bytes", ownership_sig.len());
 
+    // Build CA Merkle tree: all known CA hashes form the leaf set.
+    // For single-CA mode, the tree has one leaf. For multi-CA, pass --ca-cert multiple times.
+    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
+    let ca_leaves = vec![ca_leaf_hash]; // TODO: support multiple CAs via CLI
+    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&ownership_sig);
@@ -150,8 +157,11 @@ fn main() {
     stdin.write(&args.wallet_index);
     stdin.write(&args.max_wallets);
     stdin.write(&args.disclosure_mask);
+    stdin.write(&ca_merkle_proof);
+    stdin.write(&ca_merkle_root);
     println!("Wallet Index: {} / Max: {} / Disclosure: 0x{:02X}", args.wallet_index, args.max_wallets, args.disclosure_mask);
     println!("Registrant: 0x{}", hex::encode(registrant_bytes));
+    println!("CA Merkle Root: 0x{}", hex::encode(ca_merkle_root));
 
     if args.execute {
         // Execute without proof (for testing)
@@ -161,7 +171,7 @@ fn main() {
         // Decode the public values
         let decoded = PublicValuesStruct::abi_decode(output.as_slice()).unwrap();
         println!("Nullifier: 0x{}", hex::encode(decoded.nullifier));
-        println!("CA Root Hash: 0x{}", hex::encode(decoded.caRootHash));
+        println!("CA Root Hash: 0x{}", hex::encode(decoded.caMerkleRoot));
         println!("Cycles: {}", report.total_instruction_count());
     } else {
         // Generate a ZK proof
@@ -184,6 +194,6 @@ fn main() {
         let decoded =
             PublicValuesStruct::abi_decode(proof.public_values.as_slice()).unwrap();
         println!("Nullifier: 0x{}", hex::encode(decoded.nullifier));
-        println!("CA Root Hash: 0x{}", hex::encode(decoded.caRootHash));
+        println!("CA Root Hash: 0x{}", hex::encode(decoded.caMerkleRoot));
     }
 }

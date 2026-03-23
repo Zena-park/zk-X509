@@ -13,6 +13,7 @@
 //!   GET  /health        - Health check
 
 use alloy_sol_types::SolType;
+use sha2::Digest;
 use axum::{
     extract::Json,
     http::StatusCode,
@@ -63,8 +64,8 @@ struct ProveRequest2 {
 #[derive(Debug, Serialize)]
 struct ProveResponse {
     nullifier: String,
-    #[serde(rename = "caRootHash")]
-    ca_root_hash: String,
+    #[serde(rename = "caMerkleRoot")]
+    ca_merkle_root: String,
     proof: String,
     public_values: String,
     vkey: String,
@@ -227,6 +228,11 @@ fn build_stdin(
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
     let crl_der: Vec<u8> = Vec::new();
 
+    // Build CA Merkle tree (single-CA for now)
+    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(ca_pub_key).into();
+    let ca_leaves = vec![ca_leaf_hash];
+    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&ownership_sig);
@@ -237,6 +243,8 @@ fn build_stdin(
     stdin.write(&wallet_index);
     stdin.write(&max_wallets);
     stdin.write(&disclosure_mask);
+    stdin.write(&ca_merkle_proof);
+    stdin.write(&ca_merkle_root);
     stdin
 }
 
@@ -277,7 +285,7 @@ async fn execute_handler(
 
     Ok(Json(serde_json::json!({
         "nullifier": format!("0x{}", hex::encode(decoded.nullifier)),
-        "caRootHash": format!("0x{}", hex::encode(decoded.caRootHash)),
+        "caMerkleRoot": format!("0x{}", hex::encode(decoded.caMerkleRoot)),
         "cycles": report.total_instruction_count(),
     })))
 }
@@ -323,7 +331,7 @@ async fn prove_handler(
 
     Ok(Json(ProveResponse {
         nullifier: format!("0x{}", hex::encode(decoded.nullifier)),
-        ca_root_hash: format!("0x{}", hex::encode(decoded.caRootHash)),
+        ca_merkle_root: format!("0x{}", hex::encode(decoded.caMerkleRoot)),
         proof: format!("0x{}", hex::encode(proof.bytes())),
         public_values: format!("0x{}", hex::encode(bytes)),
         vkey,

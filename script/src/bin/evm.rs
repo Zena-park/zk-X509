@@ -6,6 +6,7 @@
 
 use alloy_sol_types::SolType;
 use clap::{Parser, ValueEnum};
+use sha2::Digest;
 use serde::{Deserialize, Serialize};
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
@@ -50,7 +51,7 @@ enum ProofSystem {
 #[serde(rename_all = "camelCase")]
 struct SP1X509ProofFixture {
     nullifier: String,
-    ca_root_hash: String,
+    ca_merkle_root: String,
     vkey: String,
     public_values: String,
     proof: String,
@@ -85,6 +86,12 @@ fn main() {
     ).expect("Failed to sign");
 
     let crl_der: Vec<u8> = Vec::new();
+
+    // Build CA Merkle tree (single-CA for now)
+    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
+    let ca_leaves = vec![ca_leaf_hash];
+    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&ownership_sig);
@@ -95,6 +102,8 @@ fn main() {
     stdin.write(&args.wallet_index);
     stdin.write(&args.max_wallets);
     stdin.write(&args.disclosure_mask);
+    stdin.write(&ca_merkle_proof);
+    stdin.write(&ca_merkle_root);
     println!("Proof System: {:?}", args.system);
 
     let proof = match args.system {
@@ -116,7 +125,7 @@ fn create_proof_fixture(
 
     let fixture = SP1X509ProofFixture {
         nullifier: format!("0x{}", hex::encode(decoded.nullifier)),
-        ca_root_hash: format!("0x{}", hex::encode(decoded.caRootHash)),
+        ca_merkle_root: format!("0x{}", hex::encode(decoded.caMerkleRoot)),
         vkey: vk.bytes32().to_string(),
         public_values: format!("0x{}", hex::encode(bytes)),
         proof: format!("0x{}", hex::encode(proof.bytes())),
@@ -124,7 +133,7 @@ fn create_proof_fixture(
 
     println!("Verification Key: {}", fixture.vkey);
     println!("Nullifier: {}", fixture.nullifier);
-    println!("CA Root Hash: {}", fixture.ca_root_hash);
+    println!("CA Root Hash: {}", fixture.ca_merkle_root);
     println!("Public Values: {}", fixture.public_values);
 
     // Save fixture for Solidity tests

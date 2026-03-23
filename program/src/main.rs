@@ -255,6 +255,24 @@ fn verify_ownership_signature(
     }
 }
 
+/// Verify Merkle membership: recompute root from leaf + proof path.
+/// Uses sorted-pair hashing: H(min(a,b) ‖ max(a,b)) to prevent second preimage attacks.
+fn verify_merkle_membership(leaf: &[u8; 32], proof: &[[u8; 32]]) -> [u8; 32] {
+    let mut current = *leaf;
+    for sibling in proof {
+        let mut hasher = Sha256::new();
+        if current <= *sibling {
+            hasher.update(current);
+            hasher.update(sibling);
+        } else {
+            hasher.update(sibling);
+            hasher.update(current);
+        }
+        current = hasher.finalize().into();
+    }
+    current
+}
+
 /// Check that a certificate's validity period covers the given timestamp.
 fn assert_cert_valid_at(cert: &X509Certificate, ts: i64, label: &str) {
     assert!(
@@ -349,6 +367,9 @@ pub fn main() {
     // Selective disclosure bitmask: which fields to reveal
     // bit 0 = country (C), bit 1 = org (O), bit 2 = orgUnit (OU), bit 3 = commonName (CN)
     let disclosure_mask: u8 = sp1_zkvm::io::read();
+    // Merkle proof for CA anonymity: proves CA membership without revealing which CA
+    let ca_merkle_proof: Vec<[u8; 32]> = sp1_zkvm::io::read();
+    let ca_merkle_root: [u8; 32] = sp1_zkvm::io::read();
 
     assert!(!cert_chain.is_empty(), "Certificate chain must not be empty");
     assert!(wallet_index < max_wallets, "wallet_index must be < max_wallets");
@@ -531,9 +552,17 @@ pub fn main() {
     let nullifier: [u8; 32] = Sha256::digest(&nullifier_preimage).into();
 
     // ========================================
-    // Step 7: Hash the root CA public key
+    // Step 7: Verify CA Merkle membership (anonymous CA verification)
     // ========================================
-    let ca_root_hash: [u8; 32] = Sha256::digest(root_ca_pub_key_der).into();
+    // Hash the root CA public key, then prove it belongs to the allowed CA set
+    // via Merkle proof. Only the Merkle root is committed as a public value,
+    // hiding which specific CA issued the certificate.
+    let ca_leaf_hash: [u8; 32] = Sha256::digest(root_ca_pub_key_der).into();
+    let computed_merkle_root = verify_merkle_membership(&ca_leaf_hash, &ca_merkle_proof);
+    assert!(
+        computed_merkle_root == ca_merkle_root,
+        "CA Merkle membership proof invalid"
+    );
 
     // ========================================
     // Step 8: Commit public values
@@ -553,7 +582,7 @@ pub fn main() {
 
     let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {
         nullifier: nullifier.into(),
-        caRootHash: ca_root_hash.into(),
+        caMerkleRoot: ca_merkle_root.into(),
         timestamp: current_timestamp,
         registrant: registrant_addr,
         walletIndex: wallet_index,

@@ -24,6 +24,9 @@
 | 24 | 서명 기반 소유 증명 (개인키가 zkVM에 진입하지 않음) | feat/signature-ownership |
 | 25 | reRegister() — 관리자 없이 지갑 변경 | feat/configurable-policy |
 | 26 | Configurable Registration Policy (maxWalletsPerCert) | feat/configurable-policy |
+| 19 | ECDSA (P-256, P-384) 서명 지원 | feat/ecdsa-support |
+| 29 | 인증서 만료일 기반 자동 인증 만료 (notAfter → verifiedUntil) | feat/selective-disclosure |
+| 30 | 선택적 공개 (Selective Disclosure) — 필드별 해싱+마스크 | feat/selective-disclosure |
 
 ## 미해결
 
@@ -32,10 +35,6 @@
 #### 18. CRL 오라클 / 온체인 CRL 커밋
 - CRL 해시를 public values에 포함하거나, 온체인 CRL 오라클 구축
 - 현재 CRL은 프루버 서버가 로컬에서 제공
-
-#### 19. ECDSA 서명 지원
-- 현대 X.509는 ECDSA 사용 추세, 현재 RSA만 지원
-- `p256`/`p384` 크레이트로 검증 추가
 
 #### 20. Solidity 형식 검증
 - Certora, Halmos 등으로 IdentityRegistry 검증 미실시
@@ -51,25 +50,38 @@
 
 ### HIGH / 학술 Novelty
 
-#### 29. 인증서 만료일 기반 자동 인증 만료
-- 현재: isVerified가 영구적 — 인증서 만료돼도 true 유지 (문제)
-- 개선: ZK 프로그램이 인증서 notAfter를 public values에 포함
-- 컨트랙트에서 verifiedUntil[user] = notAfter, isVerified에서 block.timestamp 비교
-- 변경 범위: lib(notAfter 필드), program(commit), contracts(verifiedUntil mapping)
+#### 31. ~~Merkle tree 기반 CA 익명 검증~~ ✅ DONE
+- ~~현재: `caRootHash`가 온체인에 공개 → 어떤 CA(국가/기관)인지 드러남~~
+- 구현 완료: `caMerkleRoot` — 허용 CA 해시의 Merkle root만 on-chain 공개
+- ZK 회로 내 Merkle membership proof 검증 (sorted-pair SHA-256)
+- 컨트랙트: `updateCaMerkleRoot()`, 개별 CA hash 노출 없음
 
-#### 30. 선택적 공개 (Selective Disclosure)
-- 인증서의 특정 필드만 증명 (예: 국적, 발급기관)
-- 이름, 주민번호 등 나머지는 공개하지 않음
-- X.509에 대한 ZK 선택적 공개는 아직 미구현 (zk-email은 DKIM 한정)
-- 변경 범위: program (필드별 해싱), lib (선택적 public values)
+#### 32. Selective Disclosure entropy 보강 (user salt)
+- 현재: `SHA-256(len || value || cert_serial)` — serial은 CA가 공개하는 값
+- 국가코드(~200개) 등 입력 공간이 작은 필드는 brute-force 가능
+- 개선: 사용자 제공 random salt 추가 → `SHA-256(len || value || cert_serial || user_salt)`
+- SHA-256 precompile 유지하면서 information-theoretic hiding에 근접
+- 변경 범위: program (salt 입력 추가), lib (public values에 salt commitment 옵션), host (salt 생성/관리)
 
-#### 31. Merkle tree 기반 CA 익명 검증
-- 현재: `caRootHash`가 온체인에 공개 → 어떤 CA(국가/기관)인지 드러남
-- 멀티 국가 배포 시 사용자 국적 노출 문제
-- 개선: 허용 CA 해시들의 Merkle tree 구성, 온체인에는 Merkle root만 저장
-- ZK 회로 안에서 Merkle membership proof → "허용된 CA 중 하나"만 증명
-- caRootHash 대신 Merkle root를 public value로 커밋
-- 변경 범위: contracts (Merkle root 관리), program (Merkle proof 검증), lib (public values)
+#### 33. Semi-formal security model (논문용)
+- Anonymity, Unforgeability, Unlinkability, Non-transferability에 대한 security game 정의
+- SP1 soundness로의 reduction argument
+- Merkle CA (#31) 없이는 Anonymity game이 성립하지 않음을 명시
+- 변경 범위: 논문 전용 (코드 변경 없음)
+
+### MEDIUM
+
+#### 34. Cycle 벤치마크 테이블
+- RSA vs ECDSA, 2단계 vs 3단계 체인, CRL 유무별 cycle 비용 정량화
+- SP1 SHA-256 precompile vs ZK-friendly hash (Poseidon) 비교 근거
+- 논문의 정량적 성능 분석 섹션에 필수
+- 변경 범위: script (벤치마크 스크립트), 논문
+
+#### 35. Nullifier cross-wallet linkability
+- `nullifier = SHA-256(pubkey || wallet_index)` — 공격자가 pubkey를 알면 wallet_index별 nullifier 연관성 확인 가능
+- 공개키는 인증서에 포함되므로 CA/employer 등이 추적 가능
+- 개선: `nullifier = SHA-256(pubkey || wallet_index || secret)` 또는 blinding factor 도입
+- 변경 범위: program (nullifier 생성), contracts (검증 로직), lib (public values)
 
 ### LOW
 

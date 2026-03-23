@@ -8,6 +8,7 @@
 //!   cargo run --release --bin interactive
 
 use alloy_sol_types::SolType;
+use sha2::Digest;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
     include_elf, Elf, ProvingKey, SP1Stdin,
@@ -206,13 +207,20 @@ fn cmd_prove(session: &mut Session) {
     let mask_str = prompt("  Disclosure mask (15=all, 1=country, 0=none) [15]: ");
     let disclosure_mask: u8 = mask_str.parse().unwrap_or(0x0F);
     stdin.write(&disclosure_mask);
+
+    // Build CA Merkle tree (single-CA for now)
+    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
+    let ca_leaves = vec![ca_leaf_hash];
+    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+    stdin.write(&ca_merkle_proof);
+    stdin.write(&ca_merkle_root);
     match client.execute(ZK_X509_ELF, stdin).run() {
         Ok((output, report)) => {
             let decoded = PublicValuesStruct::abi_decode(output.as_slice())
                 .expect("Failed to decode");
 
             let nullifier = format!("0x{}", hex::encode(decoded.nullifier));
-            let ca_hash = format!("0x{}", hex::encode(decoded.caRootHash));
+            let ca_hash = format!("0x{}", hex::encode(decoded.caMerkleRoot));
 
             println!();
             println!("  Verification successful! (execute mode — public values below)");
