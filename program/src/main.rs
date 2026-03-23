@@ -295,6 +295,10 @@ const OID_CN: &[u8]       = &[0x55, 0x04, 0x03]; // 2.5.4.3
 /// hash = SHA-256(len1 ‖ val1 ‖ len2 ‖ val2 ‖ ... ‖ serial)
 /// Length-prefixed encoding prevents concatenation ambiguity.
 /// Salted with cert serial to prevent rainbow table attacks.
+///
+/// Optimized: fixed-size arrays (no heap Vec), streaming SHA-256 (no preimage Vec).
+const MAX_FIELD_VALUES: usize = 4; // Max multi-valued attributes per field in X.509
+
 fn extract_subject_field_hashes(
     subject: &x509_parser::x509::X509Name,
     mask: u8,
@@ -304,40 +308,50 @@ fn extract_subject_field_hashes(
     let effective_mask = mask & 0x0F;
     if effective_mask == 0 { return (zero, zero, zero, zero); }
 
-    let mut country_vals: Vec<&str> = Vec::new();
-    let mut org_vals: Vec<&str> = Vec::new();
-    let mut ou_vals: Vec<&str> = Vec::new();
-    let mut cn_vals: Vec<&str> = Vec::new();
+    // Fixed-size arrays — no heap allocation
+    let mut country_vals: [Option<&str>; MAX_FIELD_VALUES] = [None; MAX_FIELD_VALUES];
+    let mut org_vals: [Option<&str>; MAX_FIELD_VALUES] = [None; MAX_FIELD_VALUES];
+    let mut ou_vals: [Option<&str>; MAX_FIELD_VALUES] = [None; MAX_FIELD_VALUES];
+    let mut cn_vals: [Option<&str>; MAX_FIELD_VALUES] = [None; MAX_FIELD_VALUES];
+    let mut counts = [0usize; 4]; // [country, org, ou, cn]
 
     // Single pass: compare OID bytes directly (no String allocation)
     for attr in subject.iter_attributes() {
         let oid_bytes = attr.attr_type().as_bytes();
         if let Ok(value) = attr.as_str() {
-            if oid_bytes == OID_COUNTRY       { country_vals.push(value); }
-            else if oid_bytes == OID_ORG      { org_vals.push(value); }
-            else if oid_bytes == OID_ORG_UNIT { ou_vals.push(value); }
-            else if oid_bytes == OID_CN       { cn_vals.push(value); }
+            if oid_bytes == OID_COUNTRY && counts[0] < MAX_FIELD_VALUES {
+                country_vals[counts[0]] = Some(value); counts[0] += 1;
+            } else if oid_bytes == OID_ORG && counts[1] < MAX_FIELD_VALUES {
+                org_vals[counts[1]] = Some(value); counts[1] += 1;
+            } else if oid_bytes == OID_ORG_UNIT && counts[2] < MAX_FIELD_VALUES {
+                ou_vals[counts[2]] = Some(value); counts[2] += 1;
+            } else if oid_bytes == OID_CN && counts[3] < MAX_FIELD_VALUES {
+                cn_vals[counts[3]] = Some(value); counts[3] += 1;
+            }
         }
     }
 
-    // Length-prefixed hash: prevents ["ab","c"] == ["a","bc"] collision
-    let hash_field = |vals: &mut Vec<&str>| -> [u8; 32] {
-        if vals.is_empty() { return zero; }
-        vals.sort();
-        let mut preimage = Vec::new();
-        for v in vals.iter() {
-            let len = (v.len() as u32).to_be_bytes();
-            preimage.extend_from_slice(&len);
-            preimage.extend_from_slice(v.as_bytes());
+    // Streaming hash: feed directly into SHA-256, no intermediate Vec
+    let hash_field = |vals: &mut [Option<&str>; MAX_FIELD_VALUES], count: usize| -> [u8; 32] {
+        if count == 0 { return zero; }
+        // Sort the populated slice
+        let slice = &mut vals[..count];
+        slice.sort();
+        let mut hasher = Sha256::new();
+        for v in slice.iter() {
+            if let Some(s) = v {
+                hasher.update((s.len() as u32).to_be_bytes());
+                hasher.update(s.as_bytes());
+            }
         }
-        preimage.extend_from_slice(serial);
-        Sha256::digest(&preimage).into()
+        hasher.update(serial);
+        hasher.finalize().into()
     };
 
-    let country  = if effective_mask & 0x01 != 0 { hash_field(&mut country_vals) } else { zero };
-    let org      = if effective_mask & 0x02 != 0 { hash_field(&mut org_vals) } else { zero };
-    let org_unit = if effective_mask & 0x04 != 0 { hash_field(&mut ou_vals) } else { zero };
-    let cn       = if effective_mask & 0x08 != 0 { hash_field(&mut cn_vals) } else { zero };
+    let country  = if effective_mask & 0x01 != 0 { hash_field(&mut country_vals, counts[0]) } else { zero };
+    let org      = if effective_mask & 0x02 != 0 { hash_field(&mut org_vals, counts[1]) } else { zero };
+    let org_unit = if effective_mask & 0x04 != 0 { hash_field(&mut ou_vals, counts[2]) } else { zero };
+    let cn       = if effective_mask & 0x08 != 0 { hash_field(&mut cn_vals, counts[3]) } else { zero };
 
     (country, org, org_unit, cn)
 }
@@ -529,11 +543,12 @@ pub fn main() {
     // Private key never enters the ZK circuit.
     let serial_bytes = user_cert.tbs_certificate.serial.to_bytes_be();
 
-    let mut ownership_preimage = Vec::with_capacity(serial_bytes.len() + 20 + 4);
-    ownership_preimage.extend_from_slice(&serial_bytes);
-    ownership_preimage.extend_from_slice(&registrant);
-    ownership_preimage.extend_from_slice(&wallet_index.to_be_bytes());
-    let ownership_hash: [u8; 32] = Sha256::digest(&ownership_preimage).into();
+    // Streaming hash — no intermediate Vec allocation
+    let mut ownership_hasher = Sha256::new();
+    ownership_hasher.update(&serial_bytes);
+    ownership_hasher.update(&registrant);
+    ownership_hasher.update(&wallet_index.to_be_bytes());
+    let ownership_hash: [u8; 32] = ownership_hasher.finalize().into();
 
     verify_ownership_signature(&ownership_hash, &ownership_sig, &user_cert);
 
@@ -546,10 +561,10 @@ pub fn main() {
     // Same cert = same public key = same nullifier, regardless of registrant.
     // No additional RSA operation needed — saves ~5.7M cycles.
     let cert_pub_key_raw = user_cert.tbs_certificate.subject_pki.raw;
-    let mut nullifier_preimage = Vec::with_capacity(cert_pub_key_raw.len() + 4);
-    nullifier_preimage.extend_from_slice(cert_pub_key_raw);
-    nullifier_preimage.extend_from_slice(&wallet_index.to_be_bytes());
-    let nullifier: [u8; 32] = Sha256::digest(&nullifier_preimage).into();
+    let mut nullifier_hasher = Sha256::new();
+    nullifier_hasher.update(cert_pub_key_raw);
+    nullifier_hasher.update(&wallet_index.to_be_bytes());
+    let nullifier: [u8; 32] = nullifier_hasher.finalize().into();
 
     // ========================================
     // Step 7: Verify CA Merkle membership (anonymous CA verification)

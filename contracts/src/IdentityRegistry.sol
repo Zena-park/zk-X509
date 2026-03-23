@@ -121,11 +121,13 @@ contract IdentityRegistry {
 
     /// @notice Register a verified identity using a ZK proof of X.509 certificate ownership.
     function register(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
+        // Check sender not already verified first (cheapest common revert, avoids proof verification gas)
+        if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
+
         (bytes32 nullifier, uint64 notAfter) = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         if (nullifierOwner[nullifier] != address(0)) revert AlreadyRegistered(nullifier);
-        if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
         nullifierOwner[nullifier] = msg.sender;
         verifiedUntil[msg.sender] = notAfter;
@@ -139,12 +141,13 @@ contract IdentityRegistry {
     ///      WARNING: If certificate files are compromised, an attacker could re-register
     ///      to their own wallet. This is by design — the certificate is the identity anchor.
     function reRegister(bytes calldata proof, bytes calldata publicValues) external whenNotPaused {
+        if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
+
         (bytes32 nullifier, uint64 notAfter) = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         address oldOwner = nullifierOwner[nullifier];
         if (oldOwner == address(0)) revert NullifierNotRegistered(nullifier);
-        if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
         if (oldOwner != msg.sender) {
             verifiedUntil[oldOwner] = 0;
