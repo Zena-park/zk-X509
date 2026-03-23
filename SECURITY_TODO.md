@@ -84,11 +84,9 @@
 - 컨트랙트: `updateCaMerkleRoot()`, 개별 CA hash 노출 없음
 
 #### 32. ~~Selective Disclosure entropy 보강 (user salt)~~ ✅ DONE
-- 현재: `SHA-256(len || value || cert_serial)` — serial은 CA가 공개하는 값
-- 국가코드(~200개) 등 입력 공간이 작은 필드는 brute-force 가능
-- 개선: 사용자 제공 random salt 추가 → `SHA-256(len || value || cert_serial || user_salt)`
-- SHA-256 precompile 유지하면서 information-theoretic hiding에 근접
-- 변경 범위: program (salt 입력 추가), lib (public values에 salt commitment 옵션), host (salt 생성/관리)
+- 구현 완료: `disclosure_salt = H("zk-X509-Disclosure-Salt-v1" ‖ nullifier_sig)`
+- 결정론적 (같은 인증서 = 같은 salt, 저장 불필요), 개인키 없으면 계산 불가
+- `SHA-256(len ‖ value ‖ disclosure_salt)` — brute-force 불가
 
 #### 33. Semi-formal security model (논문용)
 - Anonymity, Unforgeability, Unlinkability, Non-transferability에 대한 security game 정의
