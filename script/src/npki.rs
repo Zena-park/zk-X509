@@ -92,30 +92,8 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
     let params = parse_encrypted_private_key_info(encrypted_key_der)?;
     let encrypted_data = extract_encrypted_data(encrypted_key_der)?;
 
-    // Derive the encryption key using PBKDF2
-    let mut derived_key = vec![0u8; params.key_length];
-    if params.use_sha256_prf {
-        pbkdf2::<Hmac<sha2::Sha256>>(
-            password.as_bytes(),
-            &params.salt,
-            params.iterations,
-            &mut derived_key,
-        )
-        .map_err(|e| NpkiError::DecryptionFailed(format!("PBKDF2-SHA256 failed: {}", e)))?;
-    } else {
-        pbkdf2::<Hmac<Sha1>>(
-            password.as_bytes(),
-            &params.salt,
-            params.iterations,
-            &mut derived_key,
-        )
-        .map_err(|e| NpkiError::DecryptionFailed(format!("PBKDF2-SHA1 failed: {}", e)))?;
-    }
-
     // Decrypt based on cipher type
     let decrypted = match params.cipher {
-        CipherType::Aes256Cbc => decrypt_cbc::<cbc::Decryptor<Aes256>>(&derived_key, &params.iv, &encrypted_data, "AES")?,
-        CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
         CipherType::LegacySeedCbc => {
             // Legacy NPKI pbeWithSHA1AndSEED-CBC (PBKDF1):
             // Source: PyPinkSign, NPKICracker (verified against real NPKI keys)
@@ -138,6 +116,24 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
             let iv_full: [u8; 20] = iv_hash.finalize().into();
             let iv = &iv_full[0..16];
             decrypt_cbc::<cbc::Decryptor<SEED>>(key, iv, &encrypted_data, "SEED-legacy")?
+        }
+        CipherType::Aes256Cbc | CipherType::SeedCbc => {
+            // PBES2: derive key using PBKDF2
+            let mut derived_key = vec![0u8; params.key_length];
+            if params.use_sha256_prf {
+                pbkdf2::<Hmac<sha2::Sha256>>(
+                    password.as_bytes(), &params.salt, params.iterations, &mut derived_key,
+                ).map_err(|e| NpkiError::DecryptionFailed(format!("PBKDF2-SHA256: {}", e)))?;
+            } else {
+                pbkdf2::<Hmac<Sha1>>(
+                    password.as_bytes(), &params.salt, params.iterations, &mut derived_key,
+                ).map_err(|e| NpkiError::DecryptionFailed(format!("PBKDF2-SHA1: {}", e)))?;
+            }
+            match params.cipher {
+                CipherType::Aes256Cbc => decrypt_cbc::<cbc::Decryptor<Aes256>>(&derived_key, &params.iv, &encrypted_data, "AES")?,
+                CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
+                _ => unreachable!(),
+            }
         }
     };
 
@@ -185,9 +181,9 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
             .unwrap_or(2048);
 
         // Legacy NPKI pbeWithSHA1AndSEED-CBC (PBKDF1, NOT PBKDF2):
-        //   1. hash = SHA1(password || salt)
-        //   2. repeat: hash = SHA1(hash) × (iterations - 1)
-        //   3. key = hash[0..16], iv = hash[4..20]
+        //   1. dk = SHA1(password || salt), then SHA1(dk) × (iterations - 1)
+        //   2. key = dk[0..16]
+        //   3. iv = SHA1(dk[16..20])[0..16]
         return Ok(Pbes2Params {
             salt: salt.clone(),
             iterations,
@@ -507,7 +503,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // TODO: update roundtrip test with correct PBKDF1 + SHA1(dk[16:20]) IV
     fn test_legacy_npki_roundtrip() {
         // Create a legacy-format encrypted key and verify decryption
         use cbc::cipher::{BlockEncryptMut, KeyIvInit};
@@ -521,16 +516,27 @@ mod tests {
         let enc_data = std::fs::read(&pkcs8_path).unwrap();
         let plaintext = super::decrypt_npki_key(&enc_data, "test1234").unwrap();
 
-        // Now encrypt with legacy format: PBKDF2-SHA1, key=dk[0:16], iv=dk[4:20], SEED-CBC
+        // Encrypt with legacy format: PBKDF1-SHA1, key=dk[0:16], iv=SHA1(dk[16:20])[0:16]
         let password = b"legacy_test";
         let salt = [0x11u8, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
         let iterations: u32 = 2048;
 
-        // KDF: PBKDF2-HMAC-SHA1 → 20 bytes
-        let mut dk = vec![0u8; 20];
-        pbkdf2::<Hmac<Sha1>>(password, &salt, iterations, &mut dk).unwrap();
+        // PBKDF1: SHA1(password || salt), iterate
+        use sha1::Digest as Sha1Digest;
+        let mut h = sha1::Sha1::new();
+        h.update(password);
+        h.update(&salt);
+        let mut dk: [u8; 20] = h.finalize().into();
+        for _ in 1..iterations {
+            let mut h2 = sha1::Sha1::new();
+            h2.update(&dk);
+            dk = h2.finalize().into();
+        }
         let key = &dk[0..16];
-        let iv = &dk[4..20];
+        let mut iv_h = sha1::Sha1::new();
+        iv_h.update(&dk[16..20]);
+        let iv_full: [u8; 20] = iv_h.finalize().into();
+        let iv = &iv_full[0..16];
 
         // Wrap plaintext back to PKCS#8 format
         // The plaintext from decrypt is PKCS#1 RSA key, need to re-wrap
