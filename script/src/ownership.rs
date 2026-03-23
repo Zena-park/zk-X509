@@ -214,6 +214,16 @@ mod tests {
     }
 
     #[test]
+    fn test_ec_sign_ownership_different_wallet_index() {
+        let (cert, key) = load_ec_test_cert_and_key();
+        let registrant = [0x70u8; 20];
+
+        let sig_0 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let sig_1 = sign_ownership(&cert, &key, &registrant, 1).unwrap();
+        assert_ne!(sig_0, sig_1, "Different wallet indices must produce different EC signatures");
+    }
+
+    #[test]
     fn test_ec_sign_ownership_verifiable() {
         use p256::ecdsa::{VerifyingKey, Signature, signature::hazmat::PrehashVerifier};
 
@@ -250,6 +260,16 @@ mod tests {
         let sig1 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
         let sig2 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
         assert_eq!(sig1, sig2, "ECDSA P-384 must be deterministic");
+    }
+
+    #[test]
+    fn test_ec384_sign_ownership_different_wallet_index() {
+        let (cert, key) = load_ec384_test_cert_and_key();
+        let registrant = [0x70u8; 20];
+
+        let sig_0 = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let sig_1 = sign_ownership(&cert, &key, &registrant, 1).unwrap();
+        assert_ne!(sig_0, sig_1, "Different wallet indices must produce different EC384 signatures");
     }
 
     #[test]
