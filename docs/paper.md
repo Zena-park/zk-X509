@@ -1019,7 +1019,13 @@ The single-owner access control for CA management represents a centralization po
 
 ### 7.4 Cross-Chain Deployment
 
-zk-X509 supports multi-chain deployment — the same `IdentityRegistry` contract can be deployed on Ethereum, Polygon, Arbitrum, or any EVM-compatible chain with the same verification key. Users generate a chain-specific proof for each network (with the target `chain_id` bound into the ownership challenge), and the same X.509 certificate serves as the identity anchor across all networks. The `chain_id` binding (EIP-155) ensures that proofs cannot be replayed across chains: a proof generated for Ethereum (chain_id=1) is rejected on Polygon (chain_id=137). This design provides both **cross-chain availability** and **replay resistance** without requiring cross-chain messaging infrastructure.
+zk-X509 supports multi-chain deployment — `IdentityRegistry` can be deployed on Ethereum, Polygon, Arbitrum, or any EVM-compatible chain with the same verification key. Users generate a separate proof per chain, each bound to the target chain's `chain_id` and `contract_address`. Two privacy-by-design consequences follow from the domain separation in Section 3.2:
+
+1. **Cross-chain replay resistance.** The `chain_id` in the ownership challenge ensures a proof for Ethereum (chain_id=1) is rejected on Polygon (chain_id=137).
+
+2. **Cross-chain unlinkability.** The `contract_address` in the nullifier domain means different deployments produce different nullifiers for the same certificate. An observer cannot determine whether registrations on two chains belong to the same person — this is a deliberate privacy feature, not a limitation.
+
+If cross-chain identity linkage is desired (e.g., for unified reputation), the user can voluntarily reveal their nullifiers on both chains. However, this is an opt-in decision that the protocol does not enforce, preserving privacy by default.
 
 ### 7.5 Privacy-Preserving Delegated Proving
 
