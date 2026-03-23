@@ -250,6 +250,16 @@ fn build_stdin(
     stdin.write(&ca_merkle_root);
     stdin.write(contract_address);
     stdin.write(&chain_id);
+    // CRL Merkle Oracle: disabled by default (zero root)
+    let crl_merkle_root: [u8; 32] = [0u8; 32];
+    let crl_empty_proof: Vec<[u8; 32]> = Vec::new();
+    stdin.write(&crl_merkle_root);
+    stdin.write(&crl_merkle_root); // left_leaf (unused when root=0)
+    stdin.write(&crl_merkle_root); // right_leaf (unused)
+    stdin.write(&crl_empty_proof); // left_proof
+    stdin.write(&crl_empty_proof); // right_proof
+    stdin.write(&0u32);            // left_index
+    stdin.write(&0u32);            // right_index
     stdin
 }
 

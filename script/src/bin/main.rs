@@ -179,6 +179,12 @@ fn main() {
     stdin.write(&ca_merkle_root);
     stdin.write(&contract_bytes);
     stdin.write(&args.chain_id);
+    // CRL Merkle Oracle: disabled by default (zero root)
+    let crl_zero: [u8; 32] = [0u8; 32];
+    let crl_empty: Vec<[u8; 32]> = Vec::new();
+    stdin.write(&crl_zero); stdin.write(&crl_zero); stdin.write(&crl_zero);
+    stdin.write(&crl_empty); stdin.write(&crl_empty);
+    stdin.write(&0u32); stdin.write(&0u32);
     println!("Wallet Index: {} / Max: {} / Disclosure: 0x{:02X}", args.wallet_index, args.max_wallets, args.disclosure_mask);
     println!("Registrant: 0x{}", hex::encode(registrant_bytes));
     println!("Chain ID: {} / Contract: 0x{}", args.chain_id, hex::encode(contract_bytes));
