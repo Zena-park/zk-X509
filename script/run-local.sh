@@ -47,12 +47,33 @@ DEPLOYER_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 DEPLOYER_ADDR="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 
 # ========================================
-# Step 2: Deploy contracts
+# Step 2: Compute CA Merkle Root from current certs
 # ========================================
-echo "[2/4] Deploying IdentityRegistry..."
+echo "[2/5] Computing CA Merkle Root from certs/ca_pub.der..."
+
+if [ ! -f certs/ca_pub.der ]; then
+    echo "  ⚠️  certs/ca_pub.der not found. Generating test certs..."
+    cd certs && bash generate-test-certs.sh > /dev/null 2>&1 && cd ..
+fi
+
+CA_MERKLE_ROOT=$(cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
+    --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+    --registrant 0x0000000000000000000000000000000000000001 2>&1 | grep "CA Merkle Root:" | awk '{print $4}')
+
+if [ -z "$CA_MERKLE_ROOT" ]; then
+    echo "  ⚠️  Could not compute CA root, using default"
+    CA_MERKLE_ROOT="0x0000000000000000000000000000000000000000000000000000000000000000"
+fi
+echo "  ✅ CA Merkle Root: $CA_MERKLE_ROOT"
+echo ""
+
+# ========================================
+# Step 3: Deploy contracts
+# ========================================
+echo "[3/5] Deploying IdentityRegistry..."
 
 cd contracts
-DEPLOY_OUTPUT=$(forge script script/DeployLocal.s.sol --tc DeployLocalScript \
+DEPLOY_OUTPUT=$(CA_MERKLE_ROOT=$CA_MERKLE_ROOT forge script script/DeployLocal.s.sol --tc DeployLocalScript \
     --rpc-url http://localhost:8545 \
     --broadcast \
     --sender $DEPLOYER_ADDR \
@@ -73,7 +94,7 @@ cd ..
 # ========================================
 # Step 3: Verify deployment
 # ========================================
-echo "[3/4] Verifying deployment..."
+echo "[4/5] Verifying deployment..."
 
 CA_ROOT=$(cast call $REGISTRY_ADDR "caMerkleRoot()(bytes32)" --rpc-url http://localhost:8545 2>/dev/null)
 echo "  CA Merkle Root: $CA_ROOT"
