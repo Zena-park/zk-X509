@@ -1,9 +1,14 @@
 use alloy_sol_types::sol;
 
+/// Domain separator for nullifier generation.
+/// Shared between host (ownership.rs) and zkVM guest (program/src/main.rs).
+/// Changing this value changes all nullifiers — coordinate with contract state.
+pub const NULLIFIER_DOMAIN: &[u8] = b"zk-X509-Nullifier-v1";
+
 sol! {
     /// Public values output from the ZK program, verified on-chain.
     struct PublicValuesStruct {
-        bytes32 nullifier;       // SHA-256(cert_public_key_der ‖ walletIndex)
+        bytes32 nullifier;       // SHA-256(nullifier_sig ‖ walletIndex)
         bytes32 caMerkleRoot;    // Merkle root of allowed CA set (hides which CA issued the cert)
         uint64 timestamp;        // Proof generation timestamp (verified against block.timestamp)
         address registrant;      // Wallet address bound to this proof (anti-front-running)

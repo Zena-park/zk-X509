@@ -1,8 +1,11 @@
-//! Signature-based ownership proof.
+//! Signature-based ownership proof and nullifier generation.
 //!
 //! Signs a deterministic challenge with the certificate's private key.
 //! Only the signature (not the key) enters the ZK circuit.
-//! Nullifier is derived from the cert's public key (no signature needed).
+//!
+//! Nullifier is derived from a deterministic signature of a fixed domain string,
+//! ensuring that only the private key holder can compute it (prevents linkability
+//! attacks from public key observers).
 //!
 //! Supports both RSA and ECDSA (P-256, P-384) certificates.
 
@@ -21,11 +24,35 @@ const OID_EC_PUBLIC_KEY: &str = "1.2.840.10045.2.1";
 const OID_PRIME256V1: &str = "1.2.840.10045.3.1.7"; // P-256
 const OID_SECP384R1: &str = "1.3.132.0.34";         // P-384
 
+use zk_x509_lib::NULLIFIER_DOMAIN;
+
+/// Sign a prehash with the certificate's private key (shared logic).
+/// Accepts a pre-parsed cert to avoid redundant DER parsing.
+fn sign_with_parsed_cert(
+    cert: &x509_parser::certificate::X509Certificate,
+    key_der: &[u8],
+    prehash: &[u8; 32],
+) -> Result<Vec<u8>, String> {
+    let alg_oid = cert.tbs_certificate.subject_pki.algorithm.algorithm.to_id_string();
+
+    if alg_oid == OID_EC_PUBLIC_KEY {
+        sign_ecdsa_ownership(cert, key_der, prehash)
+    } else if alg_oid == OID_RSA_ENCRYPTION {
+        sign_rsa_ownership(key_der, prehash)
+    } else {
+        Err(format!("Unsupported key algorithm: {}", alg_oid))
+    }
+}
+
+/// Parse cert once, then sign a prehash.
+fn parse_and_sign(cert_der: &[u8], key_der: &[u8], prehash: &[u8; 32]) -> Result<Vec<u8>, String> {
+    use x509_parser::prelude::FromDer;
+    let (_, cert) = x509_parser::certificate::X509Certificate::from_der(cert_der)
+        .map_err(|e| format!("Parse cert: {:?}", e))?;
+    sign_with_parsed_cert(&cert, key_der, prehash)
+}
+
 /// Sign the ownership challenge: SHA-256(cert_serial ‖ registrant ‖ wallet_index)
-///
-/// Detects key type from certificate (RSA or ECDSA) and signs accordingly.
-/// RSA PKCS#1 v1.5 is inherently deterministic; ECDSA is deterministic here
-/// because PrehashSigner uses RFC 6979 deterministic nonces.
 pub fn sign_ownership(
     cert_der: &[u8],
     key_der: &[u8],
@@ -37,21 +64,23 @@ pub fn sign_ownership(
         .map_err(|e| format!("Parse cert: {:?}", e))?;
     let serial = cert.tbs_certificate.serial.to_bytes_be();
 
-    let mut preimage = Vec::with_capacity(serial.len() + 20 + 4);
-    preimage.extend_from_slice(&serial);
-    preimage.extend_from_slice(registrant);
-    preimage.extend_from_slice(&wallet_index.to_be_bytes());
-    let challenge_hash: [u8; 32] = Sha256::digest(&preimage).into();
+    let mut hasher = Sha256::new();
+    hasher.update(&serial);
+    hasher.update(registrant);
+    hasher.update(&wallet_index.to_be_bytes());
+    let challenge_hash: [u8; 32] = hasher.finalize().into();
 
-    let alg_oid = cert.tbs_certificate.subject_pki.algorithm.algorithm.to_id_string();
+    sign_with_parsed_cert(&cert, key_der, &challenge_hash)
+}
 
-    if alg_oid == OID_EC_PUBLIC_KEY {
-        sign_ecdsa_ownership(&cert, key_der, &challenge_hash)
-    } else if alg_oid == OID_RSA_ENCRYPTION {
-        sign_rsa_ownership(key_der, &challenge_hash)
-    } else {
-        Err(format!("Unsupported key algorithm: {}", alg_oid))
-    }
+/// Sign the nullifier domain string. Returns a deterministic, registrant-independent
+/// signature. Used inside zkVM to compute `nullifier = H(nullifier_sig ‖ wallet_index)`.
+pub fn sign_nullifier(
+    cert_der: &[u8],
+    key_der: &[u8],
+) -> Result<Vec<u8>, String> {
+    let message_hash: [u8; 32] = Sha256::digest(NULLIFIER_DOMAIN).into();
+    parse_and_sign(cert_der, key_der, &message_hash)
 }
 
 /// RSA ownership signing (PKCS#1 v1.5 with SHA-256).
@@ -302,5 +331,42 @@ mod tests {
         let sig = Signature::from_der(&sig_bytes).unwrap();
         vk.verify_prehash(&challenge_hash, &sig)
             .expect("EC384 signature must be verifiable with cert's public key");
+    }
+
+    // ===== Nullifier signature tests =====
+
+    #[test]
+    fn test_nullifier_sig_deterministic() {
+        let (cert, key) = load_test_cert_and_key();
+        let sig1 = sign_nullifier(&cert, &key).unwrap();
+        let sig2 = sign_nullifier(&cert, &key).unwrap();
+        assert_eq!(sig1, sig2, "Nullifier signature must be deterministic (RSA)");
+    }
+
+    #[test]
+    fn test_nullifier_sig_ec_deterministic() {
+        let (cert, key) = load_ec_test_cert_and_key();
+        let sig1 = sign_nullifier(&cert, &key).unwrap();
+        let sig2 = sign_nullifier(&cert, &key).unwrap();
+        assert_eq!(sig1, sig2, "Nullifier signature must be deterministic (P-256)");
+    }
+
+    #[test]
+    fn test_nullifier_sig_differs_from_ownership() {
+        let (cert, key) = load_test_cert_and_key();
+        let registrant = [0x70u8; 20];
+        let ownership = sign_ownership(&cert, &key, &registrant, 0).unwrap();
+        let nullifier = sign_nullifier(&cert, &key).unwrap();
+        assert_ne!(ownership, nullifier, "Nullifier sig must differ from ownership sig");
+    }
+
+    #[test]
+    fn test_nullifier_sig_independent_of_registrant() {
+        let (cert, key) = load_ec_test_cert_and_key();
+        // sign_nullifier doesn't take registrant — same cert always produces same sig
+        let sig = sign_nullifier(&cert, &key).unwrap();
+        // Compare with a second call — still same (no registrant dependency)
+        let sig2 = sign_nullifier(&cert, &key).unwrap();
+        assert_eq!(sig, sig2);
     }
 }

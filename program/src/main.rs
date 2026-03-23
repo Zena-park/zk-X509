@@ -15,7 +15,7 @@ use rsa::pkcs8::DecodePublicKey;
 use rsa::{Pkcs1v15Sign, RsaPublicKey};
 use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
-use zk_x509_lib::PublicValuesStruct;
+use zk_x509_lib::{PublicValuesStruct, NULLIFIER_DOMAIN};
 
 // ECDSA imports
 use p256::ecdsa::{
@@ -370,6 +370,9 @@ pub fn main() {
     // Signature-based ownership: host signs a challenge with the private key,
     // only the signature enters the ZK circuit. Private key never touches zkVM.
     let ownership_sig: Vec<u8> = sp1_zkvm::io::read();
+    // Nullifier signature: Sign(sk, H("zk-X509-Nullifier-v1")) — deterministic,
+    // registrant-independent. Used to derive nullifier without exposing public key.
+    let nullifier_sig: Vec<u8> = sp1_zkvm::io::read();
     // Chain: [intermediate_ca_certs..., root_ca_pub_key_spki_der]
     // Single-level: [root_ca_pub_key_spki_der]
     let cert_chain: Vec<Vec<u8>> = sp1_zkvm::io::read();
@@ -559,16 +562,24 @@ pub fn main() {
     verify_ownership_signature(&ownership_hash, &ownership_sig, &user_cert);
 
     // ========================================
-    // Step 6: Generate Nullifier
+    // Step 6: Generate Nullifier (signature-based)
     // ========================================
-    // Nullifier = SHA-256(cert_public_key_der ‖ wallet_index)
+    // Nullifier = SHA-256(nullifier_sig ‖ wallet_index)
     //
-    // Uses the certificate's public key (already CA-verified) instead of a signature.
-    // Same cert = same public key = same nullifier, regardless of registrant.
-    // No additional RSA operation needed — saves ~5.7M cycles.
-    let cert_pub_key_raw = user_cert.tbs_certificate.subject_pki.raw;
+    // The nullifier is derived from a deterministic signature of a fixed domain string,
+    // NOT from the certificate's public key. This prevents linkability attacks:
+    // - Public key is public data (sent to banks, gov, etc.)
+    // - Anyone with the cert could compute H(pk ‖ idx) and track the user
+    // - With signature-based nullifier, only the private key holder can compute it
+    //
+    // The nullifier_sig is verified against the cert's public key to ensure
+    // it was produced by the legitimate key holder.
+    let nullifier_domain_hash: [u8; 32] = Sha256::digest(NULLIFIER_DOMAIN).into();
+    // Reuses verify_ownership_signature — it verifies any prehash against the cert's public key
+    verify_ownership_signature(&nullifier_domain_hash, &nullifier_sig, &user_cert);
+
     let mut nullifier_hasher = Sha256::new();
-    nullifier_hasher.update(cert_pub_key_raw);
+    nullifier_hasher.update(&nullifier_sig);
     nullifier_hasher.update(&wallet_index.to_be_bytes());
     let nullifier: [u8; 32] = nullifier_hasher.finalize().into();
 

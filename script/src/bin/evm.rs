@@ -84,10 +84,12 @@ fn main() {
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index,
     ).expect("Failed to sign");
+    let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
+        &cert_der, &priv_key,
+    ).expect("Failed to sign nullifier");
 
     let crl_der: Vec<u8> = Vec::new();
 
-    // Build CA Merkle tree (single-CA for now)
     let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
     let ca_leaves = vec![ca_leaf_hash];
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
@@ -95,6 +97,7 @@ fn main() {
     let mut stdin = SP1Stdin::new();
     stdin.write(&cert_der);
     stdin.write(&ownership_sig);
+    stdin.write(&nullifier_sig);
     stdin.write(&cert_chain);
     stdin.write(&current_timestamp);
     stdin.write(&crl_der);
