@@ -487,4 +487,22 @@ mod tests {
         let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
         assert_eq!(unpadded, plaintext);
     }
+
+    #[test]
+    fn test_decrypt_npki_encrypted_key() {
+        let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let encrypted_path = base.join("certs/signPri_encrypted.key");
+        if !encrypted_path.exists() {
+            eprintln!("signPri_encrypted.key not found, skipping");
+            return;
+        }
+        let key_data = std::fs::read(&encrypted_path).unwrap();
+        match super::decrypt_npki_key(&key_data, "test1234") {
+            Ok(decrypted) => {
+                println!("✅ Decrypted key: {} bytes", decrypted.len());
+                assert!(decrypted.len() > 100, "Decrypted key too small");
+            }
+            Err(e) => panic!("❌ Decryption failed: {}", e),
+        }
+    }
 }
