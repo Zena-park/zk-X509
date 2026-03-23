@@ -113,7 +113,8 @@ fn verify_ecdsa_signature(
 /// SPKI = SEQUENCE { algorithm AlgorithmIdentifier, subjectPublicKey BIT STRING }
 /// The BIT STRING contains: 0x00 (unused bits) ‖ EC point (0x04 ‖ x ‖ y)
 fn extract_ec_point_from_spki(spki_der: &[u8]) -> &[u8] {
-    // Walk the DER to find the BIT STRING content
+    // Minimum valid EC SPKI: ~24 bytes (tag+len+alg+bitstring with compressed point)
+    assert!(spki_der.len() >= 24, "SPKI DER too short for EC key");
     assert!(spki_der[0] == 0x30, "Expected SEQUENCE tag in SPKI");
     let (_, seq_offset) = der_read_length(&spki_der[1..]);
     let inner = &spki_der[1 + seq_offset..];
@@ -133,6 +134,7 @@ fn extract_ec_point_from_spki(spki_der: &[u8]) -> &[u8] {
 
 /// Read a DER length field. Returns (length_value, bytes_consumed).
 fn der_read_length(data: &[u8]) -> (usize, usize) {
+    assert!(!data.is_empty(), "DER length field: unexpected end of data");
     if data[0] < 0x80 {
         (data[0] as usize, 1)
     } else {
