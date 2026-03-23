@@ -17,36 +17,242 @@ use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
 use zk_x509_lib::PublicValuesStruct;
 
-/// Resolve hash algorithm OID to scheme + hash function, then verify RSA signature.
+// ECDSA imports
+use p256::ecdsa::{
+    signature::hazmat::PrehashVerifier as _,
+    Signature as P256Signature,
+    VerifyingKey as P256VerifyingKey,
+};
+use p384::ecdsa::{
+    Signature as P384Signature,
+    VerifyingKey as P384VerifyingKey,
+};
+
+/// Signature algorithm OID bytes (DER-encoded) for direct comparison.
+/// Avoids String allocation from to_id_string() — saves cycles in zkVM.
+///
+/// RSA OIDs: 1.2.840.113549.1.1.x
+const OID_BYTES_SHA256_RSA: &[u8] = &[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B];
+const OID_BYTES_SHA1_RSA: &[u8]   = &[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x05];
+const OID_BYTES_SHA384_RSA: &[u8] = &[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0C];
+const OID_BYTES_SHA512_RSA: &[u8] = &[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0D];
+/// RSA OID prefix: 1.2.840.113549.1.1 (first 8 bytes, without the trailing algorithm byte)
+const OID_PREFIX_RSA: &[u8] = &[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01];
+
+/// ECDSA OIDs: 1.2.840.10045.4.3.x
+const OID_BYTES_ECDSA_SHA256: &[u8] = &[0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x02];
+const OID_BYTES_ECDSA_SHA384: &[u8] = &[0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x03];
+/// ECDSA OID prefix: 1.2.840.10045.4
+const OID_PREFIX_ECDSA: &[u8] = &[0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04];
+
+/// EC public key algorithm OID: 1.2.840.10045.2.1
+const OID_BYTES_EC_PUB: &[u8] = &[0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01];
+/// Named curve OIDs
+const OID_BYTES_PRIME256V1: &[u8] = &[0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07]; // P-256
+const OID_BYTES_SECP384R1: &[u8] = &[0x2B, 0x81, 0x04, 0x00, 0x22];                     // P-384
+
+/// Verify an RSA signature. Uses stack-allocated digest (no Vec heap alloc).
 fn verify_rsa_signature(
     tbs_der: &[u8],
     signature_bytes: &[u8],
-    sig_alg_oid: &str,
+    sig_alg_oid_bytes: &[u8],
     signer_pub_key: &RsaPublicKey,
 ) {
-    let (scheme, tbs_hash) = match sig_alg_oid {
-        "1.2.840.113549.1.1.11" => (
-            Pkcs1v15Sign::new::<sha2::Sha256>(),
-            Sha256::digest(tbs_der).to_vec(),
-        ),
-        "1.2.840.113549.1.1.5" => (
-            Pkcs1v15Sign::new::<sha1::Sha1>(),
-            sha1::Sha1::digest(tbs_der).to_vec(),
-        ),
-        "1.2.840.113549.1.1.12" => (
-            Pkcs1v15Sign::new::<sha2::Sha384>(),
-            sha2::Sha384::digest(tbs_der).to_vec(),
-        ),
-        "1.2.840.113549.1.1.13" => (
-            Pkcs1v15Sign::new::<sha2::Sha512>(),
-            sha2::Sha512::digest(tbs_der).to_vec(),
-        ),
-        _ => panic!("Unsupported signature algorithm: {}", sig_alg_oid),
-    };
+    if sig_alg_oid_bytes == OID_BYTES_SHA256_RSA {
+        let hash: [u8; 32] = Sha256::digest(tbs_der).into();
+        signer_pub_key.verify(Pkcs1v15Sign::new::<sha2::Sha256>(), &hash, signature_bytes)
+            .expect("RSA-SHA256 signature verification failed");
+    } else if sig_alg_oid_bytes == OID_BYTES_SHA1_RSA {
+        let hash: [u8; 20] = sha1::Sha1::digest(tbs_der).into();
+        signer_pub_key.verify(Pkcs1v15Sign::new::<sha1::Sha1>(), &hash, signature_bytes)
+            .expect("RSA-SHA1 signature verification failed");
+    } else if sig_alg_oid_bytes == OID_BYTES_SHA384_RSA {
+        let hash: [u8; 48] = sha2::Sha384::digest(tbs_der).into();
+        signer_pub_key.verify(Pkcs1v15Sign::new::<sha2::Sha384>(), &hash, signature_bytes)
+            .expect("RSA-SHA384 signature verification failed");
+    } else if sig_alg_oid_bytes == OID_BYTES_SHA512_RSA {
+        let hash: [u8; 64] = sha2::Sha512::digest(tbs_der).into();
+        signer_pub_key.verify(Pkcs1v15Sign::new::<sha2::Sha512>(), &hash, signature_bytes)
+            .expect("RSA-SHA512 signature verification failed");
+    } else {
+        panic!("Unsupported RSA signature algorithm OID");
+    }
+}
 
-    signer_pub_key
-        .verify(scheme, &tbs_hash, signature_bytes)
-        .expect("RSA signature verification failed");
+/// Verify an ECDSA signature using the signer's raw SPKI DER public key.
+/// Curve is detected from the SPKI's namedCurve OID (not the signature algorithm OID).
+/// Digest algorithm is selected from the signature algorithm OID independently.
+fn verify_ecdsa_signature(
+    tbs_der: &[u8],
+    signature_bytes: &[u8],
+    sig_alg_oid_bytes: &[u8],
+    signer_spki_der: &[u8],
+) {
+    let ec_point = extract_ec_point_from_spki(signer_spki_der);
+    let curve_oid = extract_curve_oid_from_spki(signer_spki_der);
+
+    // Select digest from signature algorithm OID
+    if sig_alg_oid_bytes == OID_BYTES_ECDSA_SHA256 {
+        let digest: [u8; 32] = Sha256::digest(tbs_der).into();
+        verify_ec_with_digest(ec_point, signature_bytes, &digest, curve_oid);
+    } else if sig_alg_oid_bytes == OID_BYTES_ECDSA_SHA384 {
+        let digest: [u8; 48] = sha2::Sha384::digest(tbs_der).into();
+        verify_ec_with_digest(ec_point, signature_bytes, &digest, curve_oid);
+    } else {
+        panic!("Unsupported ECDSA signature algorithm OID");
+    }
+}
+
+/// Verify ECDSA signature with a pre-computed digest, selecting curve from SPKI OID.
+fn verify_ec_with_digest(
+    ec_point: &[u8],
+    signature_bytes: &[u8],
+    digest: &[u8],
+    curve_oid: &[u8],
+) {
+    if curve_oid == OID_BYTES_PRIME256V1 {
+        let vk = P256VerifyingKey::from_sec1_bytes(ec_point)
+            .expect("Failed to parse P-256 public key");
+        let sig = P256Signature::from_der(signature_bytes)
+            .expect("Failed to parse P-256 DER signature");
+        vk.verify_prehash(digest, &sig)
+            .expect("P-256 ECDSA signature verification failed");
+    } else if curve_oid == OID_BYTES_SECP384R1 {
+        let vk = P384VerifyingKey::from_sec1_bytes(ec_point)
+            .expect("Failed to parse P-384 public key");
+        let sig = P384Signature::from_der(signature_bytes)
+            .expect("Failed to parse P-384 DER signature");
+        vk.verify_prehash(digest, &sig)
+            .expect("P-384 ECDSA signature verification failed");
+    } else {
+        panic!("Unsupported EC curve OID: {:?}", curve_oid);
+    }
+}
+
+/// Extract the namedCurve OID bytes from an EC SPKI DER structure.
+/// SPKI AlgorithmIdentifier for EC = SEQUENCE { ecPublicKey OID, namedCurve OID }
+fn extract_curve_oid_from_spki(spki_der: &[u8]) -> &[u8] {
+    assert!(spki_der[0] == 0x30, "Expected SEQUENCE tag in SPKI");
+    let (_, seq_offset) = der_read_length(&spki_der[1..]);
+    let inner = &spki_der[1 + seq_offset..];
+
+    // AlgorithmIdentifier SEQUENCE
+    assert!(inner[0] == 0x30, "Expected SEQUENCE for AlgorithmIdentifier");
+    let (alg_len, alg_offset) = der_read_length(&inner[1..]);
+    let alg_content = &inner[1 + alg_offset..1 + alg_offset + alg_len];
+
+    // First element: algorithm OID (ecPublicKey)
+    assert!(alg_content[0] == 0x06, "Expected OID tag for algorithm");
+    let (oid_len, oid_offset) = der_read_length(&alg_content[1..]);
+    let after_alg_oid = &alg_content[1 + oid_offset + oid_len..];
+
+    // Second element: namedCurve OID (parameters)
+    assert!(after_alg_oid[0] == 0x06, "Expected OID tag for namedCurve");
+    let (curve_len, curve_offset) = der_read_length(&after_alg_oid[1..]);
+    &after_alg_oid[1 + curve_offset..1 + curve_offset + curve_len]
+}
+
+/// Extract the EC point bytes from a SubjectPublicKeyInfo DER structure.
+/// SPKI = SEQUENCE { algorithm AlgorithmIdentifier, subjectPublicKey BIT STRING }
+/// The BIT STRING contains: 0x00 (unused bits) ‖ EC point (0x04 ‖ x ‖ y)
+fn extract_ec_point_from_spki(spki_der: &[u8]) -> &[u8] {
+    // Minimum valid EC SPKI: ~24 bytes (tag+len+alg+bitstring with compressed point)
+    assert!(spki_der.len() >= 24, "SPKI DER too short for EC key");
+    assert!(spki_der[0] == 0x30, "Expected SEQUENCE tag in SPKI");
+    let (_, seq_offset) = der_read_length(&spki_der[1..]);
+    let inner = &spki_der[1 + seq_offset..];
+
+    // Skip AlgorithmIdentifier SEQUENCE
+    assert!(inner[0] == 0x30, "Expected SEQUENCE tag for AlgorithmIdentifier");
+    let (alg_len, alg_offset) = der_read_length(&inner[1..]);
+    let bs = &inner[1 + alg_offset + alg_len..];
+
+    // BIT STRING: tag(0x03) + length + 0x00(unused bits) + EC point
+    assert!(bs[0] == 0x03, "Expected BIT STRING tag");
+    let (bs_len, bs_offset) = der_read_length(&bs[1..]);
+    let bs_content = &bs[1 + bs_offset..1 + bs_offset + bs_len];
+    assert!(bs_content[0] == 0x00, "Expected 0 unused bits in BIT STRING");
+    &bs_content[1..]
+}
+
+/// Read a DER length field. Returns (length_value, bytes_consumed).
+fn der_read_length(data: &[u8]) -> (usize, usize) {
+    assert!(!data.is_empty(), "DER length field: unexpected end of data");
+    if data[0] < 0x80 {
+        (data[0] as usize, 1)
+    } else {
+        let num_bytes = (data[0] & 0x7F) as usize;
+        assert!(data.len() >= 1 + num_bytes, "DER length field: truncated long-form length");
+        let mut len: usize = 0;
+        for i in 0..num_bytes {
+            len = (len << 8) | (data[1 + i] as usize);
+        }
+        (len, 1 + num_bytes)
+    }
+}
+
+/// Unified signature verification: detects RSA vs ECDSA from the signature algorithm OID bytes.
+fn verify_cert_signature(
+    tbs_der: &[u8],
+    signature_bytes: &[u8],
+    sig_alg_oid_bytes: &[u8],
+    signer_spki_der: &[u8],
+) {
+    if sig_alg_oid_bytes.starts_with(OID_PREFIX_RSA) {
+        let rsa_pub = RsaPublicKey::from_public_key_der(signer_spki_der)
+            .expect("Failed to parse RSA public key from SPKI");
+        verify_rsa_signature(tbs_der, signature_bytes, sig_alg_oid_bytes, &rsa_pub);
+    } else if sig_alg_oid_bytes.starts_with(OID_PREFIX_ECDSA) {
+        verify_ecdsa_signature(tbs_der, signature_bytes, sig_alg_oid_bytes, signer_spki_der);
+    } else {
+        panic!("Unsupported signature algorithm OID: {:?}", sig_alg_oid_bytes);
+    }
+}
+
+/// Verify ownership signature: supports both RSA and ECDSA keys.
+/// For ECDSA, uses the already-parsed EC point from x509-parser (avoids redundant DER walk).
+fn verify_ownership_signature(
+    ownership_hash: &[u8; 32],
+    ownership_sig: &[u8],
+    cert: &X509Certificate,
+) {
+    let spki = &cert.tbs_certificate.subject_pki;
+    let alg_oid_bytes = spki.algorithm.algorithm.as_bytes();
+
+    if alg_oid_bytes == OID_BYTES_EC_PUB {
+        // Use x509-parser's already-extracted EC point (no redundant DER walk)
+        let ec_point = spki.subject_public_key.data.as_ref();
+        // Parse curve OID once, match against known curves
+        let curve_params = spki.algorithm.parameters.as_ref()
+            .and_then(|p| p.as_oid().ok());
+        let is_p256 = curve_params.as_ref()
+            .map(|oid| oid.as_bytes() == OID_BYTES_PRIME256V1)
+            .unwrap_or(false);
+
+        if is_p256 {
+            let vk = P256VerifyingKey::from_sec1_bytes(ec_point)
+                .expect("Failed to parse P-256 public key for ownership");
+            let sig = P256Signature::from_der(ownership_sig)
+                .expect("Failed to parse P-256 ownership signature");
+            vk.verify_prehash(ownership_hash, &sig)
+                .expect("P-256 ownership signature verification failed");
+        } else if curve_params.map(|oid| oid.as_bytes() == OID_BYTES_SECP384R1).unwrap_or(false) {
+            let vk = P384VerifyingKey::from_sec1_bytes(ec_point)
+                .expect("Failed to parse P-384 public key for ownership");
+            let sig = P384Signature::from_der(ownership_sig)
+                .expect("Failed to parse P-384 ownership signature");
+            vk.verify_prehash(ownership_hash, &sig)
+                .expect("P-384 ownership signature verification failed");
+        } else {
+            panic!("Unsupported EC curve");
+        }
+    } else {
+        let pub_key = RsaPublicKey::from_public_key_der(spki.raw)
+            .expect("Failed to parse certificate's RSA public key");
+        pub_key
+            .verify(Pkcs1v15Sign::new::<sha2::Sha256>(), ownership_hash, ownership_sig)
+            .expect("RSA ownership signature verification failed");
+    }
 }
 
 /// Check that a certificate's validity period covers the given timestamp.
@@ -181,55 +387,41 @@ pub fn main() {
         })
         .collect();
 
-    // Parse root CA public key once (reused in chain verification + CRL verification)
-    let root_pub = RsaPublicKey::from_public_key_der(root_ca_pub_key_der)
-        .expect("Failed to parse root CA public key");
-
     // Verify user_cert → first signer
     if intermediates.is_empty() {
         // Single-level: root CA directly signed user cert
-        let oid = user_cert.signature_algorithm.algorithm.to_id_string();
-        verify_rsa_signature(
+        verify_cert_signature(
             user_cert.tbs_certificate.as_ref(),
             user_cert.signature_value.as_ref(),
-            &oid,
-            &root_pub,
+            user_cert.signature_algorithm.algorithm.as_bytes(),
+            root_ca_pub_key_der,
         );
     } else {
         // user_cert signed by intermediates[0]
-        let first_pub = RsaPublicKey::from_public_key_der(
-            intermediates[0].tbs_certificate.subject_pki.raw,
-        ).expect("Failed to parse intermediate CA [0] public key");
-        let oid = user_cert.signature_algorithm.algorithm.to_id_string();
-        verify_rsa_signature(
+        verify_cert_signature(
             user_cert.tbs_certificate.as_ref(),
             user_cert.signature_value.as_ref(),
-            &oid,
-            &first_pub,
+            user_cert.signature_algorithm.algorithm.as_bytes(),
+            intermediates[0].tbs_certificate.subject_pki.raw,
         );
 
         // intermediates[i] signed by intermediates[i+1]
         for i in 0..intermediates.len() - 1 {
-            let next_pub = RsaPublicKey::from_public_key_der(
-                intermediates[i + 1].tbs_certificate.subject_pki.raw,
-            ).unwrap_or_else(|_| panic!("Failed to parse intermediate CA [{}] public key", i + 1));
-            let oid = intermediates[i].signature_algorithm.algorithm.to_id_string();
-            verify_rsa_signature(
+            verify_cert_signature(
                 intermediates[i].tbs_certificate.as_ref(),
                 intermediates[i].signature_value.as_ref(),
-                &oid,
-                &next_pub,
+                intermediates[i].signature_algorithm.algorithm.as_bytes(),
+                intermediates[i + 1].tbs_certificate.subject_pki.raw,
             );
         }
 
         // Last intermediate signed by root CA
         let last = intermediates.last().unwrap();
-        let oid = last.signature_algorithm.algorithm.to_id_string();
-        verify_rsa_signature(
+        verify_cert_signature(
             last.tbs_certificate.as_ref(),
             last.signature_value.as_ref(),
-            &oid,
-            &root_pub,
+            last.signature_algorithm.algorithm.as_bytes(),
+            root_ca_pub_key_der,
         );
     }
 
@@ -240,7 +432,7 @@ pub fn main() {
     //   1. Parse the DER-encoded CRL
     //   2. Assert CRL issuer == user cert issuer (serial numbers are issuer-scoped)
     //   3. Validate CRL freshness (thisUpdate/nextUpdate)
-    //   4. Verify the CRL's RSA signature using the matching issuer key
+    //   4. Verify the CRL's signature (RSA or ECDSA) using the matching issuer key
     //   5. Check the user cert serial is not in the revoked list
     if !crl_der.is_empty() {
         let (_, crl) = x509_parser::revocation_list::CertificateRevocationList::from_der(&crl_der)
@@ -272,19 +464,16 @@ pub fn main() {
         // Verify CRL signature using the user cert's issuer key.
         // For multi-level chains: intermediates[0] is the user cert issuer.
         // For single-level: root CA is the issuer.
-        let crl_sig_oid = crl.signature_algorithm.algorithm.to_id_string();
+        let crl_sig_oid_bytes = crl.signature_algorithm.algorithm.as_bytes();
 
         if let Some(issuer_cert) = intermediates.iter()
             .find(|cert| cert.subject() == crl_issuer)
         {
-            let issuer_pub = RsaPublicKey::from_public_key_der(
-                issuer_cert.tbs_certificate.subject_pki.raw,
-            ).expect("Failed to parse CRL issuer public key");
-            verify_rsa_signature(
+            verify_cert_signature(
                 crl.tbs_cert_list.as_ref(),
                 crl.signature_value.as_ref(),
-                &crl_sig_oid,
-                &issuer_pub,
+                crl_sig_oid_bytes,
+                issuer_cert.tbs_certificate.subject_pki.raw,
             );
         } else {
             // Single-level: CRL signed by root CA. Verify issuer name matches.
@@ -293,11 +482,11 @@ pub fn main() {
                 crl_issuer == expected_root_name,
                 "CRL issuer does not match root CA"
             );
-            verify_rsa_signature(
+            verify_cert_signature(
                 crl.tbs_cert_list.as_ref(),
                 crl.signature_value.as_ref(),
-                &crl_sig_oid,
-                &root_pub,
+                crl_sig_oid_bytes,
+                root_ca_pub_key_der,
             );
         }
 
@@ -319,20 +508,13 @@ pub fn main() {
     // Private key never enters the ZK circuit.
     let serial_bytes = user_cert.tbs_certificate.serial.to_bytes_be();
 
-    let cert_pub_key = RsaPublicKey::from_public_key_der(
-        user_cert.tbs_certificate.subject_pki.raw,
-    )
-    .expect("Failed to parse certificate's public key");
-
     let mut ownership_preimage = Vec::with_capacity(serial_bytes.len() + 20 + 4);
     ownership_preimage.extend_from_slice(&serial_bytes);
     ownership_preimage.extend_from_slice(&registrant);
     ownership_preimage.extend_from_slice(&wallet_index.to_be_bytes());
     let ownership_hash: [u8; 32] = Sha256::digest(&ownership_preimage).into();
 
-    cert_pub_key
-        .verify(Pkcs1v15Sign::new::<sha2::Sha256>(), &ownership_hash, &ownership_sig)
-        .expect("Ownership signature verification failed");
+    verify_ownership_signature(&ownership_hash, &ownership_sig, &user_cert);
 
     // ========================================
     // Step 6: Generate Nullifier
