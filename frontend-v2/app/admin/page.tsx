@@ -1040,7 +1040,7 @@ export default function AdminPage() {
                 <p className="text-xs text-on-surface-variant mb-4">
                   Permanently blacklist a nullifier from the protocol.
                 </p>
-                <div className="space-y-3 max-w-xl">
+                <div className="space-y-3 max-w-full">
                   <input
                     className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
                     placeholder="Identity Nullifier Hash (0x...)"
@@ -1086,7 +1086,7 @@ export default function AdminPage() {
                     Emergency Pause
                   </h2>
                 </div>
-                <div className="flex items-center justify-between max-w-xl">
+                <div className="flex items-center justify-between max-w-full">
                   <div>
                     <p className="text-sm font-headline font-bold text-primary">
                       Protocol Status
@@ -1108,7 +1108,7 @@ export default function AdminPage() {
                 <div className="mt-3">
                   <TxBadge status={pauseTx} />
                 </div>
-                <div className="p-4 bg-error/10 rounded-2xl border border-error/20 mt-4 max-w-xl">
+                <div className="p-4 bg-error/10 rounded-2xl border border-error/20 mt-4 max-w-full">
                   <p className="text-[10px] text-error leading-relaxed font-medium">
                     <strong>ATTENTION:</strong> Pausing the contract will freeze
                     all user activities immediately. Only the DAO or emergency
@@ -1129,7 +1129,7 @@ export default function AdminPage() {
                   Transfer protocol ownership to a new address. This action is
                   irreversible.
                 </p>
-                <div className="space-y-3 max-w-xl">
+                <div className="space-y-3 max-w-full">
                   <input
                     className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
                     placeholder="New Owner Address (0x...)"
