@@ -73,8 +73,8 @@ struct Args {
     #[arg(long, default_value = "1")]
     max_wallets: u32,
 
-    /// Selective disclosure bitmask: bit 0=C, 1=O, 2=OU, 3=CN. Default 0x0F=all.
-    #[arg(long, default_value = "15")]
+    /// Selective disclosure bitmask: bit 0=C, 1=O, 2=OU, 3=CN. Default 0=hide all.
+    #[arg(long, default_value = "0")]
     disclosure_mask: u8,
 
     /// Chain ID (EIP-155). Default: 31337 (Anvil local).

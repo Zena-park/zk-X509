@@ -36,7 +36,7 @@ use zk_x509_script::npki;
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
 fn default_max_wallets() -> u32 { 1 }
-fn default_disclosure_mask() -> u8 { 0x0F }
+fn default_disclosure_mask() -> u8 { 0x00 }
 
 /// Request body from the frontend.
 /// NOTE: Do NOT derive Debug — password would be logged.

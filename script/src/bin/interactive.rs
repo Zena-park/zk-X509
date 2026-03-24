@@ -157,8 +157,8 @@ fn main() {
     let idx_str = prompt("  Wallet index [0]: ");
     let wallet_index: u32 = idx_str.parse().unwrap_or(0);
 
-    let mask_str = prompt("  Disclosure mask (15=all, 0=none) [15]: ");
-    let disclosure_mask: u8 = mask_str.parse().unwrap_or(0x0F);
+    let mask_str = prompt("  Disclosure mask (0=hide all, 15=show all) [0]: ");
+    let disclosure_mask: u8 = mask_str.parse().unwrap_or(0);
 
     println!("  ✓ Registrant: {}", registrant);
 
