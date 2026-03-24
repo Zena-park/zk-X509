@@ -83,8 +83,8 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-8">
             <a href="/" className="text-xl font-bold tracking-tight">zk-X509</a>
             <nav className="hidden md:flex gap-1 bg-white/5 p-1 rounded-lg border border-white/5">
-              <NavTab href="/" label="User Portal" />
-              <NavTab href="/admin" label="Admin Dashboard" />
+              <NavTab href="/" label="사용자" />
+              <NavTab href="/admin" label="관리자" />
             </nav>
           </div>
 
