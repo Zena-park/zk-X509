@@ -47,7 +47,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   // 랜딩 페이지에서는 사이드바 숨김
-  if (pathname === "/") return null;
+  if (pathname === "/" || pathname.startsWith("/landing")) return null;
 
   const isFaq = pathname === "/faq";
   const items = isFaq ? faqItems : dashboardItems;
