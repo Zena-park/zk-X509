@@ -44,9 +44,13 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
 
   // Listen for MetaMask network/account changes
   useEffect(() => {
-    if (!window.ethereum) return;
+    const eth = window.ethereum as unknown as {
+      on?: (event: string, handler: (...args: unknown[]) => void) => void;
+      removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
+    } | undefined;
+    if (!eth?.on) return;
+
     const handleChainChanged = () => {
-      // MetaMask recommends reloading on chain change
       window.location.reload();
     };
     const handleAccountsChanged = (...args: unknown[]) => {
@@ -57,11 +61,11 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
         setAccount(null);
       }
     };
-    window.ethereum.on?.("chainChanged", handleChainChanged);
-    window.ethereum.on?.("accountsChanged", handleAccountsChanged);
+    eth.on("chainChanged", handleChainChanged);
+    eth.on("accountsChanged", handleAccountsChanged);
     return () => {
-      window.ethereum?.removeListener?.("chainChanged", handleChainChanged);
-      window.ethereum?.removeListener?.("accountsChanged", handleAccountsChanged);
+      eth.removeListener?.("chainChanged", handleChainChanged);
+      eth.removeListener?.("accountsChanged", handleAccountsChanged);
     };
   }, []);
 
@@ -76,6 +80,7 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
       });
       if (accounts && accounts.length > 0) {
         setAccount(accounts[0]);
+        updateNetwork();
       }
     } catch (err) {
       console.error("Wallet connection failed:", err);
