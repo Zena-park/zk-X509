@@ -232,9 +232,10 @@ export default function AdminPage() {
   const [caListLoading, setCaListLoading] = useState(false);
 
   const [addCaTxMap, setAddCaTxMap] = useState<Record<string, TxStatus>>({});
+  const [addAllTx, setAddAllTx] = useState<TxStatus>(IDLE);
   const [removeCaTxMap, setRemoveCaTxMap] = useState<Record<string, TxStatus>>({});
-  const [selectedCaLeaves, setSelectedCaLeaves] = useState<Set<string>>(new Set());
   const [removeAllTx, setRemoveAllTx] = useState<TxStatus>(IDLE);
+  const [selectedCaLeaves, setSelectedCaLeaves] = useState<Set<string>>(new Set());
 
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
@@ -285,10 +286,10 @@ export default function AdminPage() {
       const leaves: string[] = await readContract.getCaLeaves();
       setOnChainCaLeaves(leaves);
     } catch {
-      /* contract may not support getCaLeaves yet */
       setOnChainCaLeaves([]);
     } finally {
       setCaListLoading(false);
+      setSelectedCaLeaves(new Set());
     }
   }, [readContract]);
 
@@ -389,7 +390,6 @@ export default function AdminPage() {
   }, []);
 
   /* ---------- action handlers ---------- */
-  const [addAllTx, setAddAllTx] = useState<TxStatus>(IDLE);
 
   const handleAddAllCas = () => {
     if (!writeContract || caFiles.length === 0) return;

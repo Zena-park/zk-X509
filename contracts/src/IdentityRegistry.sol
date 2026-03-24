@@ -123,6 +123,7 @@ contract IdentityRegistry {
     error ZeroCaHash();
     error DuplicateCaHash(bytes32 caHash);
     error CaIndexOutOfBounds(uint256 index, uint256 length);
+    error CaIndicesNotDescending(uint256 current, uint256 previous);
 
     // ============ Modifiers ============
 
@@ -285,7 +286,7 @@ contract IdentityRegistry {
     function removeCAs(uint256[] calldata indices) external onlyOwner {
         for (uint256 i = 0; i < indices.length; i++) {
             if (i > 0 && indices[i] >= indices[i - 1]) {
-                revert CaIndexOutOfBounds(indices[i], indices[i - 1]);
+                revert CaIndicesNotDescending(indices[i], indices[i - 1]);
             }
             _removeSingleCA(indices[i]);
         }
