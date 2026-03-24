@@ -189,6 +189,10 @@ rm -f ec_user.csr ec_ca.srl ec_signPri_raw.key ec_ca.pem ec_signCert.pem
 rm -f ec384_user.csr ec384_ca.srl ec384_signPri_raw.key ec384_ca.pem ec384_signCert.pem
 
 echo ""
+echo "=== Generating CRL (auto, keeps in sync with CA) ==="
+bash "$SCRIPT_DIR/generate-test-crl.sh"
+
+echo ""
 echo "Done! Files ready for zk-X509 testing:"
 echo "  RSA:      cargo run --release -- --execute --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der"
 echo "  EC P-256: cargo run --release -- --execute --cert certs/ec_signCert.der --key certs/ec_signPri.key --ca-cert certs/ec_ca_pub.der"
