@@ -289,7 +289,7 @@ export default function DashboardPage() {
 
       <footer className="mt-20 pt-8 border-t border-outline-variant/10 flex flex-col md:flex-row justify-between items-center gap-4 text-on-surface-variant">
         <p className="text-sm font-label">
-          &copy; 2024 ZK-X509 Foundation. All rights reserved.
+          Developed by Tokamak Network
         </p>
         <div className="flex gap-8 text-[10px] font-label uppercase tracking-widest">
           <a className="hover:text-primary transition-colors" href="#">

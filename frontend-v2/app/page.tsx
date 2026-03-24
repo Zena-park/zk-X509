@@ -306,7 +306,7 @@ export default function LandingPage() {
       <footer className="max-w-6xl mx-auto px-8 py-12 border-t border-outline-variant/10 flex flex-col md:flex-row justify-between items-center gap-4 text-on-surface-variant">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-tertiary" />
-          <span className="text-sm font-label">Tokamak Network</span>
+          <span className="text-sm font-label">Developed by Tokamak Network</span>
         </div>
         <div className="flex gap-8 text-[10px] font-label uppercase tracking-widest">
           <Link href="/faq" className="hover:text-primary transition-colors">FAQ</Link>

@@ -866,7 +866,7 @@ export default function AdminPage() {
       <footer className="mt-12 p-8 border-t border-outline-variant/10 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] font-label text-on-surface-variant">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-3 h-3" />
-          <span>&copy; 2024 ZK-X509 PROTOCOL FOUNDATION</span>
+          <span>Developed by Tokamak Network</span>
         </div>
         <div className="flex gap-8">
           <a href="#" className="hover:text-primary transition-colors">
