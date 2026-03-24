@@ -1,28 +1,40 @@
 //! On-chain data reader via JSON-RPC eth_call.
 //!
-//! Reads CA leaves and Merkle root from the IdentityRegistry contract
-//! without requiring a full Ethereum client library.
-//! Uses `ureq` (sync HTTP) to avoid tokio runtime conflicts with SP1.
+//! Reads CA leaves from the IdentityRegistry contract and builds the
+//! Merkle proof automatically. Uses `ureq` (sync HTTP) to avoid
+//! tokio runtime conflicts with SP1.
 
-use crate::merkle::Hash;
+use crate::merkle::{self, Hash};
+use sha2::{Digest, Sha256};
+use std::time::Duration;
 
-/// Fetch the on-chain CA leaf hashes from IdentityRegistry.getCaLeaves().
-pub fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
-    let data = eth_call(rpc_url, registry, "0xae88b426")?; // getCaLeaves()
-    decode_bytes32_array(&data)
+/// Fetch on-chain CA list, find user's CA, and return (root, proof).
+/// Panics with a clear message if the CA is not registered on-chain.
+pub fn build_ca_merkle_from_onchain(
+    rpc_url: &str,
+    registry: &[u8; 20],
+    ca_pub_key: &[u8],
+) -> Result<(Hash, Vec<Hash>), String> {
+    let ca_leaves = fetch_ca_leaves(rpc_url, registry)?;
+    if ca_leaves.is_empty() {
+        return Err("No CAs registered on-chain".to_string());
+    }
+
+    let ca_leaf: Hash = Sha256::digest(ca_pub_key).into();
+    let my_index = ca_leaves.iter().position(|h| *h == ca_leaf)
+        .ok_or_else(|| format!(
+            "Your CA (0x{}) is not registered on-chain. Register it first via addCA().",
+            hex::encode(ca_leaf)
+        ))?;
+
+    println!("On-chain CAs: {}, your index: {}", ca_leaves.len(), my_index);
+    Ok(merkle::merkle_root_and_proof(&ca_leaves, my_index))
 }
 
-/// Fetch the on-chain caMerkleRoot from IdentityRegistry.caMerkleRoot().
-pub fn fetch_ca_merkle_root(rpc_url: &str, registry: &[u8; 20]) -> Result<Hash, String> {
-    let data = eth_call(rpc_url, registry, "0xe0aeacc1")?; // caMerkleRoot()
-    let bytes = hex::decode(data.strip_prefix("0x").unwrap_or(&data))
-        .map_err(|e| format!("Invalid hex in root: {}", e))?;
-    if bytes.len() != 32 {
-        return Err(format!("Expected 32 bytes for root, got {}", bytes.len()));
-    }
-    let mut hash = [0u8; 32];
-    hash.copy_from_slice(&bytes);
-    Ok(hash)
+/// Fetch the on-chain CA leaf hashes from IdentityRegistry.getCaLeaves().
+fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
+    let data = eth_call(rpc_url, registry, "0xae88b426")?; // getCaLeaves()
+    decode_bytes32_array(&data)
 }
 
 fn eth_call(rpc_url: &str, registry: &[u8; 20], selector: &str) -> Result<String, String> {
@@ -34,21 +46,25 @@ fn eth_call(rpc_url: &str, registry: &[u8; 20], selector: &str) -> Result<String
         "id": 1
     });
 
-    let resp: serde_json::Value = ureq::post(rpc_url)
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(10)))
+        .build()
+        .into();
+    let resp: serde_json::Value = agent.post(rpc_url)
         .send_json(&body)
-        .map_err(|e| format!("RPC request failed: {}", e))?
+        .map_err(|e| format!("RPC request to {} failed: {}", rpc_url, e))?
         .body_mut()
         .read_json()
         .map_err(|e| format!("RPC response parse failed: {}", e))?;
 
     if let Some(err) = resp.get("error") {
-        return Err(format!("RPC error: {}", err));
+        return Err(format!("RPC error: {}", serde_json::to_string(err).unwrap_or_default()));
     }
 
-    resp["result"]
-        .as_str()
+    resp.get("result")
+        .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| "Missing result in RPC response".to_string())
+        .ok_or_else(|| "Missing 'result' in RPC response".to_string())
 }
 
 /// Decode ABI-encoded bytes32[] from hex string.
@@ -60,8 +76,9 @@ fn decode_bytes32_array(hex_str: &str) -> Result<Vec<Hash>, String> {
         return Ok(vec![]);
     }
 
-    let len_bytes = &raw[32..64];
-    let count = u64::from_be_bytes(len_bytes[24..32].try_into().unwrap()) as usize;
+    let len_bytes: [u8; 8] = raw[56..64].try_into()
+        .map_err(|_| "Invalid array length encoding")?;
+    let count = u64::from_be_bytes(len_bytes) as usize;
 
     let data_start = 64;
     let expected_len = data_start + count * 32;
@@ -119,5 +136,17 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], [0x11; 32]);
         assert_eq!(result[1], [0x22; 32]);
+    }
+
+    #[test]
+    fn test_decode_truncated_data() {
+        // count=2 but only 1 element of data
+        let hex = format!(
+            "0x{}{}{}",
+            "0000000000000000000000000000000000000000000000000000000000000020",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        );
+        assert!(decode_bytes32_array(&hex).is_err());
     }
 }

@@ -99,13 +99,8 @@ fn main() {
     let crl_der: Vec<u8> = Vec::new();
     let (ca_merkle_root, ca_merkle_proof) = if let Some(rpc_url) = &args.rpc_url {
         println!("Fetching CA list from on-chain ({})...", rpc_url);
-        let ca_leaves = zk_x509_script::onchain::fetch_ca_leaves(rpc_url, &registry_address)
-            .expect("Failed to fetch on-chain CA leaves");
-        let ca_leaf: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-        let my_index = ca_leaves.iter().position(|h| *h == ca_leaf)
-            .expect("Your CA is not registered on-chain");
-        println!("On-chain CAs: {}, your index: {}", ca_leaves.len(), my_index);
-        zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, my_index)
+        zk_x509_script::onchain::build_ca_merkle_from_onchain(rpc_url, &registry_address, &ca_pub_key)
+            .expect("Failed to build CA Merkle tree from on-chain")
     } else {
         let (_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
         (root, proof)

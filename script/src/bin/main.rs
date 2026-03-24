@@ -182,24 +182,14 @@ fn main() {
     ).expect("Failed to sign nullifier domain");
     println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 
-    // Build CA Merkle tree
+    // Build CA Merkle tree (from on-chain if --rpc-url, else from local files)
     let (ca_merkle_root, ca_merkle_proof) = if let Some(rpc_url) = &args.rpc_url {
-        // Fetch CA leaves from on-chain registry
         println!("Fetching CA list from on-chain ({})...", rpc_url);
-        let ca_leaves = zk_x509_script::onchain::fetch_ca_leaves(rpc_url, &registry_bytes)
-            .expect("Failed to fetch on-chain CA leaves");
-        println!("On-chain CA count: {}", ca_leaves.len());
-
-        let ca_leaf: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-        let my_index = ca_leaves.iter().position(|h| *h == ca_leaf)
-            .expect("Your CA is not registered on-chain. Register it first via addCA().");
-        println!("Your CA index: {} (hash: 0x{})", my_index, hex::encode(ca_leaf));
-
-        let (root, proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, my_index);
+        let (root, proof) = zk_x509_script::onchain::build_ca_merkle_from_onchain(rpc_url, &registry_bytes, &ca_pub_key)
+            .expect("Failed to build CA Merkle tree from on-chain");
         println!("CA Merkle Root (on-chain): 0x{}", hex::encode(root));
         (root, proof)
     } else {
-        // Build from local files (--ca-cert + --extra-ca)
         let mut extra_hashes = Vec::new();
         for extra in &args.extra_ca {
             let extra_pub = std::fs::read(extra)
