@@ -23,8 +23,8 @@ cd certs && bash generate-test-certs.sh && bash generate-test-crl.sh && cd ..
 | `zk-x509 --prove` | Core proof | 로컬 검증 | on-chain 제출 불가 |
 | `evm --system groth16` | Groth16 proof | **on-chain 제출** | SP1 network prover 또는 CPU |
 
-- **로컬 Anvil** (MockSP1Verifier): proof 형식 무관, 아무 값이어도 통과
-- **테스트넷/메인넷** (실제 SP1Verifier): 반드시 Groth16 proof 필요
+로컬 Anvil에서도 실제 SP1Verifier를 배포하여 Groth16 proof를 검증한다.
+`USE_MOCK_VERIFIER=true` 환경변수로 Mock 모드 선택 가능.
 
 ## 1. Unit Tests
 
@@ -55,12 +55,6 @@ ECDSA도 가능: `ec_signCert.der` / `ec_signPri.key` / `ec_ca_pub.der` (P-256)
 ## 3. Core Proof 생성 (로컬 검증용)
 
 ```bash
-# Mock (즉시, 빈 proof — 로직만 확인)
-SP1_PROVER=mock cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
-  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --registrant 0x0000000000000000000000000000000000000001
-
-# CPU (실제 Core proof 생성 + 검증, 머신에 따라 수분~수십분)
 cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
   --registrant 0x0000000000000000000000000000000000000001
@@ -104,8 +98,6 @@ cargo run --release --bin evm -- --system groth16 \
 
 ## 5. 로컬 E2E Test (Anvil)
 
-Anvil은 MockSP1Verifier를 사용하므로 Groth16 없이 테스트 가능.
-
 ### Step 1: Anvil 실행 (터미널 1)
 ```bash
 anvil
@@ -124,22 +116,21 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
 
-### Step 3: Public Values 생성
+### Step 3: Groth16 Proof 생성
 ```bash
-SP1_PROVER=mock cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
+SP1_DEV=true cargo run --release --bin evm -- --system groth16 \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
   --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --chain-id 31337 \
-  --contract-address $REGISTRY_ADDR
+  --registry-address $REGISTRY_ADDR
 ```
 
-출력에서 `Public Values: 0x...` 복사.
+출력에서 `Proof: 0x...`와 `Public Values: 0x...` 복사.
 
 ### Step 4: 등록
 ```bash
-# MockVerifier이므로 proof는 아무 값이어도 됨
 cast send $REGISTRY_ADDR \
-  "register(bytes,bytes)" 0x1234 $PUBLIC_VALUES \
+  "register(bytes,bytes)" $PROOF $PUBLIC_VALUES \
   --rpc-url http://localhost:8545 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
@@ -163,7 +154,7 @@ cd frontend && npm run dev
 1. MetaMask → `localhost:8545` (Chain ID 31337) 네트워크 추가
 2. Anvil PK `0xac0974...` import
 3. `http://localhost:3000` → 지갑 연결
-4. Proof: `0x1234`, Public Values: Step 3 출력값 붙여넣기
+4. Step 3에서 출력된 **Proof**와 **Public Values** hex 붙여넣기
 5. 트랜잭션 전송 → "등록 완료!" 확인
 
 > 프론트엔드 컨트랙트 주소: `frontend/src/contracts/IdentityRegistry.ts`에서 수정.
