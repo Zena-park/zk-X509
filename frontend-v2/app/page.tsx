@@ -37,18 +37,16 @@ export default function LandingPage() {
               </span>
             </div>
 
-            <h1 className="text-5xl md:text-7xl font-headline font-bold tracking-tight text-primary leading-tight mb-6">
-              Blockchain Identity,
+            <h1 className="text-6xl md:text-8xl font-headline font-bold tracking-tighter text-primary leading-[0.9] mb-8">
+              Verify without
               <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-tertiary to-secondary">
-                Without Revealing You.
+                Revealing.
               </span>
             </h1>
 
-            <p className="text-lg md:text-xl text-on-surface-variant max-w-2xl mx-auto leading-relaxed mb-12">
-              Prove your identity on-chain using X.509 certificates.
-              Zero-knowledge proofs ensure your name, ID number, and personal data
-              are never exposed — only the validity of your certificate is verified.
+            <p className="text-lg md:text-xl text-on-surface-variant max-w-xl mx-auto leading-relaxed mb-12">
+              On-chain identity verification powered by ZK proofs and X.509 certificates. Your data stays yours.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
