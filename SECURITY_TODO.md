@@ -195,9 +195,9 @@
 #### 54. 프론트엔드 E2E 테스트
 - run-local.sh → 브라우저 → MetaMask → register() → isVerified 확인
 
-#### 55. ARIA-CBC 지원 (OID 1.2.410.200004.1.34)
-- 신형 NPKI 인증서: pbeWithSHA256AndARIA-CBC
-- `aria` 크레이트 추가 필요
+#### 55. ~~ARIA-CBC 지원 (OID 1.2.410.200004.1.34)~~ ✅ DONE
+- 구현 완료: `aria` 크레이트 추가, `Aria256Cbc` cipher type, manual CBC 구현 (cipher v0.5 API)
+- PBES2 + PBKDF2-SHA256 + ARIA-256-CBC 전체 파이프라인 테스트 통과
 
 #### 27. LaTeX 변환 (LNCS 템플릿)
 - arXiv preprint + FC 학회 제출용
