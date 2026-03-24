@@ -311,7 +311,7 @@ cargo build --release --workspace`}</pre>
   --wallet-index 0 \\
   --max-wallets ${contractState?.MAX_WALLETS_PER_CERT ?? 1} \\
   --chain-id ${chainId ?? 31337} \\
-  --contract-address ${registryAddr}`}</pre>
+  --registry-address ${registryAddr}`}</pre>
                 <p className="text-xs text-on-surface-variant mt-2 space-y-1">
                   <span className="block"><span className="text-secondary">--registrant</span> — Your MetaMask wallet address (<span className="font-mono text-tertiary">{account}</span>). The proof is bound to this address.</span>
                   <span className="block"><span className="text-secondary">--wallet-index</span> — Slot number (0–{(contractState?.MAX_WALLETS_PER_CERT ?? 1) - 1}). Use a different index to register additional wallets with the same certificate.</span>

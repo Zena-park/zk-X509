@@ -79,7 +79,7 @@ contract IdentityRegistry {
     error WalletIndexOutOfRange(uint32 walletIndex, uint32 maxAllowed);
     error CertAlreadyExpired(uint64 notAfter, uint256 blockTimestamp);
     error ChainIdMismatch(uint64 proofChainId, uint256 expectedChainId);
-    error AppContractMismatch(address proofContract, address expectedContract);
+    error RegistryAddressMismatch(address proofContract, address expectedContract);
     error InvalidCrlMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
     error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
 
@@ -137,13 +137,13 @@ contract IdentityRegistry {
         if (walletIndex >= MAX_WALLETS_PER_CERT) revert WalletIndexOutOfRange(walletIndex, MAX_WALLETS_PER_CERT);
         if (notAfter < block.timestamp) revert CertAlreadyExpired(notAfter, block.timestamp);
 
-        // Decode remaining fields (chainId, appContract) in separate scope
+        // Decode remaining fields (chainId, registryAddress) in separate scope
         {
             // Skip first 6 fields (32+32+8+20+4+8 = 104 bytes padded to 6*32 = 192)
-            (, , , , , , uint64 proofChainId, address appContract) =
+            (, , , , , , uint64 proofChainId, address proofRegistry) =
                 abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64, uint64, address));
             if (proofChainId != uint64(block.chainid)) revert ChainIdMismatch(proofChainId, block.chainid);
-            if (appContract != address(this)) revert AppContractMismatch(appContract, address(this));
+            if (proofRegistry != address(this)) revert RegistryAddressMismatch(proofRegistry, address(this));
         }
 
         // Verify CRL Merkle root (if CRL checking is enabled)

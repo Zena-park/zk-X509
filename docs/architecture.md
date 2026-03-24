@@ -7,7 +7,7 @@ User (browser/CLI)          Cloud/Local Prover           Blockchain
 ┌─────────────────┐        ┌─────────────────┐        ┌─────────────────┐
 │ 1. Select cert   │        │ 4. Build stdin   │        │ 8. Verify proof  │
 │ 2. Enter password│        │ 5. Download CRL  │        │ 9. Check chainId │
-│ 3. Generate sigs │───────>│ 6. Run SP1 zkVM  │───────>│10. Check appAddr │
+│ 3. Generate sigs │───────>│ 6. Run SP1 zkVM  │───────>│10. Check registry│
 │    (ownership,   │  sigs  │ 7. Output proof  │ proof  │11. Store nullifier│
 │     nullifier)   │        │    + pub values  │        │12. Set verifiedUntil│
 └─────────────────┘        └─────────────────┘        └─────────────────┘
@@ -29,7 +29,7 @@ Process:
   2. Sign ownership challenge:
      ownership_sig = Sign(sk, H(serial ‖ addr ‖ walletIdx ‖ timestamp ‖ chainId))
   3. Sign nullifier domain:
-     nullifier_sig = Sign(sk, H("zk-X509-Nullifier-v2" ‖ contractAddr ‖ chainId))
+     nullifier_sig = Sign(sk, H("zk-X509-Nullifier-v2" ‖ registryAddress ‖ chainId))
   4. Drop private key from memory
 
 Output: ownership_sig, nullifier_sig (sent to prover)
@@ -42,7 +42,7 @@ Inputs to SP1 zkVM:
   cert_der, ownership_sig, nullifier_sig, cert_chain,
   timestamp, crl_der, registrant, wallet_index, max_wallets,
   disclosure_mask, ca_merkle_proof, ca_merkle_root,
-  contract_address, chain_id,
+  registry_address, chain_id,
   crl_merkle_root, crl_left_leaf, crl_right_leaf,
   crl_left_proof, crl_left_dirs, crl_right_proof, crl_right_dirs,
   crl_left_index, crl_right_index
@@ -61,7 +61,7 @@ Verification inside zkVM:
 
 Output (public values):
   nullifier, caMerkleRoot, timestamp, registrant, walletIndex,
-  notAfter, chainId, appContract, crlMerkleRoot,
+  notAfter, chainId, registryAddress, crlMerkleRoot,
   countryHash, orgHash, orgUnitHash, commonNameHash
 ```
 
@@ -72,7 +72,7 @@ function register(bytes proof, bytes publicValues) {
   // Decode public values
   // Check: registrant == msg.sender
   // Check: chainId == block.chainid
-  // Check: appContract == address(this)
+  // Check: registryAddress == address(this)
   // Check: timestamp within maxProofAge
   // Check: caMerkleRoot matches stored root
   // Check: crlMerkleRoot matches stored root (if enabled)
@@ -96,7 +96,7 @@ address registrant      — Wallet bound to proof
 uint32  walletIndex     — Multi-wallet slot (0-based)
 uint64  notAfter        — Certificate expiry (auto-expire on-chain)
 uint64  chainId         — EIP-155 chain ID (cross-chain replay defense)
-address appContract     — Target contract (cross-DApp unlinkability)
+address registryAddress  — Target registry (cross-DApp unlinkability)
 bytes32 crlMerkleRoot   — CRL sorted Merkle root (bytes32(0) = disabled)
 bytes32 countryHash     — H(len ‖ "KR" ‖ salt) or bytes32(0)
 bytes32 orgHash         — H(len ‖ "yessign" ‖ salt) or bytes32(0)
@@ -107,7 +107,7 @@ bytes32 commonNameHash  — H(len ‖ "Hong Gildong" ‖ salt) or bytes32(0)
 ### Nullifier Design
 
 ```
-Domain:  H("zk-X509-Nullifier-v2" ‖ contract_address ‖ chain_id)
+Domain:  H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id)
 Sig:     Sign(sk, domain)  — deterministic (RSA PKCS#1v1.5 / ECDSA RFC 6979)
 Null:    H(sig ‖ wallet_index)
 
@@ -168,7 +168,7 @@ Non-inclusion proof:
 | **Unforgeability** | SP1 ZK soundness — can't fake a proof without valid cert |
 | **Unlinkability** | Signature-based nullifier — public key insufficient |
 | **CA Anonymity** | Merkle tree — only root revealed, not which CA |
-| **Cross-DApp Unlinkability** | Contract address in nullifier domain |
+| **Cross-DApp Unlinkability** | Registry address in nullifier domain |
 | **Cross-Chain Replay** | chain_id in ownership challenge + public values |
 | **Front-running** | registrant == msg.sender binding |
 | **Double Registration** | Nullifier uniqueness check |

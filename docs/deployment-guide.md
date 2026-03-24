@@ -158,7 +158,7 @@ CHAIN_ID=42161
 # Proof generation must use matching chain_id:
 cargo run --release --bin zk-x509 -- --prove \
   --chain-id 137 \
-  --contract-address <POLYGON_REGISTRY> \
+  --registry-address <POLYGON_REGISTRY> \
   ...
 ```
 
@@ -182,7 +182,7 @@ cargo run --release --bin zk-x509 -- --prove \
 | `CA_MERKLE_ROOT` | Merkle root of allowed CAs | Deploy time |
 | `CRL_MERKLE_ROOT` | CRL sorted Merkle root | Optional |
 | `CHAIN_ID` | Target chain ID | Proof gen |
-| `CONTRACT_ADDRESS` | IdentityRegistry address | Proof gen |
+| `REGISTRY_ADDRESS` | IdentityRegistry address | Proof gen |
 
 ---
 
