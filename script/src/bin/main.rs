@@ -32,6 +32,10 @@ struct Args {
     #[arg(long)]
     prove: bool,
 
+    /// Compute and print CA Merkle Root only (no proof, no zkVM)
+    #[arg(long)]
+    ca_root: bool,
+
     /// Path to the X.509 certificate file (DER format)
     #[arg(long, default_value = "certs/signCert.der")]
     cert: PathBuf,
@@ -57,9 +61,9 @@ struct Args {
     #[arg(long)]
     crl: Option<PathBuf>,
 
-    /// Wallet address to bind the proof to (hex, e.g. 0xf39F...).
+    /// Wallet address to bind the proof to (hex, e.g. 0xf39F...). Required for --execute/--prove.
     #[arg(long)]
-    registrant: String,
+    registrant: Option<String>,
 
     /// Wallet slot index (0-based, for multi-wallet mode).
     #[arg(long, default_value = "0")]
@@ -87,6 +91,24 @@ fn main() {
     dotenv::dotenv().ok();
 
     let args = Args::parse();
+
+    // --ca-root: compute CA Merkle Root and exit (no zkVM, no proof)
+    if args.ca_root {
+        let ca_pub_key = std::fs::read(&args.ca_cert)
+            .unwrap_or_else(|e| panic!("Failed to read CA cert file {:?}: {}", args.ca_cert, e));
+        let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
+        let mut ca_leaves = vec![ca_leaf_hash];
+        for extra in &args.extra_ca {
+            let extra_pub = std::fs::read(extra)
+                .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
+            let extra_hash: [u8; 32] = sha2::Sha256::digest(&extra_pub).into();
+            ca_leaves.push(extra_hash);
+        }
+        let (ca_merkle_root, _) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+        println!("CA Merkle Root: 0x{}", hex::encode(ca_merkle_root));
+        println!("CA count: {}", ca_leaves.len());
+        return;
+    }
 
     if args.execute == args.prove {
         eprintln!("Error: You must specify either --execute or --prove");
@@ -140,8 +162,10 @@ fn main() {
         Vec::new()
     };
 
-    // Parse registrant address
-    let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
+    // Parse registrant address (required for --execute/--prove)
+    let registrant_str = args.registrant.as_deref()
+        .expect("--registrant is required for --execute/--prove");
+    let registrant_hex = registrant_str.strip_prefix("0x").unwrap_or(registrant_str);
     let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
         .expect("Invalid registrant address hex")
         .try_into()

@@ -87,10 +87,8 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 CA 공개키의 SHA-256 해시로 Merkle Root를 계산하고 컨트랙트에 등록한다.
 
 ```bash
-# CA Root 계산 (off-chain)
-cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
-  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --registrant 0x0000000000000000000000000000000000000001
+# CA Root 계산 (off-chain, zkVM 실행 없이 즉시)
+cargo run --release --bin zk-x509 -- --ca-root --ca-cert certs/ca_pub.der
 # 출력에서 CA Merkle Root: 0x... 복사
 
 # 컨트랙트에 등록 (owner만 가능)
