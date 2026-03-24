@@ -117,8 +117,6 @@ Full stack implemented: SP1 zkVM (Rust), Solidity smart contracts, Axum prover s
 - **Cross-chain deployment** — one identity across multiple L2s
 - **Academic publication** — submission to Financial Cryptography (FC)
 
-> Self-service re-registration (`reRegister()`) is already implemented — users can change wallets without admin approval.
-
 ## Try It
 
 Open source: **[github.com/tokamak-network/zk-X509](https://github.com/tokamak-network/zk-X509)**
