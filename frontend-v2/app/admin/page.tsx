@@ -882,41 +882,6 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* Manual hex input fallback */}
-              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
-                <div className="flex items-center gap-3 mb-6">
-                  <Share2 className="text-primary w-5 h-5" />
-                  <h2 className="text-xl font-headline font-bold text-primary">
-                    Manual CA Root Update
-                  </h2>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-label text-on-surface-variant">
-                    CA Merkle Root (Hex)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono focus:ring-1 focus:ring-tertiary transition-all outline-none text-primary placeholder:text-on-surface-variant/30"
-                      placeholder="New 32-byte Hex Root (0x...)"
-                      type="text"
-                      value={caRootInput}
-                      onChange={(e) => setCaRootInput(e.target.value)}
-                      disabled={disabled}
-                    />
-                    <button
-                      className="bg-primary text-background px-6 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
-                      disabled={disabled || isBusy(caRootTx) || !caRootInput}
-                      onClick={handleUpdateCaRoot}
-                    >
-                      {isBusy(caRootTx) ? "Processing..." : "UPDATE"}
-                    </button>
-                  </div>
-                  <TxBadge status={caRootTx} />
-                  <p className="text-[10px] text-on-surface-variant italic">
-                    Requires owner signature. Propagates in ~12 seconds.
-                  </p>
-                </div>
-              </div>
               {/* CRL Merkle Root */}
               <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
                 <div className="flex items-center gap-3 mb-6">
