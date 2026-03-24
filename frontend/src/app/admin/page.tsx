@@ -124,6 +124,7 @@ export default function AdminPage() {
 
   const busy = (tx: TxStatus) => tx.state === "pending" || tx.state === "confirming";
   const crlEnabled = state?.crlMerkleRoot && state.crlMerkleRoot !== ethers.ZeroHash;
+  const sp1VerifierAddr = process.env.NEXT_PUBLIC_SP1_VERIFIER_ADDRESS || "";
 
   return (
     <main className="max-w-[1400px] mx-auto px-6 py-8 w-full flex-1 flex flex-col gap-6">
@@ -199,13 +200,19 @@ export default function AdminPage() {
                   <span className="text-xs text-zinc-500">Max Proof Age</span>
                   <span className="text-sm font-medium text-white">{Number(state.maxProofAge) / 60} min</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between border-b border-white/5 pb-2">
                   <span className="text-xs text-zinc-500">Max Wallets/Cert</span>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-white">{state.maxWalletsPerCert}</span>
                     <span className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">immutable</span>
                   </div>
                 </div>
+                {sp1VerifierAddr && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">SP1 Verifier</span>
+                    <span className="text-xs font-mono text-zinc-400">{sp1VerifierAddr.slice(0, 8)}...{sp1VerifierAddr.slice(-4)}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
