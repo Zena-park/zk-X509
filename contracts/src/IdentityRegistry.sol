@@ -11,10 +11,10 @@ contract IdentityRegistry {
     // ============ State ============
 
     /// @notice The SP1 on-chain verifier contract.
-    ISP1Verifier public immutable sp1Verifier;
+    ISP1Verifier public immutable SP1_VERIFIER;
 
     /// @notice The verification key for the ZK X.509 program.
-    bytes32 public immutable programVKey;
+    bytes32 public immutable PROGRAM_V_KEY;
 
     /// @notice Merkle root of allowed CA set (hides which specific CA issued the cert).
     bytes32 public caMerkleRoot;
@@ -47,7 +47,7 @@ contract IdentityRegistry {
     uint256 public constant MAX_PROOF_AGE_LIMIT = 24 hours;
 
     /// @notice Max wallets per certificate (1 = strict 1:1, N = multi-wallet).
-    uint32 public immutable maxWalletsPerCert;
+    uint32 public immutable MAX_WALLETS_PER_CERT;
 
     // ============ Events ============
 
@@ -109,9 +109,9 @@ contract IdentityRegistry {
     /// @param _programVKey The verification key for the ZK X.509 SP1 program.
     /// @param _maxWallets Max wallets per certificate (1 for DAO/voting, N for DeFi).
     constructor(address _sp1Verifier, bytes32 _programVKey, uint32 _maxWallets) {
-        sp1Verifier = ISP1Verifier(_sp1Verifier);
-        programVKey = _programVKey;
-        maxWalletsPerCert = _maxWallets;
+        SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
+        PROGRAM_V_KEY = _programVKey;
+        MAX_WALLETS_PER_CERT = _maxWallets;
         owner = msg.sender;
     }
 
@@ -134,7 +134,7 @@ contract IdentityRegistry {
         if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
         if (block.timestamp - proofTimestamp > maxProofAge) revert ProofTooOld(proofTimestamp, block.timestamp);
         if (proofMerkleRoot != caMerkleRoot) revert InvalidCaMerkleRoot(proofMerkleRoot, caMerkleRoot);
-        if (walletIndex >= maxWalletsPerCert) revert WalletIndexOutOfRange(walletIndex, maxWalletsPerCert);
+        if (walletIndex >= MAX_WALLETS_PER_CERT) revert WalletIndexOutOfRange(walletIndex, MAX_WALLETS_PER_CERT);
         if (notAfter < block.timestamp) revert CertAlreadyExpired(notAfter, block.timestamp);
 
         // Decode remaining fields (chainId, appContract) in separate scope
@@ -153,7 +153,7 @@ contract IdentityRegistry {
             if (proofCrlRoot != crlMerkleRoot) revert InvalidCrlMerkleRoot(proofCrlRoot, crlMerkleRoot);
         }
 
-        sp1Verifier.verifyProof(programVKey, publicValues, proof);
+        SP1_VERIFIER.verifyProof(PROGRAM_V_KEY, publicValues, proof);
     }
 
     // ============ External Functions ============

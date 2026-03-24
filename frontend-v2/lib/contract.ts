@@ -96,7 +96,7 @@ export const IDENTITY_REGISTRY_ABI = [
   },
   {
     inputs: [],
-    name: "maxWalletsPerCert",
+    name: "MAX_WALLETS_PER_CERT",
     outputs: [{ name: "", type: "uint32" }],
     stateMutability: "view",
     type: "function",

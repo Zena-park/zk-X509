@@ -15,18 +15,18 @@ import {IdentityRegistry} from "../src/IdentityRegistry.sol";
 contract DeployScript is Script {
     function run() external {
         // Read configuration from environment
-        address sp1Verifier = vm.envAddress("SP1_VERIFIER_ADDRESS");
-        bytes32 programVKey = vm.envBytes32("PROGRAM_VKEY");
+        address SP1_VERIFIER = vm.envAddress("SP1_VERIFIER_ADDRESS");
+        bytes32 PROGRAM_VKEY = vm.envBytes32("PROGRAM_VKEY");
 
-        console.log("SP1 Verifier:", sp1Verifier);
+        console.log("SP1 Verifier:", SP1_VERIFIER);
         console.log("Program VKey:");
-        console.logBytes32(programVKey);
+        console.logBytes32(PROGRAM_VKEY);
 
         vm.startBroadcast();
 
         // Deploy IdentityRegistry
         uint32 maxWallets = uint32(vm.envOr("MAX_WALLETS_PER_CERT", uint256(1)));
-        IdentityRegistry registry = new IdentityRegistry(sp1Verifier, programVKey, maxWallets);
+        IdentityRegistry registry = new IdentityRegistry(SP1_VERIFIER, PROGRAM_VKEY, maxWallets);
         console.log("Max wallets per cert:", maxWallets);
         console.log("IdentityRegistry deployed at:", address(registry));
 

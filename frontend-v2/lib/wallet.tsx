@@ -20,7 +20,7 @@ interface ContractState {
   caMerkleRoot: string;
   crlMerkleRoot: string;
   maxProofAge: bigint;
-  maxWalletsPerCert: number;
+  MAX_WALLETS_PER_CERT: number;
 }
 
 interface WalletContext {
@@ -101,14 +101,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setReadContract(ro);
         setWriteContract(rw);
 
-        const [owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, maxWalletsPerCert] =
+        const [owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT] =
           await Promise.all([
-            ro.owner(), ro.paused(), ro.caMerkleRoot(), ro.crlMerkleRoot(), ro.maxProofAge(), ro.maxWalletsPerCert(),
+            ro.owner(), ro.paused(), ro.caMerkleRoot(), ro.crlMerkleRoot(), ro.maxProofAge(), ro.MAX_WALLETS_PER_CERT(),
           ]);
         console.log("Contract addr:", addr);
-        console.log("maxWalletsPerCert raw:", maxWalletsPerCert, typeof maxWalletsPerCert);
-        console.log("All state:", { owner, paused, caMerkleRoot, maxProofAge: maxProofAge.toString(), maxWalletsPerCert: maxWalletsPerCert.toString() });
-        setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, maxWalletsPerCert: Number(maxWalletsPerCert) });
+        console.log("MAX_WALLETS_PER_CERT raw:", MAX_WALLETS_PER_CERT, typeof MAX_WALLETS_PER_CERT);
+        console.log("All state:", { owner, paused, caMerkleRoot, maxProofAge: maxProofAge.toString(), MAX_WALLETS_PER_CERT: MAX_WALLETS_PER_CERT.toString() });
+        setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT: Number(MAX_WALLETS_PER_CERT) });
         setIsOwner(owner.toLowerCase() === account.toLowerCase());
       } catch (e) {
         console.error("Failed to load contract:", e);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   AlertTriangle,
   Wallet,
@@ -8,10 +8,13 @@ import {
   ListFilter,
   Cpu,
   Settings,
-  History,
   ShieldCheck,
   Search,
   Shield,
+  Upload,
+  FileText,
+  X,
+  ArrowRightLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ethers } from "ethers";
@@ -29,6 +32,8 @@ type TxStatus =
   | { kind: "error"; message: string };
 
 const IDLE: TxStatus = { kind: "idle" };
+
+type AdminTab = "status" | "ca" | "settings" | "security";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -74,6 +79,44 @@ async function execTx(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Merkle Tree helpers                                                */
+/* ------------------------------------------------------------------ */
+
+async function sha256(data: Uint8Array): Promise<Uint8Array> {
+  const buf = new ArrayBuffer(data.byteLength);
+  new Uint8Array(buf).set(data);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return new Uint8Array(hash);
+}
+
+async function merkleRoot(leaves: Uint8Array[]): Promise<string> {
+  if (leaves.length === 0) return ethers.ZeroHash;
+  // Pad to power of 2
+  let nodes = [...leaves];
+  while (nodes.length > 1 && (nodes.length & (nodes.length - 1)) !== 0) {
+    nodes.push(new Uint8Array(32)); // zero hash padding
+  }
+  while (nodes.length > 1) {
+    const next: Uint8Array[] = [];
+    for (let i = 0; i < nodes.length; i += 2) {
+      const left = nodes[i];
+      const right = i + 1 < nodes.length ? nodes[i + 1] : new Uint8Array(32);
+      const combined = new Uint8Array(64);
+      combined.set(left, 0);
+      combined.set(right, 32);
+      next.push(await sha256(combined));
+    }
+    nodes = next;
+  }
+  return (
+    "0x" +
+    Array.from(nodes[0])
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Tx Status Badge                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -107,11 +150,6 @@ function TxBadge({ status }: { status: TxStatus }) {
 function isBusy(s: TxStatus) {
   return s.kind === "pending" || s.kind === "confirming";
 }
-
-/* ------------------------------------------------------------------ */
-/*  Simulated verification feed                                        */
-/* ------------------------------------------------------------------ */
-
 
 /* ------------------------------------------------------------------ */
 /*  BentoCard                                                          */
@@ -160,6 +198,16 @@ function BentoCard({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  CA File Entry type                                                 */
+/* ------------------------------------------------------------------ */
+
+interface CaFileEntry {
+  name: string;
+  hash: Uint8Array;
+  hashHex: string;
+}
+
 /* ================================================================== */
 /*  Admin Page                                                         */
 /* ================================================================== */
@@ -176,6 +224,9 @@ export default function AdminPage() {
     refresh,
   } = useWallet();
 
+  /* ---------- tab state ---------- */
+  const [activeTab, setActiveTab] = useState<AdminTab>("status");
+
   /* ---------- local state ---------- */
   const [blockNumber, setBlockNumber] = useState<number | null>(null);
 
@@ -188,6 +239,17 @@ export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResult, setSearchResult] = useState<string | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
+
+  // CA file upload state
+  const [caFiles, setCaFiles] = useState<CaFileEntry[]>([]);
+  const [calculatedCaRoot, setCalculatedCaRoot] = useState<string | null>(null);
+  const [caFileProcessing, setCaFileProcessing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  // Transfer ownership
+  const [newOwnerInput, setNewOwnerInput] = useState("");
+  const [transferTx, setTransferTx] = useState<TxStatus>(IDLE);
 
   // tx statuses
   const [caRootTx, setCaRootTx] = useState<TxStatus>(IDLE);
@@ -265,32 +327,114 @@ export default function AdminPage() {
       }
     } catch (err: unknown) {
       const e = err as { message?: string };
-      setSearchResult(`Query failed: ${e?.message?.slice(0, 80) ?? "unknown error"}`);
+      setSearchResult(
+        `Query failed: ${e?.message?.slice(0, 80) ?? "unknown error"}`,
+      );
     } finally {
       setSearchLoading(false);
     }
   }, [readContract, searchQuery]);
 
+  /* ---------- CA file handlers ---------- */
+  const processFiles = useCallback(async (files: FileList | File[]) => {
+    setCaFileProcessing(true);
+    try {
+      const newEntries: CaFileEntry[] = [];
+      for (const file of Array.from(files)) {
+        if (!file.name.endsWith(".der")) continue;
+        const arrayBuffer = await file.arrayBuffer();
+        const hash = await sha256(new Uint8Array(arrayBuffer));
+        const hashHex =
+          "0x" +
+          Array.from(hash)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+        newEntries.push({ name: file.name, hash, hashHex });
+      }
+      setCaFiles((prev) => [...prev, ...newEntries]);
+      setCalculatedCaRoot(null); // reset when files change
+    } finally {
+      setCaFileProcessing(false);
+    }
+  }, []);
+
+  const removeCaFile = useCallback((index: number) => {
+    setCaFiles((prev) => prev.filter((_, i) => i !== index));
+    setCalculatedCaRoot(null);
+  }, []);
+
+  const calculateCaRoot = useCallback(async () => {
+    if (caFiles.length === 0) return;
+    const leaves = caFiles.map((f) => f.hash);
+    const root = await merkleRoot(leaves);
+    setCalculatedCaRoot(root);
+  }, [caFiles]);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      if (e.dataTransfer.files.length > 0) {
+        processFiles(e.dataTransfer.files);
+      }
+    },
+    [processFiles],
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOver(false);
+  }, []);
+
   /* ---------- action handlers ---------- */
   const handleUpdateCaRoot = () => {
     if (!writeContract || !caRootInput) return;
-    execTx(setCaRootTx, () => writeContract.updateCaMerkleRoot(caRootInput), refresh);
+    execTx(
+      setCaRootTx,
+      () => writeContract.updateCaMerkleRoot(caRootInput),
+      refresh,
+    );
+  };
+
+  const handleUpdateCaRootFromFiles = () => {
+    if (!writeContract || !calculatedCaRoot) return;
+    execTx(
+      setCaRootTx,
+      () => writeContract.updateCaMerkleRoot(calculatedCaRoot),
+      refresh,
+    );
   };
 
   const handleUpdateCrlRoot = () => {
     if (!writeContract || !crlRootInput) return;
-    execTx(setCrlRootTx, () => writeContract.updateCrlMerkleRoot(crlRootInput), refresh);
+    execTx(
+      setCrlRootTx,
+      () => writeContract.updateCrlMerkleRoot(crlRootInput),
+      refresh,
+    );
   };
 
   const handleSetProofAge = () => {
     if (!writeContract || proofAgeInput === null) return;
-    execTx(setProofAgeTx, () => writeContract.setMaxProofAge(proofAgeInput), refresh);
+    execTx(
+      setProofAgeTx,
+      () => writeContract.setMaxProofAge(proofAgeInput),
+      refresh,
+    );
   };
 
   const handleRevoke = () => {
     if (!writeContract || !revokeNullifier || !revokeReason) return;
     const reasonHash = REASON_MAP[revokeReason] ?? ethers.id(revokeReason);
-    execTx(setRevokeTx, () => writeContract.revokeIdentity(revokeNullifier, reasonHash), refresh);
+    execTx(
+      setRevokeTx,
+      () => writeContract.revokeIdentity(revokeNullifier, reasonHash),
+      refresh,
+    );
   };
 
   const handlePauseToggle = () => {
@@ -298,6 +442,15 @@ export default function AdminPage() {
     execTx(
       setPauseTx,
       () => (paused ? writeContract.unpause() : writeContract.pause()),
+      refresh,
+    );
+  };
+
+  const handleTransferOwnership = () => {
+    if (!writeContract || !newOwnerInput) return;
+    execTx(
+      setTransferTx,
+      () => writeContract.transferOwnership(newOwnerInput),
       refresh,
     );
   };
@@ -336,11 +489,21 @@ export default function AdminPage() {
   const crlDisplay = isZeroHash(crlRoot) ? "Disabled" : truncateHash(crlRoot);
 
   const maxProofAge = contractState ? Number(contractState.maxProofAge) : 0;
-  const maxWallets = contractState?.maxWalletsPerCert ?? 0;
+  const maxWallets = contractState?.MAX_WALLETS_PER_CERT ?? 0;
 
   const blockDisplay = blockNumber
     ? `BLOCK #${blockNumber.toLocaleString()}`
     : "SYNCING...";
+
+  /* ---------------------------------------------------------------- */
+  /*  Tab definitions                                                  */
+  /* ---------------------------------------------------------------- */
+  const tabs: { key: AdminTab; label: string }[] = [
+    { key: "status", label: "상태/조회" },
+    { key: "ca", label: "CA 관리" },
+    { key: "settings", label: "설정" },
+    { key: "security", label: "보안" },
+  ];
 
   /* ---------------------------------------------------------------- */
   /*  Render                                                           */
@@ -399,356 +562,588 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="bg-surface p-4 rounded-2xl border border-outline-variant/10">
-          <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant/40" />
-              <input
-                className="w-full bg-surface-highest border-none rounded-xl pl-10 pr-4 py-3 text-sm font-mono focus:ring-1 focus:ring-tertiary transition-all outline-none text-primary placeholder:text-on-surface-variant/30"
-                placeholder="Search address (0x...42 chars) or nullifier hash (0x...66 chars)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              />
-            </div>
+        {/* Tab Bar */}
+        <div className="flex bg-surface-container-low rounded-full p-1 border border-outline-variant/20 self-start">
+          {tabs.map((tab) => (
             <button
-              onClick={handleSearch}
-              disabled={searchLoading || !readContract}
-              className="bg-primary text-background px-6 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-6 py-2 font-headline text-sm rounded-full transition-all ${
+                activeTab === tab.key
+                  ? "bg-surface-container-highest text-primary shadow-sm"
+                  : "text-on-surface-variant hover:text-primary"
+              }`}
             >
-              {searchLoading ? "Searching..." : "SEARCH"}
+              {tab.label}
             </button>
-          </div>
-          {searchResult && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-3 text-xs font-mono text-on-surface-variant px-2"
-            >
-              {searchResult}
-            </motion.p>
-          )}
+          ))}
         </div>
 
-        {/* Bento Grid */}
-        <div className="grid grid-cols-12 gap-6">
-          {/* Left Column - System Status */}
-          <div className="col-span-12 lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Contract Status */}
-            <BentoCard
-              title="Contract Status"
-              value={statusLabel}
-              color={statusColor}
-              icon={<Wallet className="w-12 h-12 opacity-10" />}
+        {/* Tab Content */}
+        <AnimatePresence mode="wait">
+          {/* ==================== STATUS TAB ==================== */}
+          {activeTab === "status" && (
+            <motion.div
+              key="status"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
             >
-              <p className="text-[10px] font-mono mt-4 text-on-surface-variant truncate">
-                {registryAddr ? truncateHash(registryAddr, 8, 6) : "Not deployed"}
-              </p>
-              <div className="mt-6 flex items-center gap-2">
-                <div className="h-1 flex-1 bg-secondary/10 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: paused ? "0%" : "100%" }}
-                    transition={{ duration: 1.5, ease: "easeOut" }}
-                    className={`h-full ${paused ? "bg-error" : "bg-secondary shadow-[0_0_8px_rgba(107,255,143,0.5)]"}`}
-                  />
-                </div>
-                <span
-                  className={`text-[10px] font-mono ${paused ? "text-error" : "text-secondary"}`}
+              {/* 4 BentoCards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Contract Status */}
+                <BentoCard
+                  title="Contract Status"
+                  value={statusLabel}
+                  color={statusColor}
+                  icon={<Wallet className="w-12 h-12 opacity-10" />}
                 >
-                  {paused ? "HALTED" : "100%"}
-                </span>
-              </div>
-            </BentoCard>
-
-            {/* CA Merkle Root */}
-            <BentoCard
-              title="CA Merkle Root"
-              value={caRoot ? truncateHash(caRoot) : "Loading..."}
-              color="primary"
-              mono
-              icon={<Share2 className="w-12 h-12 opacity-10" />}
-            >
-              <p className="text-[10px] font-label text-on-surface-variant mt-4">
-                {isZeroHash(caRoot) ? "NOT SET" : "ACTIVE ROOT"}
-              </p>
-              <div className="mt-4 flex items-end gap-1.5 h-8">
-                {[0.4, 1, 0.6, 0.8, 0.5, 0.9, 0.7].map((h, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ height: 0 }}
-                    animate={{ height: `${h * 100}%` }}
-                    transition={{ delay: i * 0.1, duration: 0.5 }}
-                    className="w-1.5 bg-tertiary/60 rounded-full"
-                  />
-                ))}
-              </div>
-            </BentoCard>
-
-            {/* CRL Merkle Root */}
-            <BentoCard
-              title="CRL Merkle Root"
-              value={crlDisplay}
-              color="primary"
-              mono
-              icon={<ListFilter className="w-12 h-12 opacity-10" />}
-            >
-              <p className="text-[10px] font-label text-on-surface-variant mt-4 uppercase tracking-wider">
-                {isZeroHash(crlRoot)
-                  ? "CRL checking disabled"
-                  : "CRL checking enabled"}
-              </p>
-              <div className="mt-4 flex -space-x-2">
-                {["M", "P", "V", "S"].map((l, i) => (
-                  <div
-                    key={i}
-                    className="w-6 h-6 rounded-full border-2 border-surface bg-surface-highest flex items-center justify-center text-[8px] font-bold text-on-surface-variant"
-                  >
-                    {l}
-                  </div>
-                ))}
-              </div>
-            </BentoCard>
-
-            {/* Global Config */}
-            <BentoCard
-              title="Global Config"
-              value={contractState ? "On-Chain" : "Loading..."}
-              color="primary"
-              icon={<Cpu className="w-12 h-12 opacity-10" />}
-            >
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <div>
-                  <p className="text-[10px] text-on-surface-variant uppercase tracking-tighter">
-                    Max Proof Age
+                  <p className="text-[10px] font-mono mt-4 text-on-surface-variant truncate">
+                    {registryAddr
+                      ? truncateHash(registryAddr, 8, 6)
+                      : "Not deployed"}
                   </p>
-                  <p className="text-sm font-headline font-bold">
-                    {maxProofAge}s
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-on-surface-variant uppercase tracking-tighter">
-                    Wallets/Cert
-                  </p>
-                  <p className="text-sm font-headline font-bold">
-                    {maxWallets}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 p-2 bg-surface-low rounded-lg border border-outline-variant/10">
-                <p className="text-[10px] font-mono text-tertiary">
-                  SP1 ZKVM: verified
-                </p>
-              </div>
-            </BentoCard>
-
-            {/* Protocol Management */}
-            <div className="col-span-1 md:col-span-2 bg-surface p-8 rounded-3xl border border-outline-variant/10 relative overflow-hidden">
-              <div className="flex items-center gap-3 mb-8">
-                <Settings className="text-primary w-5 h-5" />
-                <h2 className="text-xl font-headline font-bold text-primary">
-                  Protocol Management
-                </h2>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                {/* CA Merkle Root update */}
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-label text-on-surface-variant">
-                      Update CA Merkle Root
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        className="flex-1 bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono focus:ring-1 focus:ring-tertiary transition-all outline-none text-primary placeholder:text-on-surface-variant/30"
-                        placeholder="New 32-byte Hex Root (0x...)"
-                        type="text"
-                        value={caRootInput}
-                        onChange={(e) => setCaRootInput(e.target.value)}
-                        disabled={disabled}
+                  <div className="mt-6 flex items-center gap-2">
+                    <div className="h-1 flex-1 bg-secondary/10 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: paused ? "0%" : "100%" }}
+                        transition={{ duration: 1.5, ease: "easeOut" }}
+                        className={`h-full ${paused ? "bg-error" : "bg-secondary shadow-[0_0_8px_rgba(107,255,143,0.5)]"}`}
                       />
-                      <button
-                        className="bg-primary text-background px-6 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
-                        disabled={disabled || isBusy(caRootTx) || !caRootInput}
-                        onClick={handleUpdateCaRoot}
-                      >
-                        {isBusy(caRootTx) ? "Processing..." : "UPDATE"}
-                      </button>
                     </div>
-                    <TxBadge status={caRootTx} />
-                    <p className="text-[10px] text-on-surface-variant italic">
-                      Requires owner signature. Propagates in ~12 seconds.
-                    </p>
+                    <span
+                      className={`text-[10px] font-mono ${paused ? "text-error" : "text-secondary"}`}
+                    >
+                      {paused ? "HALTED" : "100%"}
+                    </span>
                   </div>
+                </BentoCard>
 
-                  {/* CRL Merkle Root update */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-label text-on-surface-variant">
-                      Update CRL Merkle Root
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        className="flex-1 bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono focus:ring-1 focus:ring-tertiary transition-all outline-none text-primary placeholder:text-on-surface-variant/30"
-                        placeholder="New CRL Root (0x...) or 0x00..00 to disable"
-                        type="text"
-                        value={crlRootInput}
-                        onChange={(e) => setCrlRootInput(e.target.value)}
-                        disabled={disabled}
+                {/* CA Merkle Root */}
+                <BentoCard
+                  title="CA Merkle Root"
+                  value={caRoot ? truncateHash(caRoot) : "Loading..."}
+                  color="primary"
+                  mono
+                  icon={<Share2 className="w-12 h-12 opacity-10" />}
+                >
+                  <p className="text-[10px] font-label text-on-surface-variant mt-4">
+                    {isZeroHash(caRoot) ? "NOT SET" : "ACTIVE ROOT"}
+                  </p>
+                  <div className="mt-4 flex items-end gap-1.5 h-8">
+                    {[0.4, 1, 0.6, 0.8, 0.5, 0.9, 0.7].map((h, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ height: 0 }}
+                        animate={{ height: `${h * 100}%` }}
+                        transition={{ delay: i * 0.1, duration: 0.5 }}
+                        className="w-1.5 bg-tertiary/60 rounded-full"
                       />
-                      <button
-                        className="bg-primary text-background px-6 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
-                        disabled={disabled || isBusy(crlRootTx) || !crlRootInput}
-                        onClick={handleUpdateCrlRoot}
-                      >
-                        {isBusy(crlRootTx) ? "Processing..." : "UPDATE"}
-                      </button>
-                    </div>
-                    <TxBadge status={crlRootTx} />
-                    <p className="text-[10px] text-on-surface-variant italic">
-                      Set to zero hash to disable CRL checking.
-                    </p>
+                    ))}
                   </div>
-                </div>
+                </BentoCard>
 
-                {/* Max Proof Age */}
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-label text-on-surface-variant">
-                      Max Proof Age (Seconds)
-                    </label>
-                    <div className="flex items-center gap-4">
-                      <input
-                        className="flex-1 accent-tertiary h-1 bg-surface-highest rounded-full appearance-none cursor-pointer"
-                        max="3600"
-                        min="60"
-                        type="range"
-                        value={proofAgeInput ?? maxProofAge}
-                        onChange={(e) =>
-                          setProofAgeInput(Number(e.target.value))
-                        }
-                        disabled={disabled}
-                      />
-                      <span className="text-sm font-mono font-bold w-16 text-center text-primary">
-                        {proofAgeInput ?? maxProofAge}s
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-[10px] text-on-surface-variant font-label">
-                      <span>1 Min</span>
-                      <span>1 Hour</span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <button
-                        className="bg-primary text-background px-4 py-2 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
-                        disabled={
-                          disabled ||
-                          isBusy(proofAgeTx) ||
-                          proofAgeInput === null ||
-                          proofAgeInput === maxProofAge
-                        }
-                        onClick={handleSetProofAge}
+                {/* CRL Merkle Root */}
+                <BentoCard
+                  title="CRL Merkle Root"
+                  value={crlDisplay}
+                  color="primary"
+                  mono
+                  icon={<ListFilter className="w-12 h-12 opacity-10" />}
+                >
+                  <p className="text-[10px] font-label text-on-surface-variant mt-4 uppercase tracking-wider">
+                    {isZeroHash(crlRoot)
+                      ? "CRL checking disabled"
+                      : "CRL checking enabled"}
+                  </p>
+                  <div className="mt-4 flex -space-x-2">
+                    {["M", "P", "V", "S"].map((l, i) => (
+                      <div
+                        key={i}
+                        className="w-6 h-6 rounded-full border-2 border-surface bg-surface-highest flex items-center justify-center text-[8px] font-bold text-on-surface-variant"
                       >
-                        {isBusy(proofAgeTx) ? "Processing..." : "SET AGE"}
-                      </button>
-                      <TxBadge status={proofAgeTx} />
+                        {l}
+                      </div>
+                    ))}
+                  </div>
+                </BentoCard>
+
+                {/* Global Config */}
+                <BentoCard
+                  title="Global Config"
+                  value={contractState ? "On-Chain" : "Loading..."}
+                  color="primary"
+                  icon={<Cpu className="w-12 h-12 opacity-10" />}
+                >
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <p className="text-[10px] text-on-surface-variant uppercase tracking-tighter">
+                        Max Proof Age
+                      </p>
+                      <p className="text-sm font-headline font-bold">
+                        {maxProofAge}s
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-on-surface-variant uppercase tracking-tighter">
+                        Wallets/Cert
+                      </p>
+                      <p className="text-sm font-headline font-bold">
+                        {maxWallets}
+                      </p>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column - Danger Zone & Visuals */}
-          <div className="col-span-12 lg:col-span-4 flex flex-col gap-6">
-            <div className="bg-surface p-8 rounded-3xl border border-error/10 bg-gradient-to-b from-error/5 to-transparent flex-1">
-              <div className="flex items-center gap-3 mb-8">
-                <AlertTriangle className="text-error w-5 h-5" />
-                <h2 className="text-xl font-headline font-bold text-error">
-                  Danger Zone
-                </h2>
-              </div>
-              <div className="space-y-10">
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-headline font-bold text-primary">
-                      Revoke Identity
-                    </p>
-                    <p className="text-xs text-on-surface-variant mt-1">
-                      Permanently blacklist a nullifier from the protocol.
+                  <div className="mt-4 p-2 bg-surface-low rounded-lg border border-outline-variant/10">
+                    <p className="text-[10px] font-mono text-tertiary">
+                      SP1 ZKVM: verified
                     </p>
                   </div>
-                  <div className="space-y-3">
+                </BentoCard>
+              </div>
+
+              {/* Search Bar */}
+              <div className="bg-surface p-4 rounded-2xl border border-outline-variant/10">
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant/40" />
                     <input
-                      className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
-                      placeholder="Identity Nullifier Hash (0x...)"
+                      className="w-full bg-surface-highest border-none rounded-xl pl-10 pr-4 py-3 text-sm font-mono focus:ring-1 focus:ring-tertiary transition-all outline-none text-primary placeholder:text-on-surface-variant/30"
+                      placeholder="Search address (0x...42 chars) or nullifier hash (0x...66 chars)"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSearch}
+                    disabled={searchLoading || !readContract}
+                    className="bg-primary text-background px-6 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
+                  >
+                    {searchLoading ? "Searching..." : "SEARCH"}
+                  </button>
+                </div>
+                {searchResult && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mt-3 text-xs font-mono text-on-surface-variant px-2"
+                  >
+                    {searchResult}
+                  </motion.p>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* ==================== CA MANAGEMENT TAB ==================== */}
+          {activeTab === "ca" && (
+            <motion.div
+              key="ca"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* File Upload Section */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <Upload className="text-primary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-primary">
+                    CA Certificate Upload
+                  </h2>
+                </div>
+                <p className="text-sm text-on-surface-variant mb-6">
+                  Upload CA certificate <code>.der</code> files to compute the
+                  Merkle root. Each file is hashed with SHA-256 to form a leaf.
+                </p>
+
+                {/* Drop zone */}
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${
+                    dragOver
+                      ? "border-primary bg-primary/5"
+                      : "border-outline-variant/30 hover:border-primary/50 hover:bg-surface-highest/30"
+                  }`}
+                >
+                  <Upload
+                    className={`w-8 h-8 mx-auto mb-3 ${dragOver ? "text-primary" : "text-on-surface-variant/40"}`}
+                  />
+                  <p className="text-sm text-on-surface-variant">
+                    {caFileProcessing
+                      ? "Processing files..."
+                      : "Drag & drop .der files here, or click to browse"}
+                  </p>
+                  <p className="text-[10px] text-on-surface-variant/50 mt-1">
+                    Multiple files allowed
+                  </p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".der"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) processFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+
+                {/* File list */}
+                {caFiles.length > 0 && (
+                  <div className="mt-6 space-y-2">
+                    <p className="text-xs font-label text-on-surface-variant uppercase tracking-widest mb-3">
+                      Uploaded CA Certificates ({caFiles.length})
+                    </p>
+                    {caFiles.map((entry, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-3 bg-surface-highest rounded-xl px-4 py-3"
+                      >
+                        <FileText className="w-4 h-4 text-tertiary shrink-0" />
+                        <span className="text-sm font-headline font-medium text-primary truncate">
+                          {entry.name}
+                        </span>
+                        <span className="text-[10px] font-mono text-on-surface-variant truncate flex-1">
+                          {truncateHash(entry.hashHex, 10, 8)}
+                        </span>
+                        <button
+                          onClick={() => removeCaFile(idx)}
+                          className="text-on-surface-variant/50 hover:text-error transition-colors shrink-0"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Calculate button */}
+                    <div className="pt-4 flex items-center gap-4">
+                      <button
+                        onClick={calculateCaRoot}
+                        className="bg-tertiary text-background px-6 py-3 rounded-xl font-label font-bold text-xs hover:opacity-90 transition-all"
+                      >
+                        CALCULATE MERKLE ROOT
+                      </button>
+                      {calculatedCaRoot && (
+                        <div className="flex-1">
+                          <p className="text-[10px] font-label text-on-surface-variant uppercase tracking-widest">
+                            Calculated Root
+                          </p>
+                          <p className="text-sm font-mono text-secondary break-all">
+                            {calculatedCaRoot}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Update from calculated root */}
+                    {calculatedCaRoot && (
+                      <div className="pt-4">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={handleUpdateCaRootFromFiles}
+                            disabled={disabled || isBusy(caRootTx)}
+                            className="bg-primary text-background px-6 py-3 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
+                          >
+                            {isBusy(caRootTx)
+                              ? "Processing..."
+                              : "UPDATE CA ROOT"}
+                          </button>
+                          <TxBadge status={caRootTx} />
+                        </div>
+                        <p className="text-[10px] text-on-surface-variant italic mt-2">
+                          Requires owner signature. Propagates in ~12 seconds.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Manual hex input fallback */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <Share2 className="text-primary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-primary">
+                    Manual CA Root Update
+                  </h2>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-label text-on-surface-variant">
+                    CA Merkle Root (Hex)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono focus:ring-1 focus:ring-tertiary transition-all outline-none text-primary placeholder:text-on-surface-variant/30"
+                      placeholder="New 32-byte Hex Root (0x...)"
                       type="text"
-                      value={revokeNullifier}
-                      onChange={(e) => setRevokeNullifier(e.target.value)}
+                      value={caRootInput}
+                      onChange={(e) => setCaRootInput(e.target.value)}
                       disabled={disabled}
                     />
-                    <select
-                      className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-label outline-none text-on-surface-variant appearance-none cursor-pointer"
-                      value={revokeReason}
-                      onChange={(e) => setRevokeReason(e.target.value)}
-                      disabled={disabled}
-                    >
-                      <option value="">Select Reason</option>
-                      <option>Key Compromise</option>
-                      <option>CA Revocation</option>
-                      <option>Malicious Activity</option>
-                    </select>
                     <button
-                      className="w-full py-3 border border-error/40 text-error hover:bg-error/10 transition-all font-bold text-xs rounded-xl uppercase tracking-widest disabled:opacity-50"
+                      className="bg-primary text-background px-6 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
+                      disabled={disabled || isBusy(caRootTx) || !caRootInput}
+                      onClick={handleUpdateCaRoot}
+                    >
+                      {isBusy(caRootTx) ? "Processing..." : "UPDATE"}
+                    </button>
+                  </div>
+                  <TxBadge status={caRootTx} />
+                  <p className="text-[10px] text-on-surface-variant italic">
+                    Requires owner signature. Propagates in ~12 seconds.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ==================== SETTINGS TAB ==================== */}
+          {activeTab === "settings" && (
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* CRL Merkle Root */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <ListFilter className="text-primary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-primary">
+                    Update CRL Merkle Root
+                  </h2>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-label text-on-surface-variant">
+                    CRL Merkle Root (Hex)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono focus:ring-1 focus:ring-tertiary transition-all outline-none text-primary placeholder:text-on-surface-variant/30"
+                      placeholder="New CRL Root (0x...) or 0x00..00 to disable"
+                      type="text"
+                      value={crlRootInput}
+                      onChange={(e) => setCrlRootInput(e.target.value)}
+                      disabled={disabled}
+                    />
+                    <button
+                      className="bg-primary text-background px-6 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
+                      disabled={disabled || isBusy(crlRootTx) || !crlRootInput}
+                      onClick={handleUpdateCrlRoot}
+                    >
+                      {isBusy(crlRootTx) ? "Processing..." : "UPDATE"}
+                    </button>
+                  </div>
+                  <TxBadge status={crlRootTx} />
+                  <p className="text-[10px] text-on-surface-variant italic">
+                    Set to zero hash to disable CRL checking.
+                  </p>
+                </div>
+              </div>
+
+              {/* Max Proof Age */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <Settings className="text-primary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-primary">
+                    Max Proof Age
+                  </h2>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-label text-on-surface-variant">
+                    Max Proof Age (Seconds)
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <input
+                      className="flex-1 accent-tertiary h-1 bg-surface-highest rounded-full appearance-none cursor-pointer"
+                      max="3600"
+                      min="60"
+                      type="range"
+                      value={proofAgeInput ?? maxProofAge}
+                      onChange={(e) =>
+                        setProofAgeInput(Number(e.target.value))
+                      }
+                      disabled={disabled}
+                    />
+                    <span className="text-sm font-mono font-bold w-16 text-center text-primary">
+                      {proofAgeInput ?? maxProofAge}s
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-on-surface-variant font-label">
+                    <span>1 Min</span>
+                    <span>1 Hour</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      className="bg-primary text-background px-4 py-2 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
                       disabled={
                         disabled ||
-                        isBusy(revokeTx) ||
-                        !revokeNullifier ||
-                        !revokeReason
+                        isBusy(proofAgeTx) ||
+                        proofAgeInput === null ||
+                        proofAgeInput === maxProofAge
                       }
-                      onClick={handleRevoke}
+                      onClick={handleSetProofAge}
                     >
-                      {isBusy(revokeTx)
-                        ? "Processing..."
-                        : "Commit Revocation"}
+                      {isBusy(proofAgeTx) ? "Processing..." : "SET AGE"}
                     </button>
-                    <TxBadge status={revokeTx} />
-                  </div>
-                </div>
-
-                <div className="pt-10 border-t border-outline-variant/10 space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-headline font-bold text-primary">
-                        Emergency Pause
-                      </p>
-                      <p className="text-xs text-on-surface-variant mt-1">
-                        Halt all verification proofs.
-                      </p>
-                    </div>
-                    <button
-                      onClick={handlePauseToggle}
-                      disabled={disabled || isBusy(pauseTx)}
-                      className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${paused ? "bg-error" : "bg-surface-highest"}`}
-                    >
-                      <span
-                        className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${paused ? "translate-x-6" : "translate-x-1"}`}
-                      />
-                    </button>
-                  </div>
-                  <TxBadge status={pauseTx} />
-                  <div className="p-4 bg-error/10 rounded-2xl border border-error/20">
-                    <p className="text-[10px] text-error leading-relaxed font-medium">
-                      <strong>ATTENTION:</strong> Pausing the contract will
-                      freeze all user activities immediately. Only the DAO or
-                      emergency multi-sig can resume operations.
-                    </p>
+                    <TxBadge status={proofAgeTx} />
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
+          )}
 
-          </div>
-        </div>
+          {/* ==================== SECURITY TAB ==================== */}
+          {activeTab === "security" && (
+            <motion.div
+              key="security"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* Revoke Identity */}
+              <div className="bg-surface p-8 rounded-3xl border border-error/10 bg-gradient-to-b from-error/5 to-transparent">
+                <div className="flex items-center gap-3 mb-6">
+                  <AlertTriangle className="text-error w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-error">
+                    Revoke Identity
+                  </h2>
+                </div>
+                <p className="text-xs text-on-surface-variant mb-4">
+                  Permanently blacklist a nullifier from the protocol.
+                </p>
+                <div className="space-y-3 max-w-xl">
+                  <input
+                    className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
+                    placeholder="Identity Nullifier Hash (0x...)"
+                    type="text"
+                    value={revokeNullifier}
+                    onChange={(e) => setRevokeNullifier(e.target.value)}
+                    disabled={disabled}
+                  />
+                  <select
+                    className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-label outline-none text-on-surface-variant appearance-none cursor-pointer"
+                    value={revokeReason}
+                    onChange={(e) => setRevokeReason(e.target.value)}
+                    disabled={disabled}
+                  >
+                    <option value="">Select Reason</option>
+                    <option>Key Compromise</option>
+                    <option>CA Revocation</option>
+                    <option>Malicious Activity</option>
+                  </select>
+                  <button
+                    className="w-full py-3 border border-error/40 text-error hover:bg-error/10 transition-all font-bold text-xs rounded-xl uppercase tracking-widest disabled:opacity-50"
+                    disabled={
+                      disabled ||
+                      isBusy(revokeTx) ||
+                      !revokeNullifier ||
+                      !revokeReason
+                    }
+                    onClick={handleRevoke}
+                  >
+                    {isBusy(revokeTx)
+                      ? "Processing..."
+                      : "Commit Revocation"}
+                  </button>
+                  <TxBadge status={revokeTx} />
+                </div>
+              </div>
 
+              {/* Emergency Pause */}
+              <div className="bg-surface p-8 rounded-3xl border border-error/10 bg-gradient-to-b from-error/5 to-transparent">
+                <div className="flex items-center gap-3 mb-6">
+                  <Shield className="text-error w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-error">
+                    Emergency Pause
+                  </h2>
+                </div>
+                <div className="flex items-center justify-between max-w-xl">
+                  <div>
+                    <p className="text-sm font-headline font-bold text-primary">
+                      Protocol Status
+                    </p>
+                    <p className="text-xs text-on-surface-variant mt-1">
+                      Halt all verification proofs.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handlePauseToggle}
+                    disabled={disabled || isBusy(pauseTx)}
+                    className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${paused ? "bg-error" : "bg-surface-highest"}`}
+                  >
+                    <span
+                      className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${paused ? "translate-x-6" : "translate-x-1"}`}
+                    />
+                  </button>
+                </div>
+                <div className="mt-3">
+                  <TxBadge status={pauseTx} />
+                </div>
+                <div className="p-4 bg-error/10 rounded-2xl border border-error/20 mt-4 max-w-xl">
+                  <p className="text-[10px] text-error leading-relaxed font-medium">
+                    <strong>ATTENTION:</strong> Pausing the contract will freeze
+                    all user activities immediately. Only the DAO or emergency
+                    multi-sig can resume operations.
+                  </p>
+                </div>
+              </div>
+
+              {/* Transfer Ownership */}
+              <div className="bg-surface p-8 rounded-3xl border border-error/10 bg-gradient-to-b from-error/5 to-transparent">
+                <div className="flex items-center gap-3 mb-6">
+                  <ArrowRightLeft className="text-error w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-error">
+                    Transfer Ownership
+                  </h2>
+                </div>
+                <p className="text-xs text-on-surface-variant mb-4">
+                  Transfer protocol ownership to a new address. This action is
+                  irreversible.
+                </p>
+                <div className="space-y-3 max-w-xl">
+                  <input
+                    className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
+                    placeholder="New Owner Address (0x...)"
+                    type="text"
+                    value={newOwnerInput}
+                    onChange={(e) => setNewOwnerInput(e.target.value)}
+                    disabled={disabled}
+                  />
+                  <button
+                    className="w-full py-3 border border-error/40 text-error hover:bg-error/10 transition-all font-bold text-xs rounded-xl uppercase tracking-widest disabled:opacity-50"
+                    disabled={
+                      disabled ||
+                      isBusy(transferTx) ||
+                      !newOwnerInput ||
+                      !newOwnerInput.startsWith("0x") ||
+                      newOwnerInput.length !== 42
+                    }
+                    onClick={handleTransferOwnership}
+                  >
+                    {isBusy(transferTx)
+                      ? "Processing..."
+                      : "Transfer Ownership"}
+                  </button>
+                  <TxBadge status={transferTx} />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Footer */}
