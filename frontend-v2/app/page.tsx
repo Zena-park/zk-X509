@@ -43,6 +43,47 @@ export default function LandingPage() {
           backgroundSize: "60px 60px"
         }} />
 
+        {/* Floating particles */}
+        {[
+          { x: "10%", y: "20%", size: 3, delay: 0, dur: 12, color: "tertiary" },
+          { x: "85%", y: "30%", size: 2, delay: 2, dur: 15, color: "secondary" },
+          { x: "70%", y: "70%", size: 4, delay: 1, dur: 18, color: "tertiary" },
+          { x: "20%", y: "75%", size: 2, delay: 3, dur: 14, color: "secondary" },
+          { x: "50%", y: "15%", size: 3, delay: 4, dur: 16, color: "tertiary" },
+          { x: "90%", y: "60%", size: 2, delay: 0.5, dur: 13, color: "tertiary" },
+          { x: "30%", y: "50%", size: 3, delay: 2.5, dur: 17, color: "secondary" },
+          { x: "60%", y: "85%", size: 2, delay: 1.5, dur: 11, color: "tertiary" },
+        ].map((p, i) => (
+          <motion.div
+            key={i}
+            className={`absolute rounded-full bg-${p.color} pointer-events-none`}
+            style={{ left: p.x, top: p.y, width: p.size, height: p.size }}
+            animate={{
+              y: [0, -30, 0, 20, 0],
+              x: [0, 15, -10, 5, 0],
+              opacity: [0.2, 0.6, 0.3, 0.5, 0.2],
+            }}
+            transition={{ duration: p.dur, repeat: Infinity, delay: p.delay, ease: "easeInOut" }}
+          />
+        ))}
+
+        {/* Floating rings */}
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+          className="absolute right-[10%] top-[30%] w-48 h-48 border border-tertiary/5 rounded-full pointer-events-none"
+        />
+        <motion.div
+          animate={{ rotate: -360 }}
+          transition={{ duration: 45, repeat: Infinity, ease: "linear" }}
+          className="absolute left-[15%] bottom-[25%] w-32 h-32 border border-secondary/5 rounded-full pointer-events-none"
+        />
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 80, repeat: Infinity, ease: "linear" }}
+          className="absolute right-[20%] bottom-[15%] w-64 h-64 border border-tertiary/3 rounded-full pointer-events-none"
+        />
+
         <div className="relative max-w-5xl mx-auto px-8 py-20 text-center">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
