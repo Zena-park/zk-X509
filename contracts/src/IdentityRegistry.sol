@@ -131,7 +131,7 @@ contract IdentityRegistry {
 
         // Decode remaining fields (chainId, registryAddress) in separate scope
         {
-            // Skip first 6 fields (32+32+8+20+4+8 = 104 bytes padded to 6*32 = 192)
+            // Ignore first 6 decoded values (nullifier, merkleRoot, timestamp, registrant, walletIndex, notAfter)
             (, , , , , , uint64 proofChainId, address proofRegistry) =
                 abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64, uint64, address));
             if (proofChainId != uint64(block.chainid)) revert ChainIdMismatch(proofChainId, block.chainid);

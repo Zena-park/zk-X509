@@ -2,7 +2,7 @@ use alloy_sol_types::sol;
 
 /// Domain separator prefix for nullifier generation.
 /// Full domain = NULLIFIER_DOMAIN ‖ registry_address (20 bytes) ‖ chain_id (8 bytes)
-/// This ensures different chains get different nullifiers.
+/// This binds nullifiers to a specific IdentityRegistry deployment on a specific chain (different chains or different registry addresses will always yield different nullifiers).
 pub const NULLIFIER_DOMAIN: &[u8] = b"zk-X509-Nullifier-v2";
 
 sol! {
@@ -15,7 +15,7 @@ sol! {
         uint32 walletIndex;      // Which wallet slot (0..maxWalletsPerCert-1)
         uint64 notAfter;         // Certificate expiry (unix timestamp)
         uint64 chainId;          // EIP-155 chain ID (prevents cross-chain replay)
-        address registryAddress; // IdentityRegistry address (prevents cross-chain replay)
+        address registryAddress; // IdentityRegistry address (binds proof to a specific registry deployment)
         bytes32 crlMerkleRoot;  // CRL sorted Merkle root (bytes32(0) = CRL checking disabled)
         // Selective disclosure: salted hash of each field, or bytes32(0) if not disclosed.
         // hash = SHA-256(len1 ‖ val1 ‖ ... ‖ disclosure_salt) — length-prefixed

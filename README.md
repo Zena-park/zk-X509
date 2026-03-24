@@ -10,7 +10,7 @@ Users prove ownership of a valid X.509 certificate (Korean NPKI, government eID,
 - **Zero personal data on-chain** — only nullifier, Merkle root, and hashes
 - **Private key never enters zkVM** — ownership proven via signature, key stays in OS keychain
 - **CA anonymity** — Merkle tree hides which CA issued the certificate
-- **Cross-DApp unlinkability** — different contracts get different nullifiers
+- **Cross-registry unlinkability** — different registries or chains get different nullifiers
 - **Cross-chain replay defense** — chain_id bound into proof
 - **CRL revocation checking** — Sorted Merkle Tree non-inclusion proof
 - **Selective disclosure** — reveal country, org, etc. individually with private salt
@@ -64,7 +64,7 @@ cargo run --release --bin zk-x509 -- --execute \
 ```bash
 cargo run --release --bin zk-x509 -- --prove \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --registrant 0xYOUR_WALLET --chain-id 31337 --registry-address 0xCONTRACT
+  --registrant 0xYOUR_WALLET --chain-id 31337 --registry-address 0xREGISTRY
 ```
 
 ## Project Structure

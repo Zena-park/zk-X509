@@ -112,8 +112,8 @@ Sig:     Sign(sk, domain)  — deterministic (RSA PKCS#1v1.5 / ECDSA RFC 6979)
 Null:    H(sig ‖ wallet_index)
 
 Properties:
-  - Same cert + same app + same chain = same nullifier (Sybil defense)
-  - Different app or chain = different nullifier (unlinkability)
+  - Same cert + same registry + same chain = same nullifier (Sybil defense)
+  - Different registry or chain = different nullifier (unlinkability)
   - Without private key, nullifier cannot be computed (privacy)
 ```
 
