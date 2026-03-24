@@ -130,7 +130,7 @@ export default function DashboardPage() {
   /* ---------- not connected ---------- */
   if (!account) {
     return (
-      <main className="md:ml-64 pt-28 px-8 pb-12 flex items-center justify-center min-h-[60vh]">
+      <main className="max-w-6xl mx-auto pt-24 px-8 pb-12 flex items-center justify-center min-h-[60vh]">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -152,7 +152,7 @@ export default function DashboardPage() {
   /*  Render                                                           */
   /* ================================================================ */
   return (
-    <main className="md:ml-64 pt-28 px-8 pb-12">
+    <main className="max-w-6xl mx-auto pt-24 px-8 pb-12">
       <motion.header
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

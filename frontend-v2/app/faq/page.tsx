@@ -64,7 +64,7 @@ function FAQItem({
 export default function FAQPage() {
   return (
     <>
-      <main className="md:ml-64 pt-20 p-12">
+      <main className="max-w-6xl mx-auto pt-24 px-8">
         <header className="mb-16">
           <h1 className="text-6xl font-headline font-bold tracking-tighter mb-4">
             Knowledge Base

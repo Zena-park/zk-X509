@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Manrope, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
-import { Sidebar } from "@/components/Sidebar";
 import { WalletProvider } from "@/lib/wallet";
 
 const spaceGrotesk = Space_Grotesk({
@@ -48,7 +47,6 @@ export default function RootLayout({
       <body className="min-h-screen bg-surface text-on-surface font-body">
         <WalletProvider>
           <Navbar />
-          <Sidebar />
           {children}
         </WalletProvider>
       </body>
