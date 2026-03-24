@@ -19,12 +19,31 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-surface text-on-surface font-body">
       {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-tertiary/5 via-secondary/5 to-transparent" />
-        <div className="absolute top-20 left-1/4 w-96 h-96 bg-tertiary/5 rounded-full blur-3xl" />
-        <div className="absolute top-40 right-1/4 w-80 h-80 bg-secondary/5 rounded-full blur-3xl" />
+      <section className="relative overflow-hidden min-h-screen flex items-center">
+        {/* Animated gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-b from-tertiary/8 via-secondary/5 to-transparent" />
+        <motion.div
+          animate={{ x: [0, 60, 0], y: [0, -40, 0], scale: [1, 1.2, 1] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-10 left-1/4 w-[500px] h-[500px] bg-tertiary/10 rounded-full blur-[120px]"
+        />
+        <motion.div
+          animate={{ x: [0, -50, 0], y: [0, 50, 0], scale: [1, 1.3, 1] }}
+          transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-40 right-1/5 w-[400px] h-[400px] bg-secondary/10 rounded-full blur-[100px]"
+        />
+        <motion.div
+          animate={{ x: [0, 30, 0], y: [0, -60, 0] }}
+          transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-20 left-1/3 w-[300px] h-[300px] bg-tertiary/5 rounded-full blur-[80px]"
+        />
+        {/* Grid overlay */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{
+          backgroundImage: "linear-gradient(rgba(140,231,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(140,231,255,0.3) 1px, transparent 1px)",
+          backgroundSize: "60px 60px"
+        }} />
 
-        <div className="relative max-w-5xl mx-auto px-8 pt-32 pb-20 text-center">
+        <div className="relative max-w-5xl mx-auto px-8 py-20 text-center">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
