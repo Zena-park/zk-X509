@@ -46,7 +46,8 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!window.ethereum) return;
     const handleChainChanged = () => {
-      updateNetwork();
+      // MetaMask recommends reloading on chain change
+      window.location.reload();
     };
     const handleAccountsChanged = (...args: unknown[]) => {
       const accounts = args[0] as string[];
