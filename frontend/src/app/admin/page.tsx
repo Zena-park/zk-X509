@@ -84,7 +84,7 @@ export default function AdminPage() {
       const tx = await fn();
       setTx({ state: "confirming", message: `전송됨: ${tx.hash.slice(0, 14)}...` });
       const receipt = await tx.wait();
-      setTx({ state: "success", message: `블록 #${receipt?.blockNumber}` });
+      setTx({ state: "success", message: `완료: ${tx.hash.slice(0, 18)}...` });
       refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
