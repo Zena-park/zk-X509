@@ -19,5 +19,5 @@ pub fn parse_eth_address(s: &str) -> Result<[u8; 20], String> {
     let bytes = hex::decode(hex_str)
         .map_err(|e| format!("Invalid hex address '{}': {}", s, e))?;
     bytes.try_into()
-        .map_err(|_| format!("Address must be 20 bytes, got {}", hex_str.len() / 2))
+        .map_err(|_| format!("Address '{}' must be 20 bytes, got {}", s, hex_str.len() / 2))
 }

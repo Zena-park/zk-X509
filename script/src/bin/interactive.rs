@@ -169,18 +169,10 @@ fn cmd_prove(session: &mut Session) {
         Err(e) => { println!("  Error: {}", e); return; }
     };
 
-    // Wallet address
     let registrant = prompt("  Wallet address (0x...): ");
-    if !registrant.starts_with("0x") || registrant.len() != 42 {
-        println!("  Invalid address.");
-        return;
-    }
-    let registrant_bytes: [u8; 20] = match hex::decode(&registrant[2..]) {
-        Ok(b) => match b.try_into() {
-            Ok(a) => a,
-            Err(_) => { println!("  Invalid address."); return; }
-        },
-        Err(_) => { println!("  Invalid hex."); return; }
+    let registrant_bytes = match zk_x509_script::parse_eth_address(&registrant) {
+        Ok(b) => b,
+        Err(e) => { println!("  {}", e); return; }
     };
     session.registrant = Some(registrant.clone());
 

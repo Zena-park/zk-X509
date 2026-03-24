@@ -94,6 +94,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setRegistryAddr(addr);
         if (!addr || addr === ethers.ZeroAddress) return;
 
+        // JsonRpcProvider for reads — avoids MetaMask BrowserProvider caching issues
         const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
         if (!readProviderRef.current) {
           readProviderRef.current = new ethers.JsonRpcProvider(rpcUrl);
