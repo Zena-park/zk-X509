@@ -19,6 +19,8 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
   const [chainName, setChainName] = useState<string>("");
   const [registryAddr, setRegistryAddr] = useState<string>("");
   const [showMenu, setShowMenu] = useState(false);
+  const [chainMismatch, setChainMismatch] = useState(false);
+  const expectedChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
 
   useEffect(() => {
     if (!account || !window.ethereum) return;
@@ -30,6 +32,7 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
         setChainId(cid);
         setChainName(getChainName(cid));
         setRegistryAddr(getRegistryAddress(cid));
+        setChainMismatch(cid !== expectedChainId);
       } catch {
         // ignore
       }
@@ -74,34 +77,39 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Wallet */}
-          <div className="relative">
-            {account ? (
-              <button
-                onClick={() => setShowMenu(!showMenu)}
-                className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-mono text-green-400 hover:bg-gray-700"
-              >
-                {account.slice(0, 6)}...{account.slice(-4)}
-              </button>
-            ) : (
-              <button
-                onClick={connectWallet}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium hover:bg-indigo-700"
-              >
-                MetaMask 연결
-              </button>
+          <div className="flex items-center gap-2">
+            {account && chainName && (
+              <span className={`rounded px-2 py-1 text-xs ${chainMismatch ? "bg-red-900 text-red-300" : "bg-gray-800 text-gray-400"}`}>
+                {chainName}
+              </span>
             )}
-
-            {/* Dropdown Menu */}
-            {showMenu && account && (
-              <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-gray-700 bg-gray-900 py-1 shadow-lg z-50">
+            <div className="relative">
+              {account ? (
                 <button
-                  onClick={disconnect}
-                  className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-gray-800"
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-mono text-green-400 hover:bg-gray-700"
                 >
-                  연결 해제
+                  {account.slice(0, 6)}...{account.slice(-4)}
                 </button>
-              </div>
-            )}
+              ) : (
+                <button
+                  onClick={connectWallet}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium hover:bg-indigo-700"
+                >
+                  MetaMask 연결
+                </button>
+              )}
+              {showMenu && account && (
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-gray-700 bg-gray-900 py-1 shadow-lg z-50">
+                  <button
+                    onClick={disconnect}
+                    className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-gray-800"
+                  >
+                    연결 해제
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -114,6 +122,11 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
             )}
             {(!registryAddr || registryAddr === ethers.ZeroAddress) && (
               <span className="text-yellow-500">Registry 미배포</span>
+            )}
+            {chainMismatch && (
+              <span className="text-red-400">
+                네트워크 불일치 — MetaMask를 {getChainName(expectedChainId)} ({expectedChainId})로 전환하세요
+              </span>
             )}
           </div>
         )}
