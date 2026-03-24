@@ -233,32 +233,29 @@ contract IdentityRegistry {
     /// @notice Add a trusted CA to the on-chain list. Automatically recomputes caMerkleRoot.
     /// @param caHash SHA-256 hash of the CA's public key (SPKI DER format).
     function addCA(bytes32 caHash) external onlyOwner {
-        if (caHash == bytes32(0)) revert ZeroCaHash();
-        if (caExists[caHash]) revert DuplicateCaHash(caHash);
-        caLeaves.push(caHash);
-        caExists[caHash] = true;
+        _addSingleCA(caHash);
         _recomputeCaMerkleRoot();
-        emit CaAdded(caHash, caLeaves.length - 1);
     }
 
     /// @notice Add multiple trusted CAs in a single transaction. Recomputes root once.
     /// @param caHashes Array of SHA-256 hashes of CA public keys.
     function addCAs(bytes32[] calldata caHashes) external onlyOwner {
         for (uint256 i = 0; i < caHashes.length; i++) {
-            bytes32 caHash = caHashes[i];
-            if (caHash == bytes32(0)) revert ZeroCaHash();
-            if (caExists[caHash]) revert DuplicateCaHash(caHash);
-            caLeaves.push(caHash);
-            caExists[caHash] = true;
-            emit CaAdded(caHash, caLeaves.length - 1);
+            _addSingleCA(caHashes[i]);
         }
         _recomputeCaMerkleRoot();
     }
 
+    function _addSingleCA(bytes32 caHash) internal {
+        if (caHash == bytes32(0)) revert ZeroCaHash();
+        if (caExists[caHash]) revert DuplicateCaHash(caHash);
+        caLeaves.push(caHash);
+        caExists[caHash] = true;
+        emit CaAdded(caHash, caLeaves.length - 1);
+    }
+
     /// @notice Remove a trusted CA by index. Swaps with last element and pops.
     ///         Automatically recomputes caMerkleRoot.
-    ///         WARNING: Indices are unstable after removal (swap-and-pop). Off-chain
-    ///         consumers must re-fetch getCaLeaves() after any removal.
     /// @param index Index of the CA to remove in caLeaves array.
     function removeCA(uint256 index) external onlyOwner {
         uint256 len = caLeaves.length;

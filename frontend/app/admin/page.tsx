@@ -227,19 +227,15 @@ export default function AdminPage() {
   const [searchResult, setSearchResult] = useState<string | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  // CA file upload state (for hashing before addCA)
   const [caFiles, setCaFiles] = useState<CaFileEntry[]>([]);
   const [caFileProcessing, setCaFileProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  // On-chain CA list
   const [onChainCaLeaves, setOnChainCaLeaves] = useState<string[]>([]);
   const [caListLoading, setCaListLoading] = useState(false);
 
-  // Per-file add tx status (keyed by hashHex)
   const [addCaTxMap, setAddCaTxMap] = useState<Record<string, TxStatus>>({});
-  // Per-hash remove tx status (keyed by leaf hash, not index — indices are unstable after swap-and-pop)
   const [removeCaTxMap, setRemoveCaTxMap] = useState<Record<string, TxStatus>>({});
 
   // Transfer ownership
@@ -270,7 +266,7 @@ export default function AdminPage() {
       try {
         const provider = new ethers.BrowserProvider(window.ethereum!);
         const bn = await provider.getBlockNumber();
-        if (!cancelled) setBlockNumber(bn);
+        if (!cancelled) setBlockNumber((prev) => (prev === bn ? prev : bn));
       } catch {
         /* ignore */
       }
@@ -289,7 +285,7 @@ export default function AdminPage() {
     setCaListLoading(true);
     try {
       const leaves: string[] = await readContract.getCaLeaves();
-      setOnChainCaLeaves([...leaves]);
+      setOnChainCaLeaves(leaves);
     } catch {
       /* contract may not support getCaLeaves yet */
       setOnChainCaLeaves([]);
@@ -357,11 +353,7 @@ export default function AdminPage() {
         if (!file.name.endsWith(".der")) continue;
         const arrayBuffer = await file.arrayBuffer();
         const hash = await sha256(new Uint8Array(arrayBuffer));
-        const hashHex =
-          "0x" +
-          Array.from(hash)
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
+        const hashHex = ethers.hexlify(hash);
         newEntries.push({ name: file.name, hash, hashHex });
       }
       setCaFiles((prev) => [...prev, ...newEntries]);
