@@ -15,28 +15,31 @@ foundryup
 cd certs && bash generate-test-certs.sh && bash generate-test-crl.sh && cd ..
 ```
 
-## 1. Unit Tests (가장 빠름)
+## Proof 종류
 
-### Rust tests (44 tests, ~10초)
+| 바이너리 | proof 형식 | 용도 | 비고 |
+|----------|-----------|------|------|
+| `zk-x509 --execute` | proof 없음 | 로직 검증 + cycle 측정 | 가장 빠름 |
+| `zk-x509 --prove` | Core proof | 로컬 검증 | on-chain 제출 불가 |
+| `evm --system groth16` | Groth16 proof | **on-chain 제출** | SP1 network prover 또는 CPU |
+
+- **로컬 Anvil** (MockSP1Verifier): proof 형식 무관, 아무 값이어도 통과
+- **테스트넷/메인넷** (실제 SP1Verifier): 반드시 Groth16 proof 필요
+
+## 1. Unit Tests
+
+### Rust (46 tests)
 ```bash
 cargo test -p zk-x509-script --lib
 ```
 
-Ownership 서명, Merkle tree, NPKI 스캐너, CRL SMT 테스트.
-
-### Foundry contract tests (40 tests, ~1초)
+### Foundry (40 tests)
 ```bash
 cd contracts && forge test
 ```
 
-IdentityRegistry 등록, 재등록, revoke, 만료, multi-wallet 등.
+## 2. Execute Mode (proof 없이 zkVM 실행)
 
-## 2. Execute Mode (zkVM 실행, proof 없음, ~2분)
-
-zkVM에서 프로그램을 실제 실행하고 cycle count를 측정합니다.
-Proof는 생성하지 않아 빠릅니다.
-
-### RSA-2048
 ```bash
 cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
   --cert certs/signCert.der \
@@ -45,45 +48,47 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
   --registrant 0x0000000000000000000000000000000000000001
 ```
 
-### ECDSA P-256
+ECDSA도 가능: `ec_signCert.der` / `ec_signPri.key` / `ec_ca_pub.der` (P-256)
+
+전체 벤치마크: `bash script/bench.sh`
+
+## 3. Core Proof 생성 (로컬 검증용)
+
 ```bash
-cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
-  --cert certs/ec_signCert.der \
-  --key certs/ec_signPri.key \
-  --ca-cert certs/ec_ca_pub.der \
+# Mock (즉시, 빈 proof — 로직만 확인)
+SP1_PROVER=mock cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
   --registrant 0x0000000000000000000000000000000000000001
-```
 
-### 전체 벤치마크
-```bash
-bash script/bench.sh
-```
-
-## 3. Proof Generation (실제 ZK proof, ~2분)
-
-```bash
+# CPU (실제 Core proof 생성 + 검증, 머신에 따라 수분~수십분)
 cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
-  --cert certs/signCert.der \
-  --key certs/signPri.key \
-  --ca-cert certs/ca_pub.der \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
   --registrant 0x0000000000000000000000000000000000000001
 ```
 
-성공 시 출력:
-```
-Successfully generated proof!
-Successfully verified proof!
-Nullifier: 0x...
+## 4. Groth16 Proof 생성 (on-chain 제출용)
+
+```bash
+cargo run --release --bin evm -- --system groth16 \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0xYOUR_WALLET \
+  --chain-id 31337 \
+  --registry-address $REGISTRY_ADDR
 ```
 
-## 4. Local Blockchain (Anvil) E2E Test
+`=== Frontend Input ===` 아래에 Proof와 Public Values hex가 출력됨.
+이 값을 프론트엔드에 붙여넣어 트랜잭션 제출.
+
+> 기본 `SP1_PROVER=cpu` (로컬 CPU). Groth16 wrapping 포함이라 시간이 오래 걸림.
+
+## 5. 로컬 E2E Test (Anvil)
+
+Anvil은 MockSP1Verifier를 사용하므로 Groth16 없이 테스트 가능.
 
 ### Step 1: Anvil 실행 (터미널 1)
 ```bash
 anvil
 ```
-
-기본 계정 10개 + 10000 ETH씩 제공됨.
 
 ### Step 2: 컨트랙트 배포 (터미널 2)
 ```bash
@@ -96,65 +101,77 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-출력에서 IdentityRegistry 주소 확인:
-```
-IdentityRegistry: 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496
-```
+출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
 
-### Step 3: ZK Proof 생성 + 등록
-
+### Step 3: Public Values 생성
 ```bash
-# Proof 생성 (contract_address와 chain_id 지정)
-cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
-  --cert certs/signCert.der \
-  --key certs/signPri.key \
-  --ca-cert certs/ca_pub.der \
+SP1_PROVER=mock cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
   --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --chain-id 31337 \
-  --contract-address 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496
+  --contract-address $REGISTRY_ADDR
 ```
 
-### Step 4: 등록 확인
+출력에서 `Public Values: 0x...` 복사.
+
+### Step 4: 등록
+```bash
+# MockVerifier이므로 proof는 아무 값이어도 됨
+cast send $REGISTRY_ADDR \
+  "register(bytes,bytes)" 0x1234 $PUBLIC_VALUES \
+  --rpc-url http://localhost:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+
+### Step 5: 확인
+```bash
+cast call $REGISTRY_ADDR \
+  "isVerified(address)(bool)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --rpc-url http://localhost:8545
+# → true
+```
+
+## 6. Frontend E2E Test (브라우저)
+
+Section 5의 Step 1~3 완료 후:
 
 ```bash
-# isVerified 호출
-cast call 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496 \
-  "isVerified(address)(bool)" \
-  0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
-  --rpc-url http://localhost:8545
+cd frontend && npm run dev
 ```
 
-## 5. Interactive Mode (NPKI 인증서 사용)
+1. MetaMask → `localhost:8545` (Chain ID 31337) 네트워크 추가
+2. Anvil PK `0xac0974...` import
+3. `http://localhost:3000` → 지갑 연결
+4. Proof: `0x1234`, Public Values: Step 3 출력값 붙여넣기
+5. 트랜잭션 전송 → "등록 완료!" 확인
+
+> 프론트엔드 컨트랙트 주소: `frontend/src/contracts/IdentityRegistry.ts`에서 수정.
+
+## 7. Interactive Mode (NPKI 인증서)
 
 ```bash
 cargo run --release --bin interactive
 ```
 
-로컬 PC에서 NPKI 인증서를 스캔하여 선택 → 비밀번호 입력 → proof 생성.
-한국 NPKI 인증서가 있어야 동작합니다.
+로컬 NPKI 인증서 스캔 → 비밀번호 입력 → proof 생성. 한국 NPKI 인증서 필요.
 
-## 6. HTTP Server Mode
+## 8. HTTP Server Mode
 
 ```bash
 cargo run --release --bin server
 ```
 
-API 엔드포인트:
-- `GET  /certs`    — NPKI 인증서 목록
-- `POST /execute`  — proof 없이 실행 (테스트)
-- `POST /prove`    — ZK proof 생성
-- `GET  /health`   — 상태 확인
+- `GET  /certs` — NPKI 인증서 목록
+- `POST /prove` — ZK proof 생성
+- `POST /execute` — proof 없이 실행 (테스트)
+- `GET  /health` — 상태 확인
 
 ## Troubleshooting
 
-### "Failed to read cert file"
-인증서 경로 확인. `cd certs && bash generate-test-certs.sh` 실행.
-
-### "SP1 proof generation failed"
-메모리 부족. `--release` 플래그 확인.
-
-### Anvil "nonce too high"
-Anvil 재시작: `anvil` 다시 실행.
-
-### Forge "stack too deep"
-`foundry.toml`에 `via_ir = true` 설정 확인.
+| 에러 | 해결 |
+|------|------|
+| Failed to read cert file | `cd certs && bash generate-test-certs.sh` |
+| CRL signature verification failed | `cd certs && bash generate-test-crl.sh` (CA 재생성 후 CRL도 재생성) |
+| SP1 proof generation failed | `--release` 플래그 확인, 메모리 부족 |
+| Anvil "nonce too high" | Anvil 재시작 |
+| Forge "stack too deep" | `foundry.toml`에 `via_ir = true` |
