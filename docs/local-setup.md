@@ -52,61 +52,12 @@ cd certs && bash generate-test-certs.sh && cd ..
 
 > 인증서를 재생성하면 CA 키가 바뀌므로 CRL도 자동 재생성된다.
 
-## 3. Unit Tests
-
-### Rust (46 tests)
-```bash
-cargo test -p zk-x509-script --lib
-```
-
-Ownership 서명, Merkle tree, NPKI 스캐너, CRL SMT 테스트.
-
-### Foundry (40 tests)
-```bash
-cd contracts && forge test
-```
-
-IdentityRegistry 등록, 재등록, revoke, 만료, multi-wallet 등.
-
-## 4. 빌드 확인
-
-### Rust
-```bash
-cargo check --workspace
-```
-
-### Solidity
-```bash
-cd contracts && forge build
-```
-
-### Frontend
-```bash
-cd frontend && npm install && npm run build
-```
-
-## 5. Execute Mode (빠른 검증)
-
-proof 없이 zkVM 프로그램을 실행하여 로직을 검증한다.
+## 3. 빌드 확인
 
 ```bash
-cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
-  --cert certs/signCert.der \
-  --key certs/signPri.key \
-  --ca-cert certs/ca_pub.der \
-  --registrant 0x0000000000000000000000000000000000000001
+cargo check --workspace           # Rust
+cd contracts && forge build        # Solidity
+cd frontend && npm install && npm run build  # Frontend
 ```
 
-ECDSA: `ec_signCert.der` / `ec_signPri.key` / `ec_ca_pub.der` (P-256)
-
-전체 벤치마크: `bash script/bench.sh`
-
-## 6. Core Proof 생성 (로컬 검증용)
-
-```bash
-cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
-  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --registrant 0x0000000000000000000000000000000000000001
-```
-
-Core proof는 on-chain 제출 불가. on-chain용은 Groth16 (testing-guide 참조).
+환경 구축 후 테스트는 [testing-guide.md](testing-guide.md) 참조.

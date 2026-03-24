@@ -1,6 +1,6 @@
-# zk-X509 E2E Testing Guide
+# zk-X509 Testing Guide
 
-> 환경 구축, Unit Tests, Execute/Core Proof는 [local-setup.md](local-setup.md) 참조.
+> 환경 구축은 [local-setup.md](local-setup.md) 참조.
 
 ## Proof 종류
 
@@ -10,7 +10,41 @@
 | `zk-x509 --prove` | Core proof | 로컬 검증 | on-chain 제출 불가 |
 | `evm --system groth16` | Groth16 proof | **on-chain 제출** | Docker 필요 |
 
-## 1. 로컬 E2E Test (Anvil)
+## 1. Unit Tests
+
+### Rust (46 tests)
+```bash
+cargo test -p zk-x509-script --lib
+```
+
+### Foundry (40 tests)
+```bash
+cd contracts && forge test
+```
+
+## 2. Execute Mode (proof 없이 zkVM 실행)
+
+```bash
+cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
+  --cert certs/signCert.der \
+  --key certs/signPri.key \
+  --ca-cert certs/ca_pub.der \
+  --registrant 0x0000000000000000000000000000000000000001
+```
+
+ECDSA도 가능: `ec_signCert.der` / `ec_signPri.key` / `ec_ca_pub.der` (P-256)
+
+전체 벤치마크: `bash script/bench.sh`
+
+## 3. Core Proof 생성 (로컬 검증용)
+
+```bash
+cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0x0000000000000000000000000000000000000001
+```
+
+## 4. 로컬 E2E Test (Anvil)
 
 ### Step 1: Anvil 실행 (터미널 1)
 ```bash
@@ -75,9 +109,9 @@ cast call $REGISTRY_ADDR \
 # → true
 ```
 
-## 2. Frontend E2E Test (브라우저)
+## 5. Frontend E2E Test (브라우저)
 
-Section 1의 Step 1~4 완료 후:
+Section 4의 Step 1~4 완료 후:
 
 ```bash
 cd frontend && npm run dev
@@ -91,7 +125,7 @@ cd frontend && npm run dev
 
 > 프론트엔드 컨트랙트 주소: `frontend/src/contracts/IdentityRegistry.ts`에서 수정.
 
-## 3. CA Merkle Root 관리 (관리자)
+## 6. CA Merkle Root 관리 (관리자)
 
 컨트랙트는 신뢰하는 CA 목록을 Merkle Root 하나로 저장한다.
 CA를 추가/삭제하면 전체 CA 목록으로 root를 다시 계산하여 업데이트해야 한다.
