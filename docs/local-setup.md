@@ -104,8 +104,17 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 ### Step 3: 관리자 — CA Merkle Root 계산
 
+단일 CA:
 ```bash
 cargo run --release --bin zk-x509 -- --ca-root --ca-cert certs/ca_pub.der
+```
+
+복수 CA:
+```bash
+cargo run --release --bin zk-x509 -- --ca-root \
+  --ca-cert certs/ca_pub.der \
+  --extra-ca certs/ec_ca_pub.der \
+  --extra-ca certs/ec384_ca_pub.der
 ```
 
 출력에서 `CA Merkle Root: 0x...` 값을 복사.
@@ -119,19 +128,21 @@ cast send $REGISTRY_ADDR \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-또는 `/admin` 웹페이지에서 CA Merkle Root 입력 → 업데이트.
+또는 `/admin` 웹페이지에서 CA 파일 업로드 → 자동 계산 → 업데이트.
 
 ### Step 5: 사용자 등록 테스트
 
 Groth16 Proof 생성 후 등록:
 ```bash
 # proof 생성
-# --registrant: 등록할 지갑 주소 (트랜잭션 sender와 일치해야 함)
+# --registrant: 등록할 지갑 주소 (MetaMask 연결 주소와 일치해야 함)
 # --wallet-index: 슬롯 번호 (0부터 시작, MAX_WALLETS_PER_CERT 미만)
 # --max-wallets: 컨트랙트의 MAX_WALLETS_PER_CERT와 일치해야 함
+# --extra-ca: Step 3에서 등록한 것과 동일한 CA 목록을 넣어야 함
 # --registry-address: IdentityRegistry 컨트랙트 주소
 cargo run --release --bin evm -- --system groth16 \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --extra-ca certs/ec_ca_pub.der --extra-ca certs/ec384_ca_pub.der \
   --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --wallet-index 0 \
   --max-wallets 3 \
