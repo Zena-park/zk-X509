@@ -38,6 +38,12 @@ struct EVMArgs {
     max_wallets: u32,
     #[arg(long, default_value = "15")]
     disclosure_mask: u8,
+    /// Chain ID (EIP-155). Default: 31337 (Anvil local).
+    #[arg(long, default_value = "31337")]
+    chain_id: u64,
+    /// IdentityRegistry contract address (hex).
+    #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
+    contract_address: String,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -74,15 +80,19 @@ fn main() {
         .unwrap()
         .as_secs();
 
-    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key];
+    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.clone()];
     let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
     let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
         .expect("Invalid registrant address hex")
         .try_into()
         .expect("Registrant address must be 20 bytes");
 
-    let chain_id: u64 = 31337; // TODO: make configurable
-    let contract_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let chain_id = args.chain_id;
+    let contract_hex = args.contract_address.strip_prefix("0x").unwrap_or(&args.contract_address);
+    let contract_address: [u8; 20] = hex::decode(contract_hex)
+        .expect("Invalid contract address hex")
+        .try_into()
+        .expect("Contract address must be 20 bytes");
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, chain_id,
     ).expect("Failed to sign");
@@ -142,6 +152,10 @@ fn create_proof_fixture(
     println!("Verification Key: {}", fixture.vkey);
     println!("Nullifier: {}", fixture.nullifier);
     println!("CA Root Hash: {}", fixture.ca_merkle_root);
+
+    // Output hex values for frontend submission
+    println!("\n=== Frontend Input ===");
+    println!("Proof: {}", fixture.proof);
     println!("Public Values: {}", fixture.public_values);
 
     // Save fixture for Solidity tests
