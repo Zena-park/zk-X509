@@ -69,12 +69,19 @@ fn main() {
     let cid_input = prompt("  Chain ID [31337]: ");
     let chain_id: u64 = cid_input.parse().unwrap_or(zk_x509_script::DEFAULT_CHAIN_ID);
 
-    let mw_input = prompt("  Max wallets per cert [3]: ");
-    let max_wallets: u32 = mw_input.parse().unwrap_or(3);
-
     let registry_bytes = match zk_x509_script::parse_eth_address(&registry_address) {
         Ok(b) => b,
         Err(e) => { println!("  Invalid registry address: {}", e); return; }
+    };
+
+    // Auto-fetch max_wallets from on-chain
+    let max_wallets = match zk_x509_script::onchain::fetch_max_wallets(&rpc_url, &registry_bytes) {
+        Ok(v) => { println!("  ✓ MAX_WALLETS_PER_CERT: {} (from on-chain)", v); v }
+        Err(e) => {
+            println!("  ⚠ Could not fetch MAX_WALLETS_PER_CERT: {}", e);
+            let mw_input = prompt("  Enter max wallets manually [3]: ");
+            mw_input.parse().unwrap_or(3)
+        }
     };
 
     println!();
@@ -154,8 +161,12 @@ fn main() {
         Err(e) => { println!("  {}", e); return; }
     };
 
-    let idx_str = prompt("  Wallet index [0]: ");
+    let idx_str = prompt(&format!("  Wallet index (0-{}) [0]: ", max_wallets - 1));
     let wallet_index: u32 = idx_str.parse().unwrap_or(0);
+    if wallet_index >= max_wallets {
+        println!("  ✗ Wallet index {} exceeds max {} (0-{})", wallet_index, max_wallets, max_wallets - 1);
+        return;
+    }
 
     let mask_str = prompt("  Disclosure mask (0=hide all, 15=show all) [0]: ");
     let disclosure_mask: u8 = mask_str.parse().unwrap_or(0);
