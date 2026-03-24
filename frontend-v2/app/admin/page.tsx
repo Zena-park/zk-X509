@@ -33,7 +33,7 @@ type TxStatus =
 
 const IDLE: TxStatus = { kind: "idle" };
 
-type AdminTab = "status" | "ca" | "settings" | "security";
+type AdminTab = "status" | "management" | "security";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -515,8 +515,7 @@ export default function AdminPage() {
   /* ---------------------------------------------------------------- */
   const tabs: { key: AdminTab; label: string }[] = [
     { key: "status", label: "Status" },
-    { key: "ca", label: "CA Management" },
-    { key: "settings", label: "Settings" },
+    { key: "management", label: "Management" },
     { key: "security", label: "Security" },
   ];
 
@@ -753,8 +752,8 @@ export default function AdminPage() {
             </motion.div>
           )}
 
-          {/* ==================== CA MANAGEMENT TAB ==================== */}
-          {activeTab === "ca" && (
+          {/* ==================== MANAGEMENT TAB ==================== */}
+          {activeTab === "management" && (
             <motion.div
               key="ca"
               initial={{ opacity: 0, y: 12 }}
@@ -918,19 +917,6 @@ export default function AdminPage() {
                   </p>
                 </div>
               </div>
-            </motion.div>
-          )}
-
-          {/* ==================== SETTINGS TAB ==================== */}
-          {activeTab === "settings" && (
-            <motion.div
-              key="settings"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-6"
-            >
               {/* CRL Merkle Root */}
               <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
                 <div className="flex items-center gap-3 mb-6">
