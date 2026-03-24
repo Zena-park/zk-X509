@@ -196,8 +196,8 @@ fn cmd_prove(session: &mut Session) {
     let wallet_index: u32 = idx_str.parse().unwrap_or(0);
     let max_wallets: u32 = 1;
 
-    let chain_id: u64 = 31337; // TODO: make configurable
-    let registry_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let chain_id = zk_x509_script::DEFAULT_CHAIN_ID;
+    let registry_address = zk_x509_script::DEFAULT_REGISTRY_ADDRESS;
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp, chain_id,
     ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });
@@ -208,9 +208,8 @@ fn cmd_prove(session: &mut Session) {
     let mask_str = prompt("  Disclosure mask (15=all, 1=country, 0=none) [15]: ");
     let disclosure_mask: u8 = mask_str.parse().unwrap_or(0x0F);
 
-    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-    let ca_leaves = vec![ca_leaf_hash];
-    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+    let (_ca_leaf, ca_merkle_root, ca_merkle_proof) =
+        zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
 
     let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
         cert_der: &cert_der,

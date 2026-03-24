@@ -81,18 +81,11 @@ fn main() {
         .as_secs();
 
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.clone()];
-    let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
-    let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
-        .expect("Invalid registrant address hex")
-        .try_into()
-        .expect("Registrant address must be 20 bytes");
-
+    let registrant_bytes = zk_x509_script::parse_eth_address(&args.registrant)
+        .expect("Invalid registrant address");
     let chain_id = args.chain_id;
-    let registry_hex = args.registry_address.strip_prefix("0x").unwrap_or(&args.registry_address);
-    let registry_address: [u8; 20] = hex::decode(registry_hex)
-        .expect("Invalid registry address hex")
-        .try_into()
-        .expect("Registry address must be 20 bytes");
+    let registry_address = zk_x509_script::parse_eth_address(&args.registry_address)
+        .expect("Invalid registry address");
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, chain_id,
     ).expect("Failed to sign");
@@ -101,10 +94,8 @@ fn main() {
     ).expect("Failed to sign nullifier");
 
     let crl_der: Vec<u8> = Vec::new();
-
-    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-    let ca_leaves = vec![ca_leaf_hash];
-    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+    let (_ca_leaf, ca_merkle_root, ca_merkle_proof) =
+        zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
 
     let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
         cert_der: &cert_der,

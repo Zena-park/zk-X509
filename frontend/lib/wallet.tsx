@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { ethers } from "ethers";
 import { IDENTITY_REGISTRY_ABI, getRegistryAddress } from "./contract";
 
@@ -69,6 +69,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [chainId, setChainId] = useState<string | null>(null);
   const [chainName, setChainName] = useState("");
   const [registryAddr, setRegistryAddr] = useState("");
+  const readProviderRef = useRef<ethers.JsonRpcProvider | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [contractState, setContractState] = useState<ContractState | null>(null);
   const [readContract, setReadContract] = useState<ethers.Contract | null>(null);
@@ -93,9 +94,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setRegistryAddr(addr);
         if (!addr || addr === ethers.ZeroAddress) return;
 
-        // Use JsonRpcProvider for reads (avoids MetaMask caching issues)
         const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
-        const readProvider = new ethers.JsonRpcProvider(rpcUrl);
+        if (!readProviderRef.current) {
+          readProviderRef.current = new ethers.JsonRpcProvider(rpcUrl);
+        }
+        const readProvider = readProviderRef.current;
         const ro = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, readProvider);
         const rw = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, signer);
         setReadContract(ro);

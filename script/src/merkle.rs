@@ -91,6 +91,16 @@ fn extract_proof_from_layers(layers: &[Vec<Hash>], leaf_index: usize) -> Vec<Has
     proof
 }
 
+/// Hash a CA public key (SPKI DER) and compute Merkle root + proof for a single-CA tree.
+/// If `extra_ca_hashes` is empty, the root is the leaf hash itself.
+pub fn ca_merkle_tree(ca_pub_key: &[u8], extra_ca_hashes: &[Hash]) -> (Hash, Hash, Vec<Hash>) {
+    let ca_leaf: Hash = Sha256::digest(ca_pub_key).into();
+    let mut leaves = vec![ca_leaf];
+    leaves.extend_from_slice(extra_ca_hashes);
+    let (root, proof) = merkle_root_and_proof(&leaves, 0);
+    (ca_leaf, root, proof)
+}
+
 /// Verify a Merkle proof: recompute root from leaf + proof, compare to expected.
 pub fn verify_proof(leaf: &Hash, proof: &[Hash], expected_root: &Hash) -> bool {
     let mut current = *leaf;

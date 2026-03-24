@@ -181,11 +181,8 @@ async fn refresh_certs_handler(state: Arc<AppState>) -> impl IntoResponse {
 
 /// Parse a hex-encoded Ethereum address into [u8; 20].
 fn parse_registrant(s: &str) -> Result<[u8; 20], (StatusCode, String)> {
-    let hex_str = s.strip_prefix("0x").unwrap_or(s);
-    hex::decode(hex_str)
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid registrant address".to_string()))?
-        .try_into()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Registrant must be 20 bytes".to_string()))
+    zk_x509_script::parse_eth_address(s)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 
 /// Load cert+key from NPKI files by index, decrypt key with password.
@@ -230,9 +227,8 @@ fn prepare_stdin(
         .map_err(|(_status, msg)| msg)?;
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
         .map_err(|e| format!("System clock error: {}", e))?.as_secs();
-    // Default chain_id and registry_address for server mode
-    let chain_id: u64 = 31337; // TODO: make configurable via env/request
-    let registry_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let chain_id = zk_x509_script::DEFAULT_CHAIN_ID;
+    let registry_address = zk_x509_script::DEFAULT_REGISTRY_ADDRESS;
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &key_der, registrant_bytes, wallet_index, timestamp, chain_id)
         .map_err(|e| e.to_string())?;
@@ -241,9 +237,8 @@ fn prepare_stdin(
         .map_err(|e| e.to_string())?;
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
     let crl_der: Vec<u8> = Vec::new();
-    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(ca_pub_key).into();
-    let ca_leaves = vec![ca_leaf_hash];
-    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+    let (_ca_leaf, ca_merkle_root, ca_merkle_proof) =
+        zk_x509_script::merkle::ca_merkle_tree(ca_pub_key, &[]);
     Ok(zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
         cert_der: &cert_der,
         ownership_sig: &ownership_sig,
