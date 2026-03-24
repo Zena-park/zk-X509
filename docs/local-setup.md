@@ -70,7 +70,8 @@ cd frontend-v2 && npm install && npm run build
 ```
 
 > 프로그램 코드(`program/src/main.rs`)를 수정하면 Verification Key가 변경됩니다.
-> 변경 시 `cargo run --bin vkey`로 새 값을 확인하고, 컨트랙트를 재배포해야 합니다.
+> 이 값은 컨트랙트의 `PROGRAM_V_KEY`와 일치해야 합니다. 불일치 시 proof 검증이 실패합니다(`ProofInvalid`).
+> 확인: `cast call $REGISTRY_ADDR "PROGRAM_V_KEY()(bytes32)" --rpc-url http://localhost:8545`
 
 ## 4. 로컬 환경 배포
 
@@ -85,6 +86,8 @@ anvil
 ```bash
 cd contracts
 
+# vkey를 자동으로 가져와서 배포
+PROGRAM_V_KEY=$(cargo run --release --bin vkey 2>&1 | grep "Verification Key:" | awk '{print $3}') \
 MAX_WALLETS_PER_CERT=3 \
 forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --rpc-url http://localhost:8545 \
