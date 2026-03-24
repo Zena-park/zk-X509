@@ -22,22 +22,47 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
   const [chainMismatch, setChainMismatch] = useState(false);
   const expectedChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
 
+  async function updateNetwork() {
+    if (!window.ethereum) return;
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+      const cid = network.chainId.toString();
+      setChainId(cid);
+      setChainName(getChainName(cid));
+      setRegistryAddr(getRegistryAddress(cid));
+      setChainMismatch(cid !== expectedChainId);
+    } catch {
+      // ignore
+    }
+  }
+
   useEffect(() => {
-    if (!account || !window.ethereum) return;
-    (async () => {
-      try {
-        const provider = new ethers.BrowserProvider(window.ethereum!);
-        const network = await provider.getNetwork();
-        const cid = network.chainId.toString();
-        setChainId(cid);
-        setChainName(getChainName(cid));
-        setRegistryAddr(getRegistryAddress(cid));
-        setChainMismatch(cid !== expectedChainId);
-      } catch {
-        // ignore
-      }
-    })();
+    if (!account) return;
+    updateNetwork();
   }, [account]);
+
+  // Listen for MetaMask network/account changes
+  useEffect(() => {
+    if (!window.ethereum) return;
+    const handleChainChanged = () => {
+      updateNetwork();
+    };
+    const handleAccountsChanged = (...args: unknown[]) => {
+      const accounts = args[0] as string[];
+      if (accounts && accounts.length > 0) {
+        setAccount(accounts[0]);
+      } else {
+        setAccount(null);
+      }
+    };
+    window.ethereum.on?.("chainChanged", handleChainChanged);
+    window.ethereum.on?.("accountsChanged", handleAccountsChanged);
+    return () => {
+      window.ethereum?.removeListener?.("chainChanged", handleChainChanged);
+      window.ethereum?.removeListener?.("accountsChanged", handleAccountsChanged);
+    };
+  }, []);
 
   async function connectWallet() {
     if (!window.ethereum) {
