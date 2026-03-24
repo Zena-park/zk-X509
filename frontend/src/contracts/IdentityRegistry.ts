@@ -1,7 +1,7 @@
 /// ABI and deployment info for the IdentityRegistry contract.
 
 export const IDENTITY_REGISTRY_ABI = [
-  // register(bytes proof, bytes publicValues)
+  // ============ User Functions ============
   {
     inputs: [
       { name: "proof", type: "bytes" },
@@ -12,7 +12,6 @@ export const IDENTITY_REGISTRY_ABI = [
     stateMutability: "nonpayable",
     type: "function",
   },
-  // reRegister(bytes proof, bytes publicValues)
   {
     inputs: [
       { name: "proof", type: "bytes" },
@@ -23,7 +22,8 @@ export const IDENTITY_REGISTRY_ABI = [
     stateMutability: "nonpayable",
     type: "function",
   },
-  // isVerified(address user) -> bool
+
+  // ============ View Functions ============
   {
     inputs: [{ name: "user", type: "address" }],
     name: "isVerified",
@@ -31,7 +31,6 @@ export const IDENTITY_REGISTRY_ABI = [
     stateMutability: "view",
     type: "function",
   },
-  // verifiedUntil(address) -> uint64
   {
     inputs: [{ name: "", type: "address" }],
     name: "verifiedUntil",
@@ -39,7 +38,6 @@ export const IDENTITY_REGISTRY_ABI = [
     stateMutability: "view",
     type: "function",
   },
-  // nullifierOwner(bytes32) -> address
   {
     inputs: [{ name: "", type: "bytes32" }],
     name: "nullifierOwner",
@@ -47,7 +45,125 @@ export const IDENTITY_REGISTRY_ABI = [
     stateMutability: "view",
     type: "function",
   },
-  // Events
+  {
+    inputs: [{ name: "", type: "bytes32" }],
+    name: "revokedNullifiers",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "owner",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "pendingOwner",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "paused",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "caMerkleRoot",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "crlMerkleRoot",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "maxProofAge",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "maxWalletsPerCert",
+    outputs: [{ name: "", type: "uint32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+
+  // ============ Admin Functions ============
+  {
+    inputs: [{ name: "newRoot", type: "bytes32" }],
+    name: "updateCaMerkleRoot",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "newRoot", type: "bytes32" }],
+    name: "updateCrlMerkleRoot",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "newAge", type: "uint256" }],
+    name: "setMaxProofAge",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "nullifier", type: "bytes32" },
+      { name: "reason", type: "bytes32" },
+    ],
+    name: "revokeIdentity",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "pause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "unpause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "newOwner", type: "address" }],
+    name: "transferOwnership",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "acceptOwnership",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+
+  // ============ Events ============
   {
     anonymous: false,
     inputs: [
@@ -67,7 +183,24 @@ export const IDENTITY_REGISTRY_ABI = [
     name: "UserReRegistered",
     type: "event",
   },
-  // Errors
+  {
+    anonymous: false,
+    inputs: [{ indexed: true, name: "newRoot", type: "bytes32" }],
+    name: "CaMerkleRootUpdated",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "user", type: "address" },
+      { indexed: true, name: "nullifier", type: "bytes32" },
+      { indexed: false, name: "reason", type: "bytes32" },
+    ],
+    name: "IdentityRevoked",
+    type: "event",
+  },
+
+  // ============ Errors ============
   {
     inputs: [
       { name: "proofRoot", type: "bytes32" },
@@ -115,6 +248,8 @@ export const IDENTITY_REGISTRY_ABI = [
     name: "CertAlreadyExpired",
     type: "error",
   },
+  { inputs: [], name: "OnlyOwner", type: "error" },
+  { inputs: [], name: "ContractPaused", type: "error" },
 ] as const;
 
 /// Contract addresses per network.
