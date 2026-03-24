@@ -9,7 +9,7 @@ interface ProofInputProps {
 
 function isValidHex(value: string): boolean {
   const trimmed = value.trim();
-  return /^0x[0-9a-fA-F]+$/.test(trimmed) && trimmed.length % 2 === 0;
+  return /^0x[0-9a-fA-F]{2,}$/.test(trimmed) && trimmed.length % 2 === 0;
 }
 
 export function ProofInput({ disabled, onSubmit }: ProofInputProps) {

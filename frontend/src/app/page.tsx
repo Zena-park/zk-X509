@@ -15,6 +15,7 @@ export default function Home() {
   const [verified, setVerified] = useState<boolean | null>(null);
   const [verifiedExpiry, setVerifiedExpiry] = useState<string>("");
   const [mode, setMode] = useState<"register" | "reRegister">("register");
+  const [submitting, setSubmitting] = useState(false);
 
   // Check verification status when wallet connects
   useEffect(() => {
@@ -37,15 +38,16 @@ export default function Home() {
           const date = new Date(Number(until) * 1000);
           setVerifiedExpiry(date.toLocaleDateString("ko-KR"));
         }
-      } catch {
-        // contract not deployed or network mismatch
+      } catch (e) {
+        console.error("Failed to check verification status:", e);
       }
     })();
   }, [account]);
 
   async function submitProof(proof: string, publicValues: string) {
-    if (!window.ethereum) return;
+    if (!window.ethereum || submitting) return;
 
+    setSubmitting(true);
     setTxStatus("트랜잭션 전송 중...");
 
     try {
@@ -66,8 +68,7 @@ export default function Home() {
         signer
       );
 
-      const fn = mode === "reRegister" ? "reRegister" : "register";
-      const tx = await contract[fn](proof, publicValues);
+      const tx = await contract.getFunction(mode)(proof, publicValues);
       setTxStatus(`트랜잭션 전송됨: ${tx.hash.slice(0, 18)}...`);
 
       const receipt = await tx.wait();
@@ -92,6 +93,8 @@ export default function Home() {
       } else {
         setTxStatus(`오류: ${msg}`);
       }
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -148,7 +151,7 @@ export default function Home() {
               </button>
             </div>
           </div>
-          <ProofInput disabled={!account} onSubmit={submitProof} />
+          <ProofInput disabled={!account || submitting} onSubmit={submitProof} />
           {txStatus && (
             <p
               className={`mt-3 text-sm ${
