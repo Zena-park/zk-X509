@@ -125,13 +125,19 @@ cast send $REGISTRY_ADDR \
 
 Groth16 Proof 생성 후 등록:
 ```bash
-# proof 생성 (--registrant 주소 = 등록할 지갑 주소)
+# proof 생성
+# --registrant: 등록할 지갑 주소 (트랜잭션 sender와 일치해야 함)
+# --wallet-index: 슬롯 번호 (0부터 시작, MAX_WALLETS_PER_CERT 미만)
+# --registry-address: IdentityRegistry 컨트랙트 주소
 cargo run --release --bin evm -- --system groth16 \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
   --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --wallet-index 0 \
   --chain-id 31337 \
   --registry-address $REGISTRY_ADDR
 # 출력에서 Proof: 0x... 와 Public Values: 0x... 복사
+#
+# 같은 인증서로 다른 지갑에 추가 등록하려면 --wallet-index 1, 2, ... 사용
 
 # 등록 (--private-key의 지갑 주소와 --registrant가 반드시 일치해야 함)
 cast send $REGISTRY_ADDR \
