@@ -102,6 +102,43 @@ export const IDENTITY_REGISTRY_ABI = [
     type: "function",
   },
 
+  // ============ CA List Management ============
+  {
+    inputs: [{ name: "caHash", type: "bytes32" }],
+    name: "addCA",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "caHashes", type: "bytes32[]" }],
+    name: "addCAs",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "index", type: "uint256" }],
+    name: "removeCA",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "getCaCount",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "getCaLeaves",
+    outputs: [{ name: "", type: "bytes32[]" }],
+    stateMutability: "view",
+    type: "function",
+  },
+
   // ============ Admin Functions ============
   {
     inputs: [{ name: "newRoot", type: "bytes32" }],
@@ -187,6 +224,24 @@ export const IDENTITY_REGISTRY_ABI = [
     anonymous: false,
     inputs: [{ indexed: true, name: "newRoot", type: "bytes32" }],
     name: "CaMerkleRootUpdated",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "caHash", type: "bytes32" },
+      { indexed: false, name: "index", type: "uint256" },
+    ],
+    name: "CaAdded",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "caHash", type: "bytes32" },
+      { indexed: false, name: "index", type: "uint256" },
+    ],
+    name: "CaRemoved",
     type: "event",
   },
   {

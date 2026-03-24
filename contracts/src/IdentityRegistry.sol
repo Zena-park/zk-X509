@@ -17,7 +17,15 @@ contract IdentityRegistry {
     bytes32 public immutable PROGRAM_V_KEY;
 
     /// @notice Merkle root of allowed CA set (hides which specific CA issued the cert).
+    ///         Auto-computed from caLeaves[] when using addCA/removeCA.
     bytes32 public caMerkleRoot;
+
+    /// @notice On-chain list of trusted CA hashes (SHA-256 of CA public key SPKI DER).
+    ///         Anyone can read this to compute Merkle proofs for proof generation.
+    bytes32[] public caLeaves;
+
+    /// @notice Tracks whether a CA hash is already in caLeaves (prevents duplicates).
+    mapping(bytes32 => bool) public caExists;
 
     /// @notice CRL Merkle root (bytes32(0) = CRL checking disabled).
     bytes32 public crlMerkleRoot;
@@ -54,6 +62,8 @@ contract IdentityRegistry {
     event UserRegistered(address indexed user, bytes32 nullifier);
     event UserReRegistered(address indexed oldUser, address indexed newUser, bytes32 nullifier);
     event CaMerkleRootUpdated(bytes32 indexed newRoot);
+    event CaAdded(bytes32 indexed caHash, uint256 index);
+    event CaRemoved(bytes32 indexed caHash, uint256 index);
     event CrlMerkleRootUpdated(bytes32 indexed newRoot);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
@@ -82,6 +92,9 @@ contract IdentityRegistry {
     error RegistryAddressMismatch(address proofRegistry, address expectedRegistry);
     error InvalidCrlMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
     error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
+    error ZeroCaHash();
+    error DuplicateCaHash(bytes32 caHash);
+    error CaIndexOutOfBounds(uint256 index, uint256 length);
 
     // ============ Modifiers ============
 
@@ -217,6 +230,54 @@ contract IdentityRegistry {
         emit CaMerkleRootUpdated(newRoot);
     }
 
+    /// @notice Add a trusted CA to the on-chain list. Automatically recomputes caMerkleRoot.
+    /// @param caHash SHA-256 hash of the CA's public key (SPKI DER format).
+    function addCA(bytes32 caHash) external onlyOwner {
+        _addSingleCA(caHash);
+        _recomputeCaMerkleRoot();
+    }
+
+    /// @notice Add multiple trusted CAs in a single transaction. Recomputes root once.
+    /// @param caHashes Array of SHA-256 hashes of CA public keys.
+    function addCAs(bytes32[] calldata caHashes) external onlyOwner {
+        for (uint256 i = 0; i < caHashes.length; i++) {
+            _addSingleCA(caHashes[i]);
+        }
+        _recomputeCaMerkleRoot();
+    }
+
+    function _addSingleCA(bytes32 caHash) internal {
+        if (caHash == bytes32(0)) revert ZeroCaHash();
+        if (caExists[caHash]) revert DuplicateCaHash(caHash);
+        caLeaves.push(caHash);
+        caExists[caHash] = true;
+        emit CaAdded(caHash, caLeaves.length - 1);
+    }
+
+    /// @notice Remove a trusted CA by index. Swaps with last element and pops.
+    ///         Automatically recomputes caMerkleRoot.
+    /// @param index Index of the CA to remove in caLeaves array.
+    function removeCA(uint256 index) external onlyOwner {
+        uint256 len = caLeaves.length;
+        if (index >= len) revert CaIndexOutOfBounds(index, len);
+        bytes32 removed = caLeaves[index];
+        caExists[removed] = false;
+        caLeaves[index] = caLeaves[len - 1];
+        caLeaves.pop();
+        _recomputeCaMerkleRoot();
+        emit CaRemoved(removed, index);
+    }
+
+    /// @notice Get the number of trusted CAs.
+    function getCaCount() external view returns (uint256) {
+        return caLeaves.length;
+    }
+
+    /// @notice Get all trusted CA hashes. Useful for off-chain Merkle proof generation.
+    function getCaLeaves() external view returns (bytes32[] memory) {
+        return caLeaves;
+    }
+
     /// @notice Update the CRL Merkle root. Set bytes32(0) to disable CRL checking.
     /// @param newRoot The new CRL SMT root (from off-chain Relayer).
     function updateCrlMerkleRoot(bytes32 newRoot) external onlyOwner {
@@ -272,5 +333,51 @@ contract IdentityRegistry {
         emit OwnershipTransferred(owner, msg.sender);
         owner = msg.sender;
         pendingOwner = address(0);
+    }
+
+    // ============ Internal ============
+
+    /// @dev Recompute caMerkleRoot from caLeaves[] using SHA-256 sorted-pair Merkle tree.
+    ///      Same algorithm as zkVM (program/src/main.rs verify_merkle_membership).
+    ///      In-place computation to minimize memory allocation.
+    function _recomputeCaMerkleRoot() internal {
+        uint256 len = caLeaves.length;
+        if (len == 0) {
+            caMerkleRoot = bytes32(0);
+            emit CaMerkleRootUpdated(bytes32(0));
+            return;
+        }
+        if (len == 1) {
+            bytes32 root = caLeaves[0];
+            caMerkleRoot = root;
+            emit CaMerkleRootUpdated(root);
+            return;
+        }
+
+        // Copy leaves to memory (single allocation, reused in-place)
+        bytes32[] memory layer = new bytes32[](len);
+        for (uint256 i = 0; i < len; i++) {
+            layer[i] = caLeaves[i];
+        }
+
+        // Build tree bottom-up, in-place
+        uint256 size = len;
+        while (size > 1) {
+            uint256 newSize = (size + 1) / 2;
+            for (uint256 i = 0; i < newSize; i++) {
+                bytes32 left = layer[i * 2];
+                bytes32 right = (i * 2 + 1 < size) ? layer[i * 2 + 1] : left;
+                // Sorted-pair hash: H(min(a,b) || max(a,b))
+                if (left <= right) {
+                    layer[i] = sha256(abi.encodePacked(left, right));
+                } else {
+                    layer[i] = sha256(abi.encodePacked(right, left));
+                }
+            }
+            size = newSize;
+        }
+
+        caMerkleRoot = layer[0];
+        emit CaMerkleRootUpdated(layer[0]);
     }
 }

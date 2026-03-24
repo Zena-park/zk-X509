@@ -540,4 +540,191 @@ contract IdentityRegistryTest is Test {
         );
         registry.register(hex"1234", pv);
     }
+
+    // ============ CA List Management Tests ============
+
+    function test_AddCA() public {
+        bytes32 caHash = bytes32(uint256(0xAA));
+        registry.addCA(caHash);
+        assertEq(registry.getCaCount(), 1);
+        assertEq(registry.caLeaves(0), caHash);
+        assertTrue(registry.caMerkleRoot() != bytes32(0));
+    }
+
+    function test_AddMultipleCAs() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        bytes32 ca2 = bytes32(uint256(0xBB));
+        bytes32 ca3 = bytes32(uint256(0xCC));
+
+        registry.addCA(ca1);
+        registry.addCA(ca2);
+        registry.addCA(ca3);
+
+        assertEq(registry.getCaCount(), 3);
+        bytes32[] memory leaves = registry.getCaLeaves();
+        assertEq(leaves.length, 3);
+        assertEq(leaves[0], ca1);
+        assertEq(leaves[1], ca2);
+        assertEq(leaves[2], ca3);
+    }
+
+    function test_RemoveCA() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        bytes32 ca2 = bytes32(uint256(0xBB));
+        bytes32 ca3 = bytes32(uint256(0xCC));
+
+        registry.addCA(ca1);
+        registry.addCA(ca2);
+        registry.addCA(ca3);
+
+        bytes32 rootBefore = registry.caMerkleRoot();
+
+        // Remove middle element (index 1) — ca3 swaps into index 1
+        registry.removeCA(1);
+
+        assertEq(registry.getCaCount(), 2);
+        assertEq(registry.caLeaves(0), ca1);
+        assertEq(registry.caLeaves(1), ca3); // swapped
+        assertTrue(registry.caMerkleRoot() != rootBefore);
+    }
+
+    function test_RemoveLastCA() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        registry.addCA(ca1);
+        registry.removeCA(0);
+
+        assertEq(registry.getCaCount(), 0);
+        assertEq(registry.caMerkleRoot(), bytes32(0));
+    }
+
+    function test_SingleCARootIsLeafItself() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        registry.addCA(ca1);
+
+        // Single leaf: root = leaf itself (no hashing needed, consistent with Rust merkle.rs)
+        assertEq(registry.caMerkleRoot(), ca1);
+    }
+
+    function test_TwoCARootMatchesManual() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        bytes32 ca2 = bytes32(uint256(0xBB));
+
+        registry.addCA(ca1);
+        registry.addCA(ca2);
+
+        // Two leaves: root = sha256(min(ca1,ca2) || max(ca1,ca2))
+        bytes32 expectedRoot;
+        if (ca1 <= ca2) {
+            expectedRoot = sha256(abi.encodePacked(ca1, ca2));
+        } else {
+            expectedRoot = sha256(abi.encodePacked(ca2, ca1));
+        }
+        assertEq(registry.caMerkleRoot(), expectedRoot);
+    }
+
+    function test_RegisterWithAddedCA() public {
+        // Add CA via addCA, then register with matching root
+        bytes32 caHash = bytes32(uint256(0xAA));
+        registry.addCA(caHash);
+
+        bytes32 root = registry.caMerkleRoot();
+        vm.prank(alice);
+        registry.register(hex"1234", _pv(NULLIFIER, root, alice));
+        assertTrue(registry.isVerified(alice));
+    }
+
+    function test_RevertAddCAZeroHash() public {
+        vm.expectRevert(IdentityRegistry.ZeroCaHash.selector);
+        registry.addCA(bytes32(0));
+    }
+
+    function test_RevertAddCANotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        registry.addCA(bytes32(uint256(0xAA)));
+    }
+
+    function test_RevertRemoveCAOutOfBounds() public {
+        registry.addCA(bytes32(uint256(0xAA)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.CaIndexOutOfBounds.selector, 5, 1)
+        );
+        registry.removeCA(5);
+    }
+
+    function test_RevertRemoveCANotOwner() public {
+        registry.addCA(bytes32(uint256(0xAA)));
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        registry.removeCA(0);
+    }
+
+    function test_AddCAs_Batch() public {
+        bytes32[] memory hashes = new bytes32[](3);
+        hashes[0] = bytes32(uint256(0xAA));
+        hashes[1] = bytes32(uint256(0xBB));
+        hashes[2] = bytes32(uint256(0xCC));
+
+        registry.addCAs(hashes);
+
+        assertEq(registry.getCaCount(), 3);
+        assertEq(registry.caLeaves(0), hashes[0]);
+        assertEq(registry.caLeaves(1), hashes[1]);
+        assertEq(registry.caLeaves(2), hashes[2]);
+        assertTrue(registry.caMerkleRoot() != bytes32(0));
+    }
+
+    function test_AddCAs_BatchRootMatchesSingleAdds() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        bytes32 ca2 = bytes32(uint256(0xBB));
+        bytes32 ca3 = bytes32(uint256(0xCC));
+
+        // Batch add
+        bytes32[] memory hashes = new bytes32[](3);
+        hashes[0] = ca1;
+        hashes[1] = ca2;
+        hashes[2] = ca3;
+        registry.addCAs(hashes);
+        bytes32 batchRoot = registry.caMerkleRoot();
+
+        // Compare: deploy fresh and add one-by-one
+        IdentityRegistry fresh = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1);
+        fresh.addCA(ca1);
+        fresh.addCA(ca2);
+        fresh.addCA(ca3);
+
+        assertEq(batchRoot, fresh.caMerkleRoot());
+    }
+
+    function test_RevertDuplicateCA() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        registry.addCA(ca1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.DuplicateCaHash.selector, ca1)
+        );
+        registry.addCA(ca1);
+    }
+
+    function test_RevertDuplicateCAInBatch() public {
+        bytes32[] memory hashes = new bytes32[](2);
+        hashes[0] = bytes32(uint256(0xAA));
+        hashes[1] = bytes32(uint256(0xAA)); // duplicate
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.DuplicateCaHash.selector, hashes[1])
+        );
+        registry.addCAs(hashes);
+    }
+
+    function test_RemoveThenReaddCA() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        registry.addCA(ca1);
+        registry.removeCA(0);
+
+        // Should be able to re-add after removal
+        registry.addCA(ca1);
+        assertEq(registry.getCaCount(), 1);
+        assertEq(registry.caLeaves(0), ca1);
+    }
 }
