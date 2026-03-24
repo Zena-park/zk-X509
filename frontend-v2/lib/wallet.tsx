@@ -82,9 +82,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (!account || !window.ethereum) return;
     (async () => {
       try {
-        const provider = new ethers.BrowserProvider(window.ethereum!);
-        const signer = await provider.getSigner();
-        const network = await provider.getNetwork();
+        const browserProvider = new ethers.BrowserProvider(window.ethereum!);
+        const signer = await browserProvider.getSigner();
+        const network = await browserProvider.getNetwork();
         const cid = network.chainId.toString();
         setChainId(cid);
         setChainName(getChainName(cid));
@@ -93,7 +93,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setRegistryAddr(addr);
         if (!addr || addr === ethers.ZeroAddress) return;
 
-        const ro = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, provider);
+        // Use JsonRpcProvider for reads (avoids MetaMask caching issues)
+        const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
+        const readProvider = new ethers.JsonRpcProvider(rpcUrl);
+        const ro = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, readProvider);
         const rw = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, signer);
         setReadContract(ro);
         setWriteContract(rw);
@@ -102,7 +105,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           await Promise.all([
             ro.owner(), ro.paused(), ro.caMerkleRoot(), ro.crlMerkleRoot(), ro.maxProofAge(), ro.maxWalletsPerCert(),
           ]);
-        setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, maxWalletsPerCert });
+        console.log("Contract addr:", addr);
+        console.log("maxWalletsPerCert raw:", maxWalletsPerCert, typeof maxWalletsPerCert);
+        console.log("All state:", { owner, paused, caMerkleRoot, maxProofAge: maxProofAge.toString(), maxWalletsPerCert: maxWalletsPerCert.toString() });
+        setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, maxWalletsPerCert: Number(maxWalletsPerCert) });
         setIsOwner(owner.toLowerCase() === account.toLowerCase());
       } catch (e) {
         console.error("Failed to load contract:", e);
