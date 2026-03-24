@@ -58,7 +58,7 @@ type TxStatus = "idle" | "pending" | "confirming" | "success" | "error";
 /*  Dashboard Page                                                     */
 /* ================================================================== */
 export default function DashboardPage() {
-  const { account, readContract, writeContract, isOwner, refresh, chainName, registryAddr } =
+  const { account, readContract, writeContract, isOwner, refresh, chainName, chainId, registryAddr, contractState } =
     useWallet();
 
   /* ---------- identity state ---------- */
@@ -286,13 +286,73 @@ export default function DashboardPage() {
           transition={{ delay: 0.3 }}
           className="md:col-span-12 glass-panel rounded-2xl p-6 space-y-4"
         >
+          {/* How to generate proof */}
+          <details className="bg-surface-container-low/50 rounded-xl border border-outline-variant/10">
+            <summary className="px-4 py-3 text-sm font-headline font-medium text-tertiary cursor-pointer hover:text-primary transition-colors">
+              How to generate a proof?
+            </summary>
+            <div className="px-4 pb-4 text-on-surface-variant space-y-4">
+              <div>
+                <p className="text-sm font-headline font-medium text-primary mb-2">Step 1: Clone & Build</p>
+                <pre className="bg-surface-container p-3 rounded-lg overflow-x-auto text-xs font-mono text-tertiary leading-relaxed">
+{`git clone https://github.com/tokamak-network/zk-X509.git
+cd zk-X509
+cargo build --release --workspace`}</pre>
+              </div>
+
+              <div>
+                <p className="text-sm font-headline font-medium text-primary mb-2">Step 2: Generate Groth16 Proof</p>
+                <pre className="bg-surface-container p-3 rounded-lg overflow-x-auto text-xs font-mono text-tertiary leading-relaxed">
+{`cargo run --release --bin evm -- --system groth16 \\
+  --cert <your_cert.der> \\
+  --key <your_key.key> \\
+  --ca-cert <ca_pub.der> \\
+  --registrant ${account} \\
+  --wallet-index 0 \\
+  --max-wallets ${contractState?.MAX_WALLETS_PER_CERT ?? 1} \\
+  --chain-id ${chainId ?? 31337} \\
+  --contract-address ${registryAddr}`}</pre>
+              </div>
+
+              <div>
+                <p className="text-sm font-headline font-medium text-primary mb-2">Step 3: Submit</p>
+                <p className="text-sm">
+                  Copy the <span className="text-secondary font-mono font-bold">Proof</span> and <span className="text-secondary font-mono font-bold">Public Values</span> from the output and paste into the fields below.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <a
+                  href="https://github.com/tokamak-network/zk-X509/blob/main/docs/local-setup.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-headline text-tertiary hover:text-primary transition-colors flex items-center gap-1"
+                >
+                  Full Setup Guide &rarr;
+                </a>
+                <a
+                  href="https://github.com/tokamak-network/zk-X509/blob/main/docs/testing-guide.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-headline text-tertiary hover:text-primary transition-colors flex items-center gap-1"
+                >
+                  Testing Guide &rarr;
+                </a>
+              </div>
+
+              <p className="text-[10px] text-on-surface-variant italic">
+                Docker is required for Groth16 wrapping. Apple Silicon: docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0
+              </p>
+            </div>
+          </details>
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-headline font-bold text-on-surface">
                 Submit New Proof
               </h2>
               <p className="text-on-surface-variant text-sm">
-                Generate and submit a zero-knowledge proof to the registry.
+                Paste the proof and public values generated above.
               </p>
             </div>
             {/* Mode toggle */}
