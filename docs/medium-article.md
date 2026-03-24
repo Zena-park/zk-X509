@@ -90,7 +90,7 @@ With a `disclosure_mask` bitmask, users choose which certificate attributes to r
 | `0x03` | Country + Organization | Corporate DeFi access |
 | `0x0F` | All fields | Full attribute verification |
 
-Each disclosed field is hashed (`SHA-256("KR")`) — the verifier checks the hash, not the plaintext. Undisclosed fields commit zero, revealing nothing — not even whether the field exists.
+Users reveal the **plaintext** of selected attributes (e.g., "Country: KR") while providing a ZK proof that it matches the value in the original certificate. For hidden fields, the circuit commits a zero-value, revealing absolutely nothing — not even whether the field exists.
 
 **The user decides what to reveal, not the verifier.** Same certificate, different proofs for different apps. Your bank DAO sees your country. Your DEX sees nothing. You control it.
 
@@ -102,9 +102,9 @@ On-chain identity shouldn't outlive the certificate that created it. zk-X509 com
 
 Security is formalized under the **Dolev-Yao adversary model** with game-based definitions:
 
-- **Unforgeability** — reduced to RSA hardness + ZK soundness
-- **Unlinkability** — reduced to SHA-256 collision resistance + ZK zero-knowledge property
-- **Double-registration resistance** — deterministic nullifiers enforce the configured wallet limit
+- **Unforgeability** — reduced to RSA/ECDSA hardness + ZK soundness
+- **Unlinkability** — guaranteed by the Zero-Knowledge property of the circuit and the unpredictability of private-key-derived nullifiers
+- **Double-registration resistance** — ensured by SHA-256 collision resistance in deterministic nullifier generation
 - **Front-running immunity** — proofs are bound to your wallet address
 
 Breaking our system means breaking RSA or SHA-256.
@@ -113,8 +113,8 @@ Breaking our system means breaking RSA or SHA-256.
 
 | Metric | Value |
 |--------|-------|
-| ZK proving (single-level) | ~7.2M SP1 cycles |
-| ZK proving (3-level NPKI chain) | ~13M SP1 cycles |
+| ZK proving (ECDSA P-256) | ~11.8M SP1 cycles |
+| ZK proving (RSA-2048 + CRL) | ~23.2M SP1 cycles |
 | On-chain verification | ~300K gas (Groth16) |
 | Proving time (GPU, estimated) | ~1–2 minutes |
 | On L2 rollups | Negligible gas cost |
