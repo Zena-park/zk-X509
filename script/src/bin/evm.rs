@@ -36,7 +36,7 @@ struct EVMArgs {
     wallet_index: u32,
     #[arg(long, default_value = "1")]
     max_wallets: u32,
-    #[arg(long, default_value = "15")]
+    #[arg(long, default_value = "0")]
     disclosure_mask: u8,
     /// Chain ID (EIP-155). Default: 31337 (Anvil local).
     #[arg(long, default_value = "31337")]

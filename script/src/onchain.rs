@@ -11,6 +11,21 @@ use std::time::Duration;
 /// keccak256("getCaLeaves()")[:4]
 const SELECTOR_GET_CA_LEAVES: &str = "0xae88b426";
 
+/// Fetch MAX_WALLETS_PER_CERT from the on-chain registry.
+pub fn fetch_max_wallets(rpc_url: &str, registry: &[u8; 20]) -> Result<u32, String> {
+    let data = eth_call(rpc_url, registry, "0x10638be1")?; // MAX_WALLETS_PER_CERT()
+    let bytes = hex::decode(data.strip_prefix("0x").unwrap_or(&data))
+        .map_err(|e| format!("Invalid hex: {}", e))?;
+    if bytes.len() < 32 {
+        return Err(format!("Expected 32 bytes, got {}", bytes.len()));
+    }
+    let val = u32::from_be_bytes(bytes[28..32].try_into().unwrap());
+    if val == 0 {
+        return Err("MAX_WALLETS_PER_CERT is 0 — contract may not be deployed correctly".to_string());
+    }
+    Ok(val)
+}
+
 /// Fetch on-chain CA list, find user's CA, and return (root, proof).
 /// Returns `Err` if the CA is not found or no CAs are registered.
 pub fn build_ca_merkle_from_onchain(
