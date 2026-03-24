@@ -85,6 +85,7 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
             <nav className="hidden md:flex gap-1 bg-white/5 p-1 rounded-lg border border-white/5">
               <NavTab href="/" label="사용자" />
               <NavTab href="/admin" label="관리자" />
+              <NavTab href="/faq" label="FAQ" />
             </nav>
           </div>
 
