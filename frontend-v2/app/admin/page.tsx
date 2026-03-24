@@ -499,10 +499,10 @@ export default function AdminPage() {
   /*  Tab definitions                                                  */
   /* ---------------------------------------------------------------- */
   const tabs: { key: AdminTab; label: string }[] = [
-    { key: "status", label: "상태/조회" },
-    { key: "ca", label: "CA 관리" },
-    { key: "settings", label: "설정" },
-    { key: "security", label: "보안" },
+    { key: "status", label: "Status" },
+    { key: "ca", label: "CA Management" },
+    { key: "settings", label: "Settings" },
+    { key: "security", label: "Security" },
   ];
 
   /* ---------------------------------------------------------------- */
