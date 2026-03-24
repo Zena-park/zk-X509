@@ -21,25 +21,25 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="relative overflow-hidden min-h-screen flex items-center">
         {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-tertiary/8 via-secondary/5 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-tertiary/3 via-secondary/2 to-transparent" />
         <motion.div
           animate={{ x: [0, 60, 0], y: [0, -40, 0], scale: [1, 1.2, 1] }}
           transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-10 left-1/4 w-[500px] h-[500px] bg-tertiary/10 rounded-full blur-[120px]"
+          className="absolute top-10 left-1/4 w-[500px] h-[500px] bg-tertiary/5 rounded-full blur-[150px]"
         />
         <motion.div
           animate={{ x: [0, -50, 0], y: [0, 50, 0], scale: [1, 1.3, 1] }}
           transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-40 right-1/5 w-[400px] h-[400px] bg-secondary/10 rounded-full blur-[100px]"
+          className="absolute top-40 right-1/5 w-[400px] h-[400px] bg-secondary/5 rounded-full blur-[130px]"
         />
         <motion.div
           animate={{ x: [0, 30, 0], y: [0, -60, 0] }}
           transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute bottom-20 left-1/3 w-[300px] h-[300px] bg-tertiary/5 rounded-full blur-[80px]"
+          className="absolute bottom-20 left-1/3 w-[300px] h-[300px] bg-tertiary/3 rounded-full blur-[100px]"
         />
         {/* Grid overlay */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{
-          backgroundImage: "linear-gradient(rgba(140,231,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(140,231,255,0.3) 1px, transparent 1px)",
+        <div className="absolute inset-0 opacity-[0.02]" style={{
+          backgroundImage: "linear-gradient(rgba(140,231,255,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(140,231,255,0.2) 1px, transparent 1px)",
           backgroundSize: "60px 60px"
         }} />
 
