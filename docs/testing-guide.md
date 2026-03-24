@@ -24,7 +24,6 @@ cd certs && bash generate-test-certs.sh && bash generate-test-crl.sh && cd ..
 | `evm --system groth16` | Groth16 proof | **on-chain 제출** | SP1 network prover 또는 CPU |
 
 로컬 Anvil에서도 실제 SP1Verifier를 배포하여 Groth16 proof를 검증한다.
-`USE_MOCK_VERIFIER=true` 환경변수로 Mock 모드 선택 가능.
 
 ## 1. Unit Tests
 
@@ -103,7 +102,15 @@ leaves = [SHA256(ca_pub_A.der), SHA256(ca_pub_B.der), SHA256(ca_pub_C.der)]
 caMerkleRoot = 0x...
 ```
 
-현재 CLI는 단일 CA만 지원. 복수 CA는 off-chain에서 root를 계산 후 배포/업데이트:
+CLI에서 `--extra-ca`로 추가 CA를 지정하여 복수 CA Merkle Tree를 구성할 수 있다:
+```bash
+cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --extra-ca certs/ec_ca_pub.der --extra-ca certs/ec384_ca_pub.der \
+  --registrant 0x0000000000000000000000000000000000000001
+```
+
+CA 추가/변경 시 컨트랙트의 root를 갱신:
 ```bash
 # CA 추가 후 root 갱신
 cast send $REGISTRY_ADDR \
@@ -140,7 +147,7 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 ### Step 4: Groth16 Proof 생성
 ```bash
-SP1_DEV=true cargo run --release --bin evm -- --system groth16 \
+cargo run --release --bin evm -- --system groth16 \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
   --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --chain-id 31337 \
