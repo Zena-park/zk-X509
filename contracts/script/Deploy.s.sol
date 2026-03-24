@@ -10,13 +10,13 @@ import {IdentityRegistry} from "../src/IdentityRegistry.sol";
 ///
 /// Environment variables:
 ///   SP1_VERIFIER_ADDRESS - Address of the deployed SP1 verifier contract
-///   PROGRAM_VKEY         - Verification key from `cargo run --bin vkey`
+///   PROGRAM_V_KEY        - Verification key from `cargo run --bin vkey`
 ///   CA_ROOT_HASH         - SHA-256 hash of the trusted CA public key
 contract DeployScript is Script {
     function run() external {
         // Read configuration from environment
         address SP1_VERIFIER = vm.envAddress("SP1_VERIFIER_ADDRESS");
-        bytes32 PROGRAM_VKEY = vm.envBytes32("PROGRAM_VKEY");
+        bytes32 PROGRAM_VKEY = vm.envBytes32("PROGRAM_V_KEY");
 
         console.log("SP1 Verifier:", SP1_VERIFIER);
         console.log("Program VKey:");
