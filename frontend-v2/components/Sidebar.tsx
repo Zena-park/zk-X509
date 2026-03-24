@@ -27,7 +27,7 @@ interface NavItem {
 }
 
 const dashboardItems: NavItem[] = [
-  { icon: LayoutDashboard, label: "Overview", href: "/" },
+  { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },
   { icon: Fingerprint, label: "Identity Vault" },
   { icon: Network, label: "Merkle Proofs" },
   { icon: ShieldCheck, label: "Admin Console", href: "/admin" },
@@ -45,6 +45,10 @@ const faqItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+
+  // 랜딩 페이지에서는 사이드바 숨김
+  if (pathname === "/") return null;
+
   const isFaq = pathname === "/faq";
   const items = isFaq ? faqItems : dashboardItems;
 

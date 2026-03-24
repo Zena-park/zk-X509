@@ -6,7 +6,8 @@ import { Bell, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { href: "/", label: "Dashboard" },
+  { href: "/", label: "Home" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/admin", label: "Admin Console" },
   { href: "/faq", label: "Knowledge Base" },
 ];
