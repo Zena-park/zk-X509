@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import {
   ShieldCheck,
-  Eye,
   EyeOff,
   Lock,
   Network,
@@ -39,17 +38,17 @@ export default function LandingPage() {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-headline font-bold tracking-tight text-primary leading-tight mb-6">
-              블록체인 신원 인증,
+              Blockchain Identity,
               <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-tertiary to-secondary">
-                개인정보 없이.
+                Without Revealing You.
               </span>
             </h1>
 
             <p className="text-lg md:text-xl text-on-surface-variant max-w-2xl mx-auto leading-relaxed mb-12">
-              공인인증서(X.509)로 블록체인에서 신원을 증명합니다.
-              ZK proof를 통해 이름, 주민번호 등 개인정보를 노출하지 않고
-              유효한 인증서 보유 사실만 검증합니다.
+              Prove your identity on-chain using X.509 certificates.
+              Zero-knowledge proofs ensure your name, ID number, and personal data
+              are never exposed — only the validity of your certificate is verified.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -57,13 +56,13 @@ export default function LandingPage() {
                 href="/dashboard"
                 className="px-10 py-4 bg-primary text-surface font-headline font-bold rounded-full hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 text-lg"
               >
-                시작하기 <ArrowRight className="w-5 h-5" />
+                Get Started <ArrowRight className="w-5 h-5" />
               </Link>
               <Link
                 href="/faq"
                 className="px-10 py-4 border border-outline-variant/30 text-on-surface font-headline rounded-full hover:bg-surface-container-highest transition-all text-lg"
               >
-                자세히 알아보기
+                Learn More
               </Link>
             </div>
           </motion.div>
@@ -79,10 +78,10 @@ export default function LandingPage() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-4xl font-headline font-bold text-primary mb-4">
-            어떻게 동작하나요?
+            How It Works
           </h2>
           <p className="text-on-surface-variant max-w-xl mx-auto">
-            3단계로 블록체인 신원 인증이 완료됩니다.
+            Three steps to verified on-chain identity.
           </p>
         </motion.div>
 
@@ -91,22 +90,22 @@ export default function LandingPage() {
             {
               step: "01",
               icon: FileCheck,
-              title: "인증서로 증명 생성",
-              desc: "로컬에서 공인인증서와 개인키로 ZK proof를 생성합니다. 개인키는 외부로 전송되지 않습니다.",
+              title: "Generate Proof",
+              desc: "Create a ZK proof locally using your X.509 certificate and private key. Your private key never leaves your machine.",
               color: "tertiary",
             },
             {
               step: "02",
               icon: Lock,
-              title: "On-Chain 검증",
-              desc: "Groth16 proof를 스마트 컨트랙트에 제출합니다. 컨트랙트가 proof의 수학적 유효성을 검증합니다.",
+              title: "On-Chain Verification",
+              desc: "Submit the Groth16 proof to the smart contract. The contract mathematically verifies the proof's validity.",
               color: "secondary",
             },
             {
               step: "03",
               icon: ShieldCheck,
-              title: "신원 등록 완료",
-              desc: "검증 통과 시 지갑 주소가 인증됩니다. 다른 DApp은 isVerified()로 인증 여부를 조회합니다.",
+              title: "Identity Registered",
+              desc: "Upon verification, your wallet address is certified. Other DApps can query isVerified() to check your status.",
               color: "tertiary",
             },
           ].map((item, i) => (
@@ -140,7 +139,7 @@ export default function LandingPage() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-4xl font-headline font-bold text-primary mb-4">
-            핵심 특징
+            Key Features
           </h2>
         </motion.div>
 
@@ -148,33 +147,33 @@ export default function LandingPage() {
           {[
             {
               icon: EyeOff,
-              title: "프라이버시",
-              desc: "개인정보가 블록체인에 올라가지 않습니다. nullifier 해시만 저장되어 중복 방지에 사용됩니다.",
+              title: "Privacy First",
+              desc: "No personal data touches the blockchain. Only a nullifier hash is stored on-chain for Sybil resistance.",
             },
             {
               icon: Fingerprint,
               title: "Selective Disclosure",
-              desc: "국가, 기관, 이름 중 원하는 항목만 선택적으로 공개할 수 있습니다.",
+              desc: "Choose which certificate fields to reveal — country, organization, or name. Everything else stays hidden.",
             },
             {
               icon: Network,
-              title: "CA 익명성",
-              desc: "Merkle Tree로 어떤 CA가 발급했는지 숨기면서 신뢰 목록에 포함됨을 증명합니다.",
+              title: "CA Anonymity",
+              desc: "Merkle Tree proves your CA is in the trusted set without revealing which specific CA issued your certificate.",
             },
             {
               icon: Globe,
-              title: "멀티체인",
-              desc: "체인별 독립 nullifier로 크로스체인 추적이 불가능합니다. 어떤 EVM 체인이든 배포 가능.",
+              title: "Multi-Chain",
+              desc: "Independent nullifiers per chain make cross-chain tracking impossible. Deploy on any EVM-compatible network.",
             },
             {
               icon: Database,
-              title: "자동 만료",
-              desc: "인증서 만료일이 on-chain에 저장되어 만료 후 자동으로 인증이 해제됩니다.",
+              title: "Auto-Expiry",
+              desc: "Certificate expiration date is stored on-chain. Verification automatically lapses when the certificate expires.",
             },
             {
               icon: Cpu,
               title: "SP1 zkVM",
-              desc: "Succinct SP1으로 Rust 프로그램을 그대로 ZK proof로 변환. 17M cycles, Groth16 검증.",
+              desc: "Powered by Succinct SP1 — compile Rust programs directly into ZK proofs. 17M cycles, Groth16 on-chain verification.",
             },
           ].map((item, i) => (
             <motion.div
@@ -204,17 +203,17 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-gradient-to-r from-surface via-surface/80 to-transparent z-0" />
           <div className="relative z-10 max-w-xl">
             <h2 className="text-3xl font-headline font-bold text-primary mb-4">
-              시스템 구조
+              Architecture
             </h2>
             <div className="text-on-surface-variant leading-relaxed space-y-3 text-sm mb-8">
               <p>
-                <span className="text-tertiary font-mono">zkVM Program</span> — X.509 파싱, 서명 검증, Merkle 증명을 SP1 안에서 실행
+                <span className="text-tertiary font-mono">zkVM Program</span> — X.509 parsing, signature verification, and Merkle proofs executed inside SP1
               </p>
               <p>
-                <span className="text-secondary font-mono">Groth16 Proof</span> — Core proof를 EVM 검증 가능한 ~260 bytes로 압축
+                <span className="text-secondary font-mono">Groth16 Proof</span> — Core proof compressed into ~260 bytes verifiable on EVM
               </p>
               <p>
-                <span className="text-tertiary font-mono">IdentityRegistry</span> — 등록, 재등록, 폐기, CA 관리를 하나의 컨트랙트로
+                <span className="text-tertiary font-mono">IdentityRegistry</span> — Registration, re-registration, revocation, and CA management in one contract
               </p>
             </div>
             <div className="flex gap-4">
@@ -222,13 +221,13 @@ export default function LandingPage() {
                 href="/dashboard"
                 className="px-6 py-3 bg-primary text-surface font-headline font-bold rounded-full hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
               >
-                대시보드 <ArrowRight className="w-4 h-4" />
+                Dashboard <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
                 href="/admin"
                 className="px-6 py-3 border border-outline-variant/30 text-on-surface font-headline rounded-full hover:bg-surface-container-highest transition-all"
               >
-                관리자 콘솔
+                Admin Console
               </Link>
             </div>
           </div>
