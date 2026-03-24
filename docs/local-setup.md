@@ -73,6 +73,7 @@ anvil
 ```bash
 cd contracts
 
+MAX_WALLETS_PER_CERT=1 \
 forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --rpc-url http://localhost:8545 \
   --broadcast \
@@ -82,16 +83,7 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
 
-배포 시 옵션 (환경변수):
-
-| 환경변수 | 기본값 | 설명 |
-|---------|--------|------|
-| `MAX_WALLETS_PER_CERT` | 1 | 인증서당 최대 지갑 수 (배포 후 변경 불가) |
-
-예: 인증서당 3개 지갑 허용:
-```bash
-MAX_WALLETS_PER_CERT=3 forge script script/DeployLocal.s.sol ...
-```
+> `MAX_WALLETS_PER_CERT`: 인증서당 최대 지갑 수 (기본값 1, 배포 후 변경 불가).
 
 ### Step 3: 관리자 — CA Merkle Root 계산
 
