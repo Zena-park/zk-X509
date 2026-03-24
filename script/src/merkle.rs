@@ -91,6 +91,17 @@ fn extract_proof_from_layers(layers: &[Vec<Hash>], leaf_index: usize) -> Vec<Has
     proof
 }
 
+/// Hash a CA public key (SPKI DER), build a Merkle tree, and return (leaf, root, proof).
+/// The CA leaf is placed at index 0; any `extra_ca_hashes` are appended as additional leaves.
+/// If `extra_ca_hashes` is empty, root == leaf and proof is empty.
+pub fn ca_merkle_tree(ca_pub_key: &[u8], extra_ca_hashes: &[Hash]) -> (Hash, Hash, Vec<Hash>) {
+    let ca_leaf: Hash = Sha256::digest(ca_pub_key).into();
+    let mut leaves = vec![ca_leaf];
+    leaves.extend_from_slice(extra_ca_hashes);
+    let (root, proof) = merkle_root_and_proof(&leaves, 0);
+    (ca_leaf, root, proof)
+}
+
 /// Verify a Merkle proof: recompute root from leaf + proof, compare to expected.
 pub fn verify_proof(leaf: &Hash, proof: &[Hash], expected_root: &Hash) -> bool {
     let mut current = *leaf;
@@ -200,5 +211,30 @@ mod tests {
             assert!(verify_proof(&leaves[i], &proof, &root),
                 "Proof failed for leaf {}", i);
         }
+    }
+
+    #[test]
+    fn test_ca_merkle_tree_single() {
+        let ca_pub = b"TEST_CA_PUBLIC_KEY";
+        let (leaf, root, proof) = ca_merkle_tree(ca_pub, &[]);
+        let expected: Hash = Sha256::digest(ca_pub).into();
+        assert_eq!(leaf, expected);
+        assert_eq!(root, leaf);
+        assert!(proof.is_empty());
+    }
+
+    #[test]
+    fn test_ca_merkle_tree_with_extras() {
+        let ca_pub = b"TEST_CA_PUBLIC_KEY";
+        let extra1 = hash_ca(b"EXTRA_CA_1");
+        let extra2 = hash_ca(b"EXTRA_CA_2");
+        let (leaf, root, proof) = ca_merkle_tree(ca_pub, &[extra1, extra2]);
+
+        // Root should match building tree manually
+        let expected_root = merkle_root(&[leaf, extra1, extra2]);
+        assert_eq!(root, expected_root);
+
+        // Proof should verify for index 0
+        assert!(verify_proof(&leaf, &proof, &root));
     }
 }

@@ -232,7 +232,10 @@ export default function AdminPage() {
   const [caListLoading, setCaListLoading] = useState(false);
 
   const [addCaTxMap, setAddCaTxMap] = useState<Record<string, TxStatus>>({});
+  const [addAllTx, setAddAllTx] = useState<TxStatus>(IDLE);
   const [removeCaTxMap, setRemoveCaTxMap] = useState<Record<string, TxStatus>>({});
+  const [removeAllTx, setRemoveAllTx] = useState<TxStatus>(IDLE);
+  const [selectedCaLeaves, setSelectedCaLeaves] = useState<Set<string>>(new Set());
 
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
@@ -283,10 +286,10 @@ export default function AdminPage() {
       const leaves: string[] = await readContract.getCaLeaves();
       setOnChainCaLeaves(leaves);
     } catch {
-      /* contract may not support getCaLeaves yet */
       setOnChainCaLeaves([]);
     } finally {
       setCaListLoading(false);
+      setSelectedCaLeaves(new Set());
     }
   }, [readContract]);
 
@@ -352,7 +355,11 @@ export default function AdminPage() {
         const hashHex = ethers.hexlify(hash);
         newEntries.push({ name: file.name, hash, hashHex });
       }
-      setCaFiles((prev) => [...prev, ...newEntries]);
+      setCaFiles((prev) => {
+        const existing = new Set(prev.map((f) => f.hashHex));
+        const deduped = newEntries.filter((e) => !existing.has(e.hashHex));
+        return [...prev, ...deduped];
+      });
     } finally {
       setCaFileProcessing(false);
     }
@@ -383,6 +390,36 @@ export default function AdminPage() {
   }, []);
 
   /* ---------- action handlers ---------- */
+
+  const handleAddAllCas = () => {
+    if (!writeContract || caFiles.length === 0) return;
+    // Deduplicate by hash and exclude already-registered CAs
+    const seen = new Set<string>(onChainCaLeaves);
+    const uniqueHashes: string[] = [];
+    for (const f of caFiles) {
+      if (!seen.has(f.hashHex)) {
+        seen.add(f.hashHex);
+        uniqueHashes.push(f.hashHex);
+      }
+    }
+    if (uniqueHashes.length === 0) {
+      setAddAllTx({ kind: "error", message: "All CAs are duplicates or already registered" });
+      return;
+    }
+    execTx(
+      setAddAllTx,
+      () => uniqueHashes.length === 1
+        ? writeContract.addCA(uniqueHashes[0])
+        : writeContract.addCAs(uniqueHashes),
+      () => {
+        refresh();
+        fetchCaLeaves();
+        setCaFiles([]);
+        setAddAllTx(IDLE);
+      },
+    );
+  };
+
   const handleAddCa = (entry: CaFileEntry) => {
     if (!writeContract) return;
     const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
@@ -421,6 +458,45 @@ export default function AdminPage() {
         setRemoveCaTxMap({});
       },
     );
+  };
+
+  const handleRemoveSelected = () => {
+    if (!writeContract || selectedCaLeaves.size === 0) return;
+    // Indices sorted descending (required by removeCAs for swap-and-pop safety)
+    const indices = onChainCaLeaves
+      .map((leaf, idx) => ({ leaf, idx }))
+      .filter(({ leaf }) => selectedCaLeaves.has(leaf))
+      .map(({ idx }) => idx)
+      .sort((a, b) => b - a);
+
+    execTx(
+      setRemoveAllTx,
+      () => indices.length === 1
+        ? writeContract.removeCA(indices[0])
+        : writeContract.removeCAs(indices),
+      () => {
+        setSelectedCaLeaves(new Set());
+        setRemoveCaTxMap({});
+        refresh();
+        fetchCaLeaves();
+      },
+    );
+  };
+
+  const toggleCaSelect = (leaf: string) => {
+    setSelectedCaLeaves((prev) => {
+      const next = new Set(prev);
+      if (next.has(leaf)) next.delete(leaf); else next.add(leaf);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedCaLeaves.size === onChainCaLeaves.length) {
+      setSelectedCaLeaves(new Set());
+    } else {
+      setSelectedCaLeaves(new Set(onChainCaLeaves));
+    }
   };
 
   const handleUpdateCrlRoot = () => {
@@ -837,9 +913,23 @@ export default function AdminPage() {
                 {/* Pending files — ready to add on-chain */}
                 {caFiles.length > 0 && (
                   <div className="mt-6 space-y-2">
-                    <p className="text-xs font-label text-on-surface-variant uppercase tracking-widest mb-3">
-                      Pending CA Certificates ({caFiles.length})
-                    </p>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-label text-on-surface-variant uppercase tracking-widest">
+                        Pending CA Certificates ({caFiles.length})
+                      </p>
+                      {caFiles.length >= 2 && (
+                        <div className="flex items-center gap-2">
+                          <TxBadge status={addAllTx} />
+                          <button
+                            onClick={handleAddAllCas}
+                            disabled={disabled || isBusy(addAllTx)}
+                            className="bg-tertiary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all"
+                          >
+                            {isBusy(addAllTx) ? "..." : `ADD ALL (${caFiles.length}) TO REGISTRY`}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     {caFiles.map((entry, idx) => {
                       const txStatus = addCaTxMap[entry.hashHex] ?? IDLE;
                       return (
@@ -875,6 +965,24 @@ export default function AdminPage() {
                 )}
               </div>
 
+              {/* CA Merkle Root display */}
+              {!isZeroHash(caRoot) && (
+                <div className="bg-surface p-6 rounded-3xl border border-outline-variant/10 flex items-center gap-4">
+                  <ShieldCheck className="text-primary w-5 h-5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-label text-on-surface-variant uppercase tracking-widest mb-1">
+                      CA Merkle Root
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-sm font-mono text-tertiary break-all">
+                        {caRoot}
+                      </code>
+                      <CopyButton text={caRoot} title="Copy CA Root" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Registered CAs — On-chain list */}
               <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
                 <div className="flex items-center justify-between mb-6">
@@ -887,13 +995,27 @@ export default function AdminPage() {
                       {onChainCaLeaves.length}
                     </span>
                   </div>
-                  <button
-                    onClick={fetchCaLeaves}
-                    disabled={caListLoading}
-                    className="text-xs font-label text-tertiary hover:text-primary transition-colors disabled:opacity-50"
-                  >
-                    {caListLoading ? "Loading..." : "Refresh"}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {selectedCaLeaves.size > 0 && (
+                      <div className="flex items-center gap-2">
+                        <TxBadge status={removeAllTx} />
+                        <button
+                          onClick={handleRemoveSelected}
+                          disabled={disabled || isBusy(removeAllTx)}
+                          className="px-3 py-1.5 border border-error/30 text-error rounded-lg font-label font-bold text-[10px] hover:bg-error/10 disabled:opacity-50 transition-all"
+                        >
+                          {isBusy(removeAllTx) ? "..." : `REMOVE SELECTED (${selectedCaLeaves.size})`}
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      onClick={fetchCaLeaves}
+                      disabled={caListLoading}
+                      className="text-xs font-label text-tertiary hover:text-primary transition-colors disabled:opacity-50"
+                    >
+                      {caListLoading ? "Loading..." : "Refresh"}
+                    </button>
+                  </div>
                 </div>
 
                 {onChainCaLeaves.length === 0 ? (
@@ -904,6 +1026,17 @@ export default function AdminPage() {
                   </p>
                 ) : (
                   <div className="space-y-2">
+                    {onChainCaLeaves.length > 1 && (
+                      <label className="flex items-center gap-2 px-4 py-1 cursor-pointer text-[10px] text-on-surface-variant">
+                        <input
+                          type="checkbox"
+                          checked={selectedCaLeaves.size === onChainCaLeaves.length}
+                          onChange={toggleSelectAll}
+                          className="accent-primary"
+                        />
+                        Select All
+                      </label>
+                    )}
                     {onChainCaLeaves.map((leaf, idx) => {
                       const txStatus = removeCaTxMap[leaf] ?? IDLE;
                       return (
@@ -911,6 +1044,12 @@ export default function AdminPage() {
                           key={leaf}
                           className="flex items-center gap-3 bg-surface-highest rounded-xl px-4 py-3"
                         >
+                          <input
+                            type="checkbox"
+                            checked={selectedCaLeaves.has(leaf)}
+                            onChange={() => toggleCaSelect(leaf)}
+                            className="accent-primary shrink-0"
+                          />
                           <span className="text-[10px] font-mono text-on-surface-variant/60 w-8 text-right shrink-0">
                             #{idx}
                           </span>

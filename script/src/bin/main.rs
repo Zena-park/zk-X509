@@ -96,17 +96,15 @@ fn main() {
     if args.ca_root {
         let ca_pub_key = std::fs::read(&args.ca_cert)
             .unwrap_or_else(|e| panic!("Failed to read CA cert file {:?}: {}", args.ca_cert, e));
-        let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-        let mut ca_leaves = vec![ca_leaf_hash];
+        let mut extra_hashes = Vec::new();
         for extra in &args.extra_ca {
             let extra_pub = std::fs::read(extra)
                 .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
-            let extra_hash: [u8; 32] = sha2::Sha256::digest(&extra_pub).into();
-            ca_leaves.push(extra_hash);
+            extra_hashes.push(sha2::Sha256::digest(&extra_pub).into());
         }
-        let (ca_merkle_root, _) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+        let (_, ca_merkle_root, _) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &extra_hashes);
         println!("CA Merkle Root: 0x{}", hex::encode(ca_merkle_root));
-        println!("CA count: {}", ca_leaves.len());
+        println!("CA count: {}", 1 + extra_hashes.len());
         return;
     }
 
@@ -165,18 +163,10 @@ fn main() {
     // Parse registrant address (required for --execute/--prove)
     let registrant_str = args.registrant.as_deref()
         .expect("--registrant is required for --execute/--prove");
-    let registrant_hex = registrant_str.strip_prefix("0x").unwrap_or(registrant_str);
-    let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
-        .expect("Invalid registrant address hex")
-        .try_into()
-        .expect("Registrant address must be 20 bytes");
-
-    // Parse registry address
-    let registry_hex = args.registry_address.strip_prefix("0x").unwrap_or(&args.registry_address);
-    let registry_bytes: [u8; 20] = hex::decode(registry_hex)
-        .expect("Invalid registry address hex")
-        .try_into()
-        .expect("Registry address must be 20 bytes");
+    let registrant_bytes = zk_x509_script::parse_eth_address(registrant_str)
+        .expect("Invalid registrant address");
+    let registry_bytes = zk_x509_script::parse_eth_address(&args.registry_address)
+        .expect("Invalid registry address");
 
     // Sign ownership + nullifier challenges
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
@@ -188,17 +178,17 @@ fn main() {
     println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 
     // Build CA Merkle tree (user's CA is always index 0)
-    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-    let mut ca_leaves = vec![ca_leaf_hash];
+    let mut extra_hashes = Vec::new();
     for extra in &args.extra_ca {
         let extra_pub = std::fs::read(extra)
             .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
         let extra_hash: [u8; 32] = sha2::Sha256::digest(&extra_pub).into();
-        ca_leaves.push(extra_hash);
+        extra_hashes.push(extra_hash);
         println!("Extra CA: {} (hash: 0x{})", extra.display(), hex::encode(extra_hash));
     }
-    println!("CA Merkle Tree: {} leaves", ca_leaves.len());
-    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+    let (_ca_leaf, ca_merkle_root, ca_merkle_proof) =
+        zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &extra_hashes);
+    println!("CA Merkle Tree: {} leaves", 1 + extra_hashes.len());
 
     let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
         cert_der: &cert_der,

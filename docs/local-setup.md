@@ -66,7 +66,7 @@ cargo run --release --bin vkey
 cd contracts && forge build
 
 # Frontend 빌드
-cd frontend-v2 && npm install && npm run build
+cd frontend && npm install && npm run build
 ```
 
 > 프로그램 코드(`program/src/main.rs`)를 수정하면 Verification Key가 변경됩니다.
