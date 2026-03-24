@@ -1,7 +1,7 @@
 "use client";
 
 import { ProofInput } from "@/components/ProofInput";
-import { WalletConnect } from "@/components/WalletConnect";
+import { useAccount } from "@/components/NavBar";
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import {
@@ -10,14 +10,13 @@ import {
 } from "@/contracts/IdentityRegistry";
 
 export default function Home() {
-  const [account, setAccount] = useState<string | null>(null);
+  const { account } = useAccount();
   const [txStatus, setTxStatus] = useState<string>("");
   const [verified, setVerified] = useState<boolean | null>(null);
   const [verifiedExpiry, setVerifiedExpiry] = useState<string>("");
   const [mode, setMode] = useState<"register" | "reRegister">("register");
   const [submitting, setSubmitting] = useState(false);
 
-  // Check verification status when wallet connects
   useEffect(() => {
     if (!account || !window.ethereum) return;
 
@@ -27,7 +26,7 @@ export default function Home() {
         const network = await provider.getNetwork();
         const chainId = network.chainId.toString();
         const addr = REGISTRY_ADDRESSES[chainId];
-        if (!addr || addr === "0x0000000000000000000000000000000000000000") return;
+        if (!addr || addr === ethers.ZeroAddress) return;
 
         const contract = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, provider);
         const isV = await contract.isVerified(account);
@@ -57,7 +56,7 @@ export default function Home() {
       const chainId = network.chainId.toString();
 
       const registryAddress = REGISTRY_ADDRESSES[chainId];
-      if (!registryAddress || registryAddress === "0x0000000000000000000000000000000000000000") {
+      if (!registryAddress || registryAddress === ethers.ZeroAddress) {
         setTxStatus(`체인 ${chainId}에 컨트랙트가 배포되지 않았습니다.`);
         return;
       }
@@ -90,6 +89,8 @@ export default function Home() {
         setTxStatus("오류: 해당 인증서는 폐기되었습니다.");
       } else if (msg.includes("CertAlreadyExpired")) {
         setTxStatus("오류: 인증서가 만료되었습니다.");
+      } else if (msg.includes("ContractPaused")) {
+        setTxStatus("오류: 서비스가 일시 중지 상태입니다.");
       } else {
         setTxStatus(`오류: ${msg}`);
       }
@@ -108,26 +109,26 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Step 1: Connect Wallet */}
-        <section className="rounded-xl border border-gray-800 bg-gray-900 p-6">
-          <h2 className="mb-4 text-lg font-semibold">1. 지갑 연결</h2>
-          <WalletConnect onConnect={setAccount} />
-          {account && (
-            <p className="mt-2 text-sm text-green-400">
-              연결됨: {account.slice(0, 6)}...{account.slice(-4)}
-            </p>
-          )}
-          {verified === true && (
-            <p className="mt-1 text-sm text-blue-400">
-              인증됨 (만료: {verifiedExpiry})
-            </p>
-          )}
-        </section>
+        {/* Verification Status */}
+        {account && (
+          <section className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+            <h2 className="mb-2 text-lg font-semibold">인증 상태</h2>
+            {verified === true ? (
+              <p className="text-sm text-green-400">
+                인증됨 (만료: {verifiedExpiry})
+              </p>
+            ) : verified === false ? (
+              <p className="text-sm text-gray-400">미인증</p>
+            ) : (
+              <p className="text-sm text-gray-500">확인 중...</p>
+            )}
+          </section>
+        )}
 
-        {/* Step 2: Submit Proof */}
+        {/* Submit Proof */}
         <section className="rounded-xl border border-gray-800 bg-gray-900 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">2. 증명 제출</h2>
+            <h2 className="text-lg font-semibold">증명 제출</h2>
             <div className="flex gap-2 text-sm">
               <button
                 onClick={() => setMode("register")}
