@@ -42,10 +42,6 @@ export default function LandingPage() {
           backgroundImage: "linear-gradient(rgba(140,231,255,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(140,231,255,0.2) 1px, transparent 1px)",
           backgroundSize: "60px 60px"
         }} />
-        {/* Hero lock image */}
-        <div className="absolute right-[5%] top-1/2 -translate-y-1/2 pointer-events-none opacity-40 hidden lg:block">
-          <img src="/hero-lock.png" alt="" className="w-[500px] h-[500px] object-contain" />
-        </div>
 
         <div className="relative max-w-5xl mx-auto px-8 py-20 text-center">
           <motion.div
