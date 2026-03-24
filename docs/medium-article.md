@@ -1,6 +1,6 @@
-# zk-X509: Bringing Government-Grade Identity to Blockchain — Without Revealing Who You Are
+# Stop Building New Identity Systems: How zk-X509 Bridges 4 Billion Existing IDs to Web3
 
-*Bridge the existing. Don't build from scratch.*
+*Privacy-preserving, legally binding, and zero-hardware. Why the future of on-chain identity is already in your pocket.*
 
 ---
 
@@ -26,13 +26,17 @@ Your Certificate → Local ZK Prover → On-Chain Proof → Verified Wallet
 ```
 
 1. You have an X.509 certificate (e.g., Korean NPKI from your bank)
-2. A local prover on your machine generates a zero-knowledge proof inside SP1's zkVM
-3. The proof goes on-chain — a smart contract verifies it in ~77,000 gas
+2. A local prover on your machine generates a zero-knowledge proof inside [SP1](https://docs.succinct.xyz/) (a high-performance, Rust-based zkVM by Succinct)
+3. The proof goes on-chain — a smart contract verifies it in ~300,000 gas (Groth16)
 4. Your wallet is "verified" — the blockchain sees only an anonymous nullifier; which CA issued your cert remains hidden (CA-Membership Hiding via Merkle proof)
 
 **No personal data on-chain. No central server. No hardware. No new credentials needed.**
 
-The ZK circuit verifies and commits, all privacy-preserving:
+### Your Private Key Never Leaves the Hardware
+
+Unlike other ZK protocols where secrets must be fed into the circuit, zk-X509 treats the private key as a **black box**. By leveraging OS-level Secure Enclaves (macOS) and TPMs (Windows), the key never exists in general process memory. The ZK proof only verifies the *result* of a hardware-secured signature — the key itself never enters the prover.
+
+### What the ZK Circuit Verifies
 
 - **Certificate chain** — full chain to government root CA, every signature verified
 - **Key ownership** — via OS keychain signature; private key never enters the ZK circuit
@@ -40,6 +44,12 @@ The ZK circuit verifies and commits, all privacy-preserving:
 - **Registrant binding** — proof locked to your wallet address
 - **Auto-expiry** — certificate expiry (`notAfter`) committed on-chain; identity lapses automatically
 - **Selective disclosure** — choose which attributes to reveal (country, org, department) per proof; everything else stays hidden
+
+## Real-World Use Cases
+
+- **Sybil-Resistant Airdrops** — No more bot farms. One government ID = one airdrop claim.
+- **Compliant DeFi / RWA** — Access institutional pools by proving you are a verified citizen of a specific country — without revealing your name.
+- **Private DAO Voting** — Prove you are a real person (1 person, 1 vote) without revealing your off-chain identity.
 
 ## Why Not DIDs?
 
@@ -51,7 +61,7 @@ The ZK circuit verifies and commits, all privacy-preserving:
 | **Regulatory standing** | Unresolved | Legally binding |
 | **Time to deploy** | 3–5 years | 3–6 months |
 
-DID builds *new* trust. zk-X509 bridges *existing* trust. They're complementary.
+> **DID builds *new* trust. zk-X509 bridges *existing* trust. They're complementary.**
 
 ## Flexible Identity: One Size Does Not Fit All
 
@@ -109,7 +119,7 @@ Breaking our system means breaking RSA or SHA-256.
 | Proving time (GPU, estimated) | ~1–2 minutes |
 | On L2 rollups | Negligible gas cost |
 
-Full stack implemented: SP1 zkVM (Rust), Solidity smart contracts, Axum prover server with NPKI auto-discovery, web frontend with MetaMask. **The private key never even enters the ZK circuit.** The OS keychain signs a challenge, and only the signature goes into the prover. On devices with hardware-backed keystores (macOS Secure Enclave, Windows TPM), the private key may never exist in general process memory at all.
+Full stack implemented: SP1 zkVM (Rust), Solidity smart contracts, web frontend with MetaMask, and an interactive CLI with NPKI auto-discovery.
 
 ## What's Next
 
@@ -122,10 +132,7 @@ Full stack implemented: SP1 zkVM (Rust), Solidity smart contracts, Axum prover s
 Open source: **[github.com/tokamak-network/zk-X509](https://github.com/tokamak-network/zk-X509)**
 
 ```bash
-cd certs && bash generate-test-certs.sh && cd ..
-cargo run --release -p zk-x509-script --bin zk-x509 -- \
-  --execute --cert certs/signCert.der --key certs/signPri.key \
-  --ca-cert certs/ca_pub.der
+cargo run --release --bin interactive
 ```
 
 ## The Bigger Picture
@@ -134,7 +141,9 @@ The blockchain identity space is obsessed with building from scratch. We think t
 
 Governments have issued **billions** of cryptographic credentials. The math checks out — RSA signatures verify inside ZK circuits, revocation lists check trustlessly, proofs bind to wallets.
 
-**zk-X509 is the missing bridge.**
+Identity shouldn't be a barrier to entry. It should be an invisible layer of trust. zk-X509 doesn't ask you to trust a new foundation or buy a new device. It simply asks the blockchain to recognize the trust you've already been given — by your own country.
+
+> **zk-X509 is the missing bridge.**
 
 We're not replacing DID or competing with Worldcoin. We're asking: *before you build a new trust system, have you checked if there's already one that works?*
 
