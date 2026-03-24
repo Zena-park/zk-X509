@@ -68,6 +68,26 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
 
 ## 4. Groth16 Proof 생성 (on-chain 제출용)
 
+### Apple Silicon (M1/M2/M3) 사전 준비
+
+Groth16 wrapping에 Docker gnark 이미지가 필요. ARM64 이미지가 없으므로 x86 이미지를 먼저 pull:
+
+```bash
+docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0
+```
+
+### Dev 모드 (빠름, 테스트용)
+
+```bash
+SP1_DEV=true cargo run --release --bin evm -- --system groth16 \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0xYOUR_WALLET \
+  --chain-id 31337 \
+  --registry-address $REGISTRY_ADDR
+```
+
+### Production 모드 (느림, 배포용)
+
 ```bash
 cargo run --release --bin evm -- --system groth16 \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
@@ -79,7 +99,8 @@ cargo run --release --bin evm -- --system groth16 \
 `=== Frontend Input ===` 아래에 Proof와 Public Values hex가 출력됨.
 이 값을 프론트엔드에 붙여넣어 트랜잭션 제출.
 
-> 기본 `SP1_PROVER=cpu` (로컬 CPU). Groth16 wrapping 포함이라 시간이 오래 걸림.
+> `SP1_DEV=true`는 보안 강도가 낮은 dev circuit 사용. 증명 내용/Public Values는 동일.
+> Production 배포 시에는 `SP1_DEV` 없이 실행.
 
 ## 5. 로컬 E2E Test (Anvil)
 
