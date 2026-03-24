@@ -144,16 +144,10 @@
 
 ### MEDIUM (측정 필요)
 
-#### 52. Delegated Proving을 메인 아키텍처로 격상
-- **현재:** Section 7.5 (Future Work)에 위임 증명 기술
-- **변경:** 메인 아키텍처(Section 3)로 이동 — 시스템의 권장 배포 모델로 명시
-- **이유:**
-  - 증명 시간 해결 (10분 → 1~2분 GPU)
-  - CRL 강제 적용 (클라우드가 CA에서 직접 다운로드)
-  - 개인키 안전 (서명만 전송, 키는 로컬)
-  - 서명 탈취 안전 (addr + timestamp + chain_id 바인딩)
-- **변경 범위:** 논문 구조 변경 (Section 3에 Delegated Proving 추가, Section 7.5에서 이동)
-- **코드:** 현재 server.rs가 이미 위임형 구조 (서명 받아서 proof 생성)
+#### 52. ~~Delegated Proving을 메인 아키텍처로 격상~~ → 삭제 결정
+- **결정:** 위임증명(Delegated Proving) 전체 삭제 (중앙화 이슈)
+- **삭제 대상:** Section 3.10 전체, 비교표 "Delegated Proving" 행, 5.5.3/6.2/7.5 위임 언급
+- **방향:** 로컬 증명 중심으로 재작성
 
 #### 50. CRL Merkle Oracle — 대규모 CRL 지원 (← #18 흡수)
 - **문제:** 현재 zkVM 내 CRL 검증은 전체 CRL DER을 입력 → 대규모 CRL(수십 MB)은 비용 비현실적
@@ -182,13 +176,10 @@
 - Freshness 공격의 한계를 Security Analysis에 명시
 - CRL Oracle을 Future Work이 아닌 권장 아키텍처로 기술
 
-#### 47. ~~Privacy-Preserving Delegated Proving 섹션 추가~~ ✅ DONE
-- 개인키가 zkVM에 안 들어가므로 클라우드 prover에 위임 가능
-- 사용자: 폰/PC에서 서명만 생성 (1초) → 클라우드 GPU: 증명 생성 (1~2분)
-- 클라우드 서버는 서명값만 볼 뿐 개인키를 알 수 없음 → 프라이버시 유지
-- "증명에 10분 소요 → 실용성 없다" 비판을 원천 차단하는 핵심 논거
-- Prover Market (Succinct, Gevulot 등) 연동 가능성도 언급
-- 변경 범위: 논문 (Discussion 또는 Architecture 섹션에 추가)
+#### 47. ~~Privacy-Preserving Delegated Proving 섹션 추가~~ → #52에서 삭제 결정
+- ~~개인키가 zkVM에 안 들어가므로 클라우드 prover에 위임 가능~~
+- **삭제 사유:** 중앙화 이슈 — 클라우드 프로버 의존은 시스템 설계 원칙에 부적합
+- **후속:** #52에서 논문 내 위임증명 관련 내용 전체 제거 예정
 
 #### 48. ~~기존 시스템 대비 정량 비교 테이블 (논문 Evaluation)~~ ✅ DONE
 - DID (Polygon ID, Worldcoin), zkPassport, Semaphore, zk-email과 비교
