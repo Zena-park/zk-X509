@@ -24,6 +24,9 @@ contract IdentityRegistry {
     ///         Anyone can read this to compute Merkle proofs for proof generation.
     bytes32[] public caLeaves;
 
+    /// @notice Tracks whether a CA hash is already in caLeaves (prevents duplicates).
+    mapping(bytes32 => bool) public caExists;
+
     /// @notice CRL Merkle root (bytes32(0) = CRL checking disabled).
     bytes32 public crlMerkleRoot;
 
@@ -90,6 +93,7 @@ contract IdentityRegistry {
     error InvalidCrlMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
     error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
     error ZeroCaHash();
+    error DuplicateCaHash(bytes32 caHash);
     error CaIndexOutOfBounds(uint256 index, uint256 length);
 
     // ============ Modifiers ============
@@ -230,9 +234,25 @@ contract IdentityRegistry {
     /// @param caHash SHA-256 hash of the CA's public key (SPKI DER format).
     function addCA(bytes32 caHash) external onlyOwner {
         if (caHash == bytes32(0)) revert ZeroCaHash();
+        if (caExists[caHash]) revert DuplicateCaHash(caHash);
         caLeaves.push(caHash);
+        caExists[caHash] = true;
         _recomputeCaMerkleRoot();
         emit CaAdded(caHash, caLeaves.length - 1);
+    }
+
+    /// @notice Add multiple trusted CAs in a single transaction. Recomputes root once.
+    /// @param caHashes Array of SHA-256 hashes of CA public keys.
+    function addCAs(bytes32[] calldata caHashes) external onlyOwner {
+        for (uint256 i = 0; i < caHashes.length; i++) {
+            bytes32 caHash = caHashes[i];
+            if (caHash == bytes32(0)) revert ZeroCaHash();
+            if (caExists[caHash]) revert DuplicateCaHash(caHash);
+            caLeaves.push(caHash);
+            caExists[caHash] = true;
+            emit CaAdded(caHash, caLeaves.length - 1);
+        }
+        _recomputeCaMerkleRoot();
     }
 
     /// @notice Remove a trusted CA by index. Swaps with last element and pops.
@@ -242,6 +262,7 @@ contract IdentityRegistry {
         uint256 len = caLeaves.length;
         if (index >= len) revert CaIndexOutOfBounds(index, len);
         bytes32 removed = caLeaves[index];
+        caExists[removed] = false;
         caLeaves[index] = caLeaves[len - 1];
         caLeaves.pop();
         _recomputeCaMerkleRoot();
@@ -319,6 +340,7 @@ contract IdentityRegistry {
 
     /// @dev Recompute caMerkleRoot from caLeaves[] using SHA-256 sorted-pair Merkle tree.
     ///      Same algorithm as zkVM (program/src/main.rs verify_merkle_membership).
+    ///      In-place computation to minimize memory allocation.
     function _recomputeCaMerkleRoot() internal {
         uint256 len = caLeaves.length;
         if (len == 0) {
@@ -327,27 +349,27 @@ contract IdentityRegistry {
             return;
         }
 
-        // Copy leaves to memory
+        // Copy leaves to memory (single allocation, reused in-place)
         bytes32[] memory layer = new bytes32[](len);
         for (uint256 i = 0; i < len; i++) {
             layer[i] = caLeaves[i];
         }
 
-        // Build tree bottom-up
-        while (layer.length > 1) {
-            uint256 newLen = (layer.length + 1) / 2;
-            bytes32[] memory next = new bytes32[](newLen);
-            for (uint256 i = 0; i < newLen; i++) {
+        // Build tree bottom-up, in-place
+        uint256 size = len;
+        while (size > 1) {
+            uint256 newSize = (size + 1) / 2;
+            for (uint256 i = 0; i < newSize; i++) {
                 bytes32 left = layer[i * 2];
-                bytes32 right = (i * 2 + 1 < layer.length) ? layer[i * 2 + 1] : left;
+                bytes32 right = (i * 2 + 1 < size) ? layer[i * 2 + 1] : left;
                 // Sorted-pair hash: H(min(a,b) || max(a,b))
                 if (left <= right) {
-                    next[i] = sha256(abi.encodePacked(left, right));
+                    layer[i] = sha256(abi.encodePacked(left, right));
                 } else {
-                    next[i] = sha256(abi.encodePacked(right, left));
+                    layer[i] = sha256(abi.encodePacked(right, left));
                 }
             }
-            layer = next;
+            size = newSize;
         }
 
         caMerkleRoot = layer[0];

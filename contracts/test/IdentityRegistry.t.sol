@@ -658,4 +658,73 @@ contract IdentityRegistryTest is Test {
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
         registry.removeCA(0);
     }
+
+    function test_AddCAs_Batch() public {
+        bytes32[] memory hashes = new bytes32[](3);
+        hashes[0] = bytes32(uint256(0xAA));
+        hashes[1] = bytes32(uint256(0xBB));
+        hashes[2] = bytes32(uint256(0xCC));
+
+        registry.addCAs(hashes);
+
+        assertEq(registry.getCaCount(), 3);
+        assertEq(registry.caLeaves(0), hashes[0]);
+        assertEq(registry.caLeaves(1), hashes[1]);
+        assertEq(registry.caLeaves(2), hashes[2]);
+        assertTrue(registry.caMerkleRoot() != bytes32(0));
+    }
+
+    function test_AddCAs_BatchRootMatchesSingleAdds() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        bytes32 ca2 = bytes32(uint256(0xBB));
+        bytes32 ca3 = bytes32(uint256(0xCC));
+
+        // Batch add
+        bytes32[] memory hashes = new bytes32[](3);
+        hashes[0] = ca1;
+        hashes[1] = ca2;
+        hashes[2] = ca3;
+        registry.addCAs(hashes);
+        bytes32 batchRoot = registry.caMerkleRoot();
+
+        // Compare: deploy fresh and add one-by-one
+        IdentityRegistry fresh = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1);
+        fresh.addCA(ca1);
+        fresh.addCA(ca2);
+        fresh.addCA(ca3);
+
+        assertEq(batchRoot, fresh.caMerkleRoot());
+    }
+
+    function test_RevertDuplicateCA() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        registry.addCA(ca1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.DuplicateCaHash.selector, ca1)
+        );
+        registry.addCA(ca1);
+    }
+
+    function test_RevertDuplicateCAInBatch() public {
+        bytes32[] memory hashes = new bytes32[](2);
+        hashes[0] = bytes32(uint256(0xAA));
+        hashes[1] = bytes32(uint256(0xAA)); // duplicate
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.DuplicateCaHash.selector, hashes[1])
+        );
+        registry.addCAs(hashes);
+    }
+
+    function test_RemoveThenReaddCA() public {
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        registry.addCA(ca1);
+        registry.removeCA(0);
+
+        // Should be able to re-add after removal
+        registry.addCA(ca1);
+        assertEq(registry.getCaCount(), 1);
+        assertEq(registry.caLeaves(0), ca1);
+    }
 }
