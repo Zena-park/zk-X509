@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Settings } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useWallet } from "@/lib/wallet";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -14,6 +15,8 @@ const navLinks = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const { account, chainName, chainId, registryAddr, connect, disconnect } = useWallet();
+  const [showMenu, setShowMenu] = useState(false);
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl border-b border-outline-variant/20 flex justify-between items-center px-8 h-20 shadow-2xl shadow-tertiary/5">
@@ -43,20 +46,52 @@ export function Navbar() {
       </div>
 
       <div className="flex items-center gap-4">
-        <button className="px-4 py-2 bg-surface-container-high rounded-lg transition-all text-on-surface-variant hover:text-on-surface text-sm font-headline">
-          0x...f2a1
-        </button>
-        <button className="px-6 py-2 bg-primary text-surface font-headline text-sm font-bold rounded-full transition-transform active:scale-95">
-          Connect Wallet
-        </button>
-        <div className="flex gap-2">
-          <button className="p-2 hover:bg-surface-container-high rounded-lg transition-all text-on-surface-variant hover:text-on-surface">
-            <Bell className="w-5 h-5" />
+        {/* Registry address */}
+        {account && registryAddr && (
+          <div className="hidden lg:flex flex-col items-end mr-2">
+            <span className="text-[10px] text-on-surface-variant font-mono">Registry</span>
+            <span className="text-xs font-mono text-on-surface-variant">
+              {registryAddr.slice(0, 8)}...{registryAddr.slice(-4)}
+            </span>
+          </div>
+        )}
+
+        {/* Network badge */}
+        {account && chainName && (
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-container border border-outline-variant/20 rounded-full">
+            <div className="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_rgba(107,255,143,0.5)]" />
+            <span className="text-xs font-label text-on-surface-variant">{chainName} ({chainId})</span>
+          </div>
+        )}
+
+        {/* Wallet */}
+        {account ? (
+          <div className="relative">
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="px-4 py-2 bg-surface-container-high rounded-lg text-on-surface-variant hover:text-on-surface text-sm font-mono transition-all"
+            >
+              {account.slice(0, 6)}...{account.slice(-4)}
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-outline-variant/20 bg-surface-container py-1 shadow-lg z-50">
+                <button
+                  onClick={() => { disconnect(); setShowMenu(false); }}
+                  className="w-full px-4 py-2 text-left text-sm text-error hover:bg-surface-container-high"
+                >
+                  Disconnect
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={connect}
+            className="px-6 py-2 bg-primary text-surface font-headline text-sm font-bold rounded-full transition-transform active:scale-95"
+          >
+            Connect Wallet
           </button>
-          <button className="p-2 hover:bg-surface-container-high rounded-lg transition-all text-on-surface-variant hover:text-on-surface">
-            <Settings className="w-5 h-5" />
-          </button>
-        </div>
+        )}
       </div>
     </nav>
   );

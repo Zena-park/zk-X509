@@ -3,6 +3,7 @@ import { Space_Grotesk, Manrope, Inter, JetBrains_Mono } from "next/font/google"
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Sidebar } from "@/components/Sidebar";
+import { WalletProvider } from "@/lib/wallet";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -45,9 +46,11 @@ export default function RootLayout({
       className={`${spaceGrotesk.variable} ${manrope.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
       <body className="min-h-screen bg-surface text-on-surface font-body">
-        <Navbar />
-        <Sidebar />
-        {children}
+        <WalletProvider>
+          <Navbar />
+          <Sidebar />
+          {children}
+        </WalletProvider>
       </body>
     </html>
   );
