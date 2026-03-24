@@ -13,7 +13,7 @@ contract MockSP1Verifier is ISP1Verifier {
 
 contract DeployLocalScript is Script {
     function run() external {
-        bool useMock = vm.envOr("USE_MOCK_VERIFIER", false);
+        bool useMock = vm.envOr("USE_MOCK_VERIFIER", true);
 
         vm.startBroadcast();
 
