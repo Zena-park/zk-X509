@@ -197,12 +197,12 @@ fn cmd_prove(session: &mut Session) {
     let max_wallets: u32 = 1;
 
     let chain_id: u64 = 31337; // TODO: make configurable
-    let contract_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let registry_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp, chain_id,
     ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &key_der, &contract_address, chain_id,
+        &cert_der, &key_der, &registry_address, chain_id,
     ).unwrap_or_else(|e| { println!("  Nullifier sign failed: {}", e); std::process::exit(1); });
 
     let mut stdin = SP1Stdin::new();
@@ -225,7 +225,7 @@ fn cmd_prove(session: &mut Session) {
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
     stdin.write(&ca_merkle_proof);
     stdin.write(&ca_merkle_root);
-    stdin.write(&contract_address);
+    stdin.write(&registry_address);
     stdin.write(&chain_id);
     zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
     match client.execute(ZK_X509_ELF, stdin).run() {

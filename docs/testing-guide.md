@@ -104,14 +104,14 @@ IdentityRegistry: 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496
 ### Step 3: ZK Proof 생성 + 등록
 
 ```bash
-# Proof 생성 (contract_address와 chain_id 지정)
+# Proof 생성 (registry_address와 chain_id 지정)
 cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
   --cert certs/signCert.der \
   --key certs/signPri.key \
   --ca-cert certs/ca_pub.der \
   --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --chain-id 31337 \
-  --contract-address 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496
+  --registry-address 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496
 ```
 
 ### Step 4: 등록 확인

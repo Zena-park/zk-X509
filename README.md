@@ -64,7 +64,7 @@ cargo run --release --bin zk-x509 -- --execute \
 ```bash
 cargo run --release --bin zk-x509 -- --prove \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --registrant 0xYOUR_WALLET --chain-id 31337 --contract-address 0xCONTRACT
+  --registrant 0xYOUR_WALLET --chain-id 31337 --registry-address 0xCONTRACT
 ```
 
 ## Project Structure

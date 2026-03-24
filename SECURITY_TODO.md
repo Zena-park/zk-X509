@@ -134,7 +134,7 @@
 #### 44. ~~Nullifier 교차 앱 추적 방지 (Cross-DApp Domain Separation)~~ ✅ DONE
 - **문제:** nullifier_sig = Sign(sk, H("zk-X509-Nullifier-v1")) — 도메인 분리 없음
 - **공격:** A DAO와 B DeFi에 동일 nullifier 제출 → 온체인 분석으로 동일인 추적 가능
-- **해결:** `Sign(sk, H("zk-X509-Nullifier-v1" ‖ contract_address))` — 앱별 고유 nullifier
+- **해결:** `Sign(sk, H("zk-X509-Nullifier-v1" ‖ registry_address))` — 앱별 고유 nullifier
 - **변경 범위:** program (nullifier domain에 contract address 포함), lib (NULLIFIER_DOMAIN 변경), host scripts
 
 #### 45. ~~Cross-Chain Replay 방지 (chain_id 추가)~~ ✅ DONE
@@ -197,7 +197,7 @@
 - 변경 범위: 논문, BENCHMARKS.md에 비교 데이터 추가
 
 #### 53. 프론트엔드 최신 ABI 동기화
-- PublicValuesStruct에 chainId, appContract, crlMerkleRoot 추가됨
+- PublicValuesStruct에 chainId, registryAddress, crlMerkleRoot 추가됨
 - 에러 코드 변경 (UnsupportedCA → InvalidCaMerkleRoot 등)
 - 컨트랙트 ABI 재생성 + 프론트엔드 반영
 

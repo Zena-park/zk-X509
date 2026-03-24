@@ -74,7 +74,7 @@ fn main() {
         .unwrap()
         .as_secs();
 
-    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key];
+    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.clone()];
     let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
     let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
         .expect("Invalid registrant address hex")
@@ -82,12 +82,12 @@ fn main() {
         .expect("Registrant address must be 20 bytes");
 
     let chain_id: u64 = 31337; // TODO: make configurable
-    let contract_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let registry_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, chain_id,
     ).expect("Failed to sign");
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &priv_key, &contract_address, chain_id,
+        &cert_der, &priv_key, &registry_address, chain_id,
     ).expect("Failed to sign nullifier");
 
     let crl_der: Vec<u8> = Vec::new();
@@ -109,7 +109,7 @@ fn main() {
     stdin.write(&args.disclosure_mask);
     stdin.write(&ca_merkle_proof);
     stdin.write(&ca_merkle_root);
-    stdin.write(&contract_address);
+    stdin.write(&registry_address);
     stdin.write(&chain_id);
     zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
     println!("Proof System: {:?}", args.system);

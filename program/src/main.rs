@@ -389,8 +389,8 @@ pub fn main() {
     // Signature-based ownership: host signs a challenge with the private key,
     // only the signature enters the ZK circuit. Private key never touches zkVM.
     let ownership_sig: Vec<u8> = sp1_zkvm::io::read();
-    // Nullifier signature: Sign(sk, H("zk-X509-Nullifier-v2" ‖ contract_address)) — deterministic,
-    // app-specific. Different contracts get different nullifiers (cross-DApp unlinkability).
+    // Nullifier signature: Sign(sk, H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id)) — deterministic.
+    // Different registries/chains get different nullifiers (cross-chain unlinkability).
     let nullifier_sig: Vec<u8> = sp1_zkvm::io::read();
     // Chain: [intermediate_ca_certs..., root_ca_pub_key_spki_der]
     // Single-level: [root_ca_pub_key_spki_der]
@@ -412,8 +412,8 @@ pub fn main() {
     // Merkle proof for CA anonymity: proves CA membership without revealing which CA
     let ca_merkle_proof: Vec<[u8; 32]> = sp1_zkvm::io::read();
     let ca_merkle_root: [u8; 32] = sp1_zkvm::io::read();
-    // Domain separation: contract address + chain ID prevent cross-DApp and cross-chain attacks
-    let contract_address: [u8; 20] = sp1_zkvm::io::read();
+    // Domain separation: registry address + chain ID prevent cross-chain replay
+    let registry_address: [u8; 20] = sp1_zkvm::io::read();
     let chain_id: u64 = sp1_zkvm::io::read();
     // CRL Merkle Oracle: non-inclusion proof for revocation checking
     // If crl_merkle_root == [0; 32], CRL checking is disabled (legacy mode)
@@ -636,12 +636,11 @@ pub fn main() {
     //
     // The nullifier_sig is verified against the cert's public key to ensure
     // it was produced by the legitimate key holder.
-    // Domain includes contract_address + chain_id for defense in depth:
-    // - contract_address → cross-DApp unlinkability
-    // - chain_id → cross-chain unlinkability (redundant with ownership, but defense in depth)
+    // Domain includes registry_address + chain_id for cross-chain unlinkability:
+    // different registries/chains produce different nullifiers
     let mut domain_hasher = Sha256::new();
     domain_hasher.update(NULLIFIER_DOMAIN);
-    domain_hasher.update(&contract_address);
+    domain_hasher.update(&registry_address);
     domain_hasher.update(&chain_id.to_be_bytes());
     let nullifier_domain_hash: [u8; 32] = domain_hasher.finalize().into();
     verify_ownership_signature(&nullifier_domain_hash, &nullifier_sig, &user_cert);
@@ -697,7 +696,7 @@ pub fn main() {
         walletIndex: wallet_index,
         notAfter: not_after,
         chainId: chain_id,
-        appContract: alloy_sol_types::private::Address::from_slice(&contract_address),
+        registryAddress: alloy_sol_types::private::Address::from_slice(&registry_address),
         crlMerkleRoot: crl_merkle_root.into(),
         countryHash: country_hash.into(),
         orgHash: org_hash.into(),

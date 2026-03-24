@@ -80,17 +80,17 @@ pub fn sign_ownership(
     sign_with_parsed_cert(&cert, key_der, &challenge_hash)
 }
 
-/// Sign the nullifier domain: H(NULLIFIER_DOMAIN ‖ contract_address).
-/// contract_address + chain_id ensures cross-DApp and cross-chain nullifier unlinkability.
+/// Sign the nullifier domain: H(NULLIFIER_DOMAIN ‖ registry_address ‖ chain_id).
+/// registry_address + chain_id ensures cross-chain nullifier unlinkability.
 pub fn sign_nullifier(
     cert_der: &[u8],
     key_der: &[u8],
-    contract_address: &[u8; 20],
+    registry_address: &[u8; 20],
     chain_id: u64,
 ) -> Result<Vec<u8>, String> {
     let mut domain_hasher = Sha256::new();
     domain_hasher.update(NULLIFIER_DOMAIN);
-    domain_hasher.update(contract_address);
+    domain_hasher.update(registry_address);
     domain_hasher.update(&chain_id.to_be_bytes());
     let message_hash: [u8; 32] = domain_hasher.finalize().into();
     parse_and_sign(cert_der, key_der, &message_hash)

@@ -158,7 +158,7 @@ CHAIN_ID=42161
 # Proof generation must use matching chain_id:
 cargo run --release --bin zk-x509 -- --prove \
   --chain-id 137 \
-  --contract-address <POLYGON_REGISTRY> \
+  --registry-address <POLYGON_REGISTRY> \
   ...
 ```
 
