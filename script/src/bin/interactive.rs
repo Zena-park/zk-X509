@@ -239,8 +239,10 @@ fn main() {
         println!("  Running execute mode (fast, no on-chain proof)...");
         match client.execute(ZK_X509_ELF, stdin).run() {
             Ok((output, report)) => {
-                let decoded = PublicValuesStruct::abi_decode(output.as_slice())
-                    .expect("Failed to decode");
+                let decoded = match PublicValuesStruct::abi_decode(output.as_slice()) {
+                    Ok(d) => d,
+                    Err(e) => { println!("  ✗ Failed to decode output: {}", e); return; }
+                };
                 let (nullifier, ca_root) = format_decoded(&decoded);
                 println!();
                 println!("  ✓ Verification successful!");
@@ -256,11 +258,17 @@ fn main() {
         }
     } else {
         println!("  Generating Groth16 proof (this takes several minutes, Docker required)...");
-        let pk = client.setup(ZK_X509_ELF).expect("failed to setup elf");
+        let pk = match client.setup(ZK_X509_ELF) {
+            Ok(pk) => pk,
+            Err(e) => { println!("  ✗ Prover setup failed: {}", e); return; }
+        };
         match client.prove(&pk, stdin).groth16().run() {
             Ok(proof) => {
                 let pv_bytes = proof.public_values.as_slice();
-                let decoded = PublicValuesStruct::abi_decode(pv_bytes).expect("Failed to decode");
+                let decoded = match PublicValuesStruct::abi_decode(pv_bytes) {
+                    Ok(d) => d,
+                    Err(e) => { println!("  ✗ Failed to decode proof output: {}", e); return; }
+                };
                 let (nullifier, ca_root) = format_decoded(&decoded);
 
                 let proof_bytes = proof.bytes();

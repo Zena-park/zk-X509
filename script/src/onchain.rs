@@ -20,6 +20,9 @@ pub fn fetch_max_wallets(rpc_url: &str, registry: &[u8; 20]) -> Result<u32, Stri
         return Err(format!("Expected 32 bytes, got {}", bytes.len()));
     }
     let val = u32::from_be_bytes(bytes[28..32].try_into().unwrap());
+    if val == 0 {
+        return Err("MAX_WALLETS_PER_CERT is 0 — contract may not be deployed correctly".to_string());
+    }
     Ok(val)
 }
 
