@@ -80,7 +80,7 @@ pub fn sign_ownership(
     sign_with_parsed_cert(&cert, key_der, &challenge_hash)
 }
 
-/// Sign the nullifier domain: H(NULLIFIER_DOMAIN ‖ registry_address).
+/// Sign the nullifier domain: H(NULLIFIER_DOMAIN ‖ registry_address ‖ chain_id).
 /// registry_address + chain_id ensures cross-DApp and cross-chain nullifier unlinkability.
 pub fn sign_nullifier(
     cert_der: &[u8],

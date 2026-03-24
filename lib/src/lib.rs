@@ -1,8 +1,8 @@
 use alloy_sol_types::sol;
 
 /// Domain separator prefix for nullifier generation.
-/// Full domain = NULLIFIER_DOMAIN ‖ registry_address (20 bytes)
-/// This ensures different dApps get different nullifiers (cross-DApp unlinkability).
+/// Full domain = NULLIFIER_DOMAIN ‖ registry_address (20 bytes) ‖ chain_id (uint64)
+/// This ensures different registries and different chains get different nullifiers.
 pub const NULLIFIER_DOMAIN: &[u8] = b"zk-X509-Nullifier-v2";
 
 sol! {

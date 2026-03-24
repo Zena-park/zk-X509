@@ -79,7 +79,7 @@ contract IdentityRegistry {
     error WalletIndexOutOfRange(uint32 walletIndex, uint32 maxAllowed);
     error CertAlreadyExpired(uint64 notAfter, uint256 blockTimestamp);
     error ChainIdMismatch(uint64 proofChainId, uint256 expectedChainId);
-    error RegistryAddressMismatch(address proofContract, address expectedContract);
+    error RegistryAddressMismatch(address proofRegistry, address expectedRegistry);
     error InvalidCrlMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
     error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
 

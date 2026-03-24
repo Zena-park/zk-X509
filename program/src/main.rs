@@ -389,8 +389,8 @@ pub fn main() {
     // Signature-based ownership: host signs a challenge with the private key,
     // only the signature enters the ZK circuit. Private key never touches zkVM.
     let ownership_sig: Vec<u8> = sp1_zkvm::io::read();
-    // Nullifier signature: Sign(sk, H("zk-X509-Nullifier-v2" ‖ registry_address)) — deterministic,
-    // app-specific. Different registries get different nullifiers (cross-DApp unlinkability).
+    // Nullifier signature: Sign(sk, H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id)) — deterministic,
+    // registry-specific. Different registries and chains get different nullifiers (cross-DApp unlinkability).
     let nullifier_sig: Vec<u8> = sp1_zkvm::io::read();
     // Chain: [intermediate_ca_certs..., root_ca_pub_key_spki_der]
     // Single-level: [root_ca_pub_key_spki_der]
