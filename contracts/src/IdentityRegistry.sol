@@ -257,6 +257,8 @@ contract IdentityRegistry {
 
     /// @notice Remove a trusted CA by index. Swaps with last element and pops.
     ///         Automatically recomputes caMerkleRoot.
+    ///         WARNING: Indices are unstable after removal (swap-and-pop). Off-chain
+    ///         consumers must re-fetch getCaLeaves() after any removal.
     /// @param index Index of the CA to remove in caLeaves array.
     function removeCA(uint256 index) external onlyOwner {
         uint256 len = caLeaves.length;
@@ -346,6 +348,12 @@ contract IdentityRegistry {
         if (len == 0) {
             caMerkleRoot = bytes32(0);
             emit CaMerkleRootUpdated(bytes32(0));
+            return;
+        }
+        if (len == 1) {
+            bytes32 root = caLeaves[0];
+            caMerkleRoot = root;
+            emit CaMerkleRootUpdated(root);
             return;
         }
 

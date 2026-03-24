@@ -93,13 +93,13 @@ async function sha256(data: Uint8Array): Promise<Uint8Array> {
 /*  Tx Status Badge                                                    */
 /* ------------------------------------------------------------------ */
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, title = "Copy to clipboard" }: { text: string; title?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
       className="ml-1 text-[10px] text-on-surface-variant hover:text-primary transition-colors"
-      title="Copy tx hash"
+      title={title}
     >
       {copied ? "✓" : "📋"}
     </button>
@@ -239,8 +239,8 @@ export default function AdminPage() {
 
   // Per-file add tx status (keyed by hashHex)
   const [addCaTxMap, setAddCaTxMap] = useState<Record<string, TxStatus>>({});
-  // Per-index remove tx status
-  const [removeCaTxMap, setRemoveCaTxMap] = useState<Record<number, TxStatus>>({});
+  // Per-hash remove tx status (keyed by leaf hash, not index — indices are unstable after swap-and-pop)
+  const [removeCaTxMap, setRemoveCaTxMap] = useState<Record<string, TxStatus>>({});
 
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
@@ -415,12 +415,12 @@ export default function AdminPage() {
     );
   };
 
-  const handleRemoveCa = (index: number) => {
+  const handleRemoveCa = (index: number, leafHash: string) => {
     if (!writeContract) return;
     const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
       setRemoveCaTxMap((prev) => ({
         ...prev,
-        [index]: typeof s === "function" ? s(prev[index] ?? IDLE) : s,
+        [leafHash]: typeof s === "function" ? s(prev[leafHash] ?? IDLE) : s,
       }));
     };
     execTx(
@@ -429,6 +429,8 @@ export default function AdminPage() {
       () => {
         refresh();
         fetchCaLeaves();
+        // Clear stale statuses after list changes (indices shifted)
+        setRemoveCaTxMap({});
       },
     );
   };
@@ -915,10 +917,10 @@ export default function AdminPage() {
                 ) : (
                   <div className="space-y-2">
                     {onChainCaLeaves.map((leaf, idx) => {
-                      const txStatus = removeCaTxMap[idx] ?? IDLE;
+                      const txStatus = removeCaTxMap[leaf] ?? IDLE;
                       return (
                         <div
-                          key={`${idx}-${leaf}`}
+                          key={leaf}
                           className="flex items-center gap-3 bg-surface-highest rounded-xl px-4 py-3"
                         >
                           <span className="text-[10px] font-mono text-on-surface-variant/60 w-8 text-right shrink-0">
@@ -930,7 +932,7 @@ export default function AdminPage() {
                           <CopyButton text={leaf} />
                           <TxBadge status={txStatus} />
                           <button
-                            onClick={() => handleRemoveCa(idx)}
+                            onClick={() => handleRemoveCa(idx, leaf)}
                             disabled={disabled || isBusy(txStatus)}
                             className="px-3 py-1.5 border border-error/30 text-error rounded-lg font-label font-bold text-[10px] hover:bg-error/10 disabled:opacity-50 transition-all shrink-0"
                           >
