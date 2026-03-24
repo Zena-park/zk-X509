@@ -85,9 +85,7 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 > `MAX_WALLETS_PER_CERT`: 인증서당 최대 지갑 수 (기본값 1, 배포 후 변경 불가).
 >
-> 기본값은 MockSP1Verifier (proof 검증 생략, 빠른 테스트용).
-> 실제 SP1Verifier를 사용하려면: `USE_MOCK_VERIFIER=false` 추가.
-> 이 경우 production Groth16 proof가 필요합니다 (Docker + 긴 시간).
+> 실제 SP1VerifierGroth16이 배포됩니다. Production Groth16 proof가 필요합니다 (Docker 필요).
 
 ### Step 3: 관리자 — CA Merkle Root 계산
 
