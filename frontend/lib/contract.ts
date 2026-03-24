@@ -146,6 +146,13 @@ export const IDENTITY_REGISTRY_ABI = [
     type: "function",
   },
   {
+    inputs: [{ name: "indices", type: "uint256[]" }],
+    name: "removeCAs",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
     inputs: [],
     name: "getCaCount",
     outputs: [{ name: "", type: "uint256" }],

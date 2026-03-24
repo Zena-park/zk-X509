@@ -276,13 +276,29 @@ contract IdentityRegistry {
     ///         Automatically recomputes caMerkleRoot.
     /// @param index Index of the CA to remove in caLeaves array.
     function removeCA(uint256 index) external onlyOwner {
+        _removeSingleCA(index);
+        _recomputeCaMerkleRoot();
+    }
+
+    /// @notice Remove multiple CAs in a single transaction. Indices must be sorted descending.
+    /// @param indices Indices to remove, sorted largest-first (required for swap-and-pop safety).
+    function removeCAs(uint256[] calldata indices) external onlyOwner {
+        for (uint256 i = 0; i < indices.length; i++) {
+            if (i > 0 && indices[i] >= indices[i - 1]) {
+                revert CaIndexOutOfBounds(indices[i], indices[i - 1]);
+            }
+            _removeSingleCA(indices[i]);
+        }
+        _recomputeCaMerkleRoot();
+    }
+
+    function _removeSingleCA(uint256 index) internal {
         uint256 len = caLeaves.length;
         if (index >= len) revert CaIndexOutOfBounds(index, len);
         bytes32 removed = caLeaves[index];
         caExists[removed] = false;
         caLeaves[index] = caLeaves[len - 1];
         caLeaves.pop();
-        _recomputeCaMerkleRoot();
         emit CaRemoved(removed, index);
     }
 
