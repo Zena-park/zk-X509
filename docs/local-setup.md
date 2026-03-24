@@ -82,23 +82,26 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
 
-### Step 3: 관리자 — CA 등록
-
-CA 공개키의 SHA-256 해시로 Merkle Root를 계산하고 컨트랙트에 등록한다.
+### Step 3: 관리자 — CA Merkle Root 계산
 
 ```bash
-# CA Root 계산 (off-chain, zkVM 실행 없이 즉시)
 cargo run --release --bin zk-x509 -- --ca-root --ca-cert certs/ca_pub.der
-# 출력에서 CA Merkle Root: 0x... 복사
+```
 
-# 컨트랙트에 등록 (owner만 가능)
+출력에서 `CA Merkle Root: 0x...` 값을 복사.
+
+### Step 4: 관리자 — CA 등록
+
+```bash
 cast send $REGISTRY_ADDR \
   "updateCaMerkleRoot(bytes32)" 0x위에서_복사한_값 \
   --rpc-url http://localhost:8545 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-### Step 4: 사용자 등록 테스트
+또는 `/admin` 웹페이지에서 CA Merkle Root 입력 → 업데이트.
+
+### Step 5: 사용자 등록 테스트
 
 Groth16 Proof 생성 후 등록:
 ```bash
@@ -131,7 +134,7 @@ cast call $REGISTRY_ADDR \
   --rpc-url http://localhost:8545
 ```
 
-### Step 5: 프론트엔드 실행 (터미널 3)
+### Step 6: 프론트엔드 실행 (터미널 3)
 ```bash
 cd frontend && npm run dev
 ```
