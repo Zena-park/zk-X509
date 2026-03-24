@@ -107,14 +107,10 @@ cast send $REGISTRY_ADDR \
 anvil
 ```
 
-### Step 2: CA Merkle Root 확인
-Section 4 참조. 출력에서 `CA Merkle Root: 0x...` 확인.
-
-### Step 3: 컨트랙트 배포 + CA 등록 (터미널 2)
+### Step 2: 컨트랙트 배포 (터미널 2)
 ```bash
 cd contracts
 
-CA_MERKLE_ROOT=0x위에서_확인한_값 \
 forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --rpc-url http://localhost:8545 \
   --broadcast \
@@ -124,7 +120,15 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
 
-> 배포 시 `CA_MERKLE_ROOT`로 신뢰할 CA root가 컨트랙트에 등록된다.
+### Step 3: CA 등록
+
+Proof 생성 시 출력되는 `CA Merkle Root` 값을 컨트랙트에 등록한다 (Section 4 참조).
+```bash
+cast send $REGISTRY_ADDR \
+  "updateCaMerkleRoot(bytes32)" 0xCA_MERKLE_ROOT_값 \
+  --rpc-url http://localhost:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
 
 ### Step 4: Groth16 Proof 생성
 ```bash
