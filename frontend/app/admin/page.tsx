@@ -79,7 +79,7 @@ async function execTx(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Merkle Tree helpers                                                */
+/*  SHA-256 helper                                                     */
 /* ------------------------------------------------------------------ */
 
 async function sha256(data: Uint8Array): Promise<Uint8Array> {
@@ -87,33 +87,6 @@ async function sha256(data: Uint8Array): Promise<Uint8Array> {
   new Uint8Array(buf).set(data);
   const hash = await crypto.subtle.digest("SHA-256", buf);
   return new Uint8Array(hash);
-}
-
-async function merkleRoot(leaves: Uint8Array[]): Promise<string> {
-  if (leaves.length === 0) return ethers.ZeroHash;
-  // Pad to power of 2
-  let nodes = [...leaves];
-  while (nodes.length > 1 && (nodes.length & (nodes.length - 1)) !== 0) {
-    nodes.push(new Uint8Array(32)); // zero hash padding
-  }
-  while (nodes.length > 1) {
-    const next: Uint8Array[] = [];
-    for (let i = 0; i < nodes.length; i += 2) {
-      const left = nodes[i];
-      const right = i + 1 < nodes.length ? nodes[i + 1] : new Uint8Array(32);
-      const combined = new Uint8Array(64);
-      combined.set(left, 0);
-      combined.set(right, 32);
-      next.push(await sha256(combined));
-    }
-    nodes = next;
-  }
-  return (
-    "0x" +
-    Array.from(nodes[0])
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
-  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -246,7 +219,6 @@ export default function AdminPage() {
   const [blockNumber, setBlockNumber] = useState<number | null>(null);
 
   // inputs
-  const [caRootInput, setCaRootInput] = useState("");
   const [crlRootInput, setCrlRootInput] = useState("");
   const [proofAgeInput, setProofAgeInput] = useState<number | null>(null);
   const [revokeNullifier, setRevokeNullifier] = useState("");
@@ -255,19 +227,26 @@ export default function AdminPage() {
   const [searchResult, setSearchResult] = useState<string | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  // CA file upload state
+  // CA file upload state (for hashing before addCA)
   const [caFiles, setCaFiles] = useState<CaFileEntry[]>([]);
-  const [calculatedCaRoot, setCalculatedCaRoot] = useState<string | null>(null);
   const [caFileProcessing, setCaFileProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  // On-chain CA list
+  const [onChainCaLeaves, setOnChainCaLeaves] = useState<string[]>([]);
+  const [caListLoading, setCaListLoading] = useState(false);
+
+  // Per-file add tx status (keyed by hashHex)
+  const [addCaTxMap, setAddCaTxMap] = useState<Record<string, TxStatus>>({});
+  // Per-index remove tx status
+  const [removeCaTxMap, setRemoveCaTxMap] = useState<Record<number, TxStatus>>({});
 
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
   const [transferTx, setTransferTx] = useState<TxStatus>(IDLE);
 
   // tx statuses
-  const [caRootTx, setCaRootTx] = useState<TxStatus>(IDLE);
   const [crlRootTx, setCrlRootTx] = useState<TxStatus>(IDLE);
   const [proofAgeTx, setProofAgeTx] = useState<TxStatus>(IDLE);
   const [revokeTx, setRevokeTx] = useState<TxStatus>(IDLE);
@@ -303,6 +282,25 @@ export default function AdminPage() {
       clearInterval(id);
     };
   }, [account]);
+
+  /* ---------- fetch on-chain CA list ---------- */
+  const fetchCaLeaves = useCallback(async () => {
+    if (!readContract) return;
+    setCaListLoading(true);
+    try {
+      const leaves: string[] = await readContract.getCaLeaves();
+      setOnChainCaLeaves([...leaves]);
+    } catch {
+      /* contract may not support getCaLeaves yet */
+      setOnChainCaLeaves([]);
+    } finally {
+      setCaListLoading(false);
+    }
+  }, [readContract]);
+
+  useEffect(() => {
+    fetchCaLeaves();
+  }, [fetchCaLeaves]);
 
   /* ---------- search handler ---------- */
   const handleSearch = useCallback(async () => {
@@ -367,7 +365,6 @@ export default function AdminPage() {
         newEntries.push({ name: file.name, hash, hashHex });
       }
       setCaFiles((prev) => [...prev, ...newEntries]);
-      setCalculatedCaRoot(null); // reset when files change
     } finally {
       setCaFileProcessing(false);
     }
@@ -375,15 +372,7 @@ export default function AdminPage() {
 
   const removeCaFile = useCallback((index: number) => {
     setCaFiles((prev) => prev.filter((_, i) => i !== index));
-    setCalculatedCaRoot(null);
   }, []);
-
-  const calculateCaRoot = useCallback(async () => {
-    if (caFiles.length === 0) return;
-    const leaves = caFiles.map((f) => f.hash);
-    const root = await merkleRoot(leaves);
-    setCalculatedCaRoot(root);
-  }, [caFiles]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -406,21 +395,41 @@ export default function AdminPage() {
   }, []);
 
   /* ---------- action handlers ---------- */
-  const handleUpdateCaRoot = () => {
-    if (!writeContract || !caRootInput) return;
+  const handleAddCa = (entry: CaFileEntry) => {
+    if (!writeContract) return;
+    const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
+      setAddCaTxMap((prev) => ({
+        ...prev,
+        [entry.hashHex]: typeof s === "function" ? s(prev[entry.hashHex] ?? IDLE) : s,
+      }));
+    };
     execTx(
-      setCaRootTx,
-      () => writeContract.updateCaMerkleRoot(caRootInput),
-      refresh,
+      setStatus,
+      () => writeContract.addCA(entry.hashHex),
+      () => {
+        refresh();
+        fetchCaLeaves();
+        // Remove from pending files after successful add
+        setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
+      },
     );
   };
 
-  const handleUpdateCaRootFromFiles = () => {
-    if (!writeContract || !calculatedCaRoot) return;
+  const handleRemoveCa = (index: number) => {
+    if (!writeContract) return;
+    const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
+      setRemoveCaTxMap((prev) => ({
+        ...prev,
+        [index]: typeof s === "function" ? s(prev[index] ?? IDLE) : s,
+      }));
+    };
     execTx(
-      setCaRootTx,
-      () => writeContract.updateCaMerkleRoot(calculatedCaRoot),
-      refresh,
+      setStatus,
+      () => writeContract.removeCA(index),
+      () => {
+        refresh();
+        fetchCaLeaves();
+      },
     );
   };
 
@@ -784,17 +793,19 @@ export default function AdminPage() {
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
-              {/* File Upload Section */}
+              {/* Add CA — File Upload Section */}
               <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
                 <div className="flex items-center gap-3 mb-6">
                   <Upload className="text-primary w-5 h-5" />
                   <h2 className="text-xl font-headline font-bold text-primary">
-                    CA Certificate Upload
+                    Add CA Certificate
                   </h2>
                 </div>
                 <p className="text-sm text-on-surface-variant mb-6">
-                  Upload CA certificate <code>.der</code> files to compute the
-                  Merkle root. Each file is hashed with SHA-256 to form a leaf.
+                  Upload CA certificate <code>.der</code> files. Each file is
+                  SHA-256 hashed in-browser, then registered on-chain via{" "}
+                  <code>addCA()</code>. The Merkle root is auto-computed by the
+                  contract.
                 </p>
 
                 {/* Drop zone */}
@@ -833,75 +844,108 @@ export default function AdminPage() {
                   />
                 </div>
 
-                {/* File list */}
+                {/* Pending files — ready to add on-chain */}
                 {caFiles.length > 0 && (
                   <div className="mt-6 space-y-2">
                     <p className="text-xs font-label text-on-surface-variant uppercase tracking-widest mb-3">
-                      Uploaded CA Certificates ({caFiles.length})
+                      Pending CA Certificates ({caFiles.length})
                     </p>
-                    {caFiles.map((entry, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-3 bg-surface-highest rounded-xl px-4 py-3"
-                      >
-                        <FileText className="w-4 h-4 text-tertiary shrink-0" />
-                        <span className="text-sm font-headline font-medium text-primary truncate">
-                          {entry.name}
-                        </span>
-                        <span className="text-[10px] font-mono text-on-surface-variant truncate flex-1">
-                          {truncateHash(entry.hashHex, 10, 8)}
-                        </span>
-                        <button
-                          onClick={() => removeCaFile(idx)}
-                          className="text-on-surface-variant/50 hover:text-error transition-colors shrink-0"
+                    {caFiles.map((entry, idx) => {
+                      const txStatus = addCaTxMap[entry.hashHex] ?? IDLE;
+                      return (
+                        <div
+                          key={entry.hashHex}
+                          className="flex items-center gap-3 bg-surface-highest rounded-xl px-4 py-3"
                         >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-
-                    {/* Calculate button */}
-                    <div className="pt-4 flex items-center gap-4">
-                      <button
-                        onClick={calculateCaRoot}
-                        className="bg-tertiary text-background px-6 py-3 rounded-xl font-label font-bold text-xs hover:opacity-90 transition-all"
-                      >
-                        CALCULATE MERKLE ROOT
-                      </button>
-                      {calculatedCaRoot && (
-                        <div className="flex-1">
-                          <p className="text-[10px] font-label text-on-surface-variant uppercase tracking-widest">
-                            Calculated Root
-                          </p>
-                          <p className="text-sm font-mono text-secondary break-all">
-                            {calculatedCaRoot}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Update from calculated root */}
-                    {calculatedCaRoot && (
-                      <div className="pt-4">
-                        <div className="flex items-center gap-3">
+                          <FileText className="w-4 h-4 text-tertiary shrink-0" />
+                          <span className="text-sm font-headline font-medium text-primary truncate">
+                            {entry.name}
+                          </span>
+                          <span className="text-[10px] font-mono text-on-surface-variant truncate flex-1">
+                            {truncateHash(entry.hashHex, 10, 8)}
+                          </span>
+                          <TxBadge status={txStatus} />
                           <button
-                            onClick={handleUpdateCaRootFromFiles}
-                            disabled={disabled || isBusy(caRootTx)}
-                            className="bg-primary text-background px-6 py-3 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all"
+                            onClick={() => handleAddCa(entry)}
+                            disabled={disabled || isBusy(txStatus)}
+                            className="bg-primary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all shrink-0"
                           >
-                            {isBusy(caRootTx)
-                              ? "Processing..."
-                              : "UPDATE CA ROOT"}
+                            {isBusy(txStatus) ? "..." : "ADD TO REGISTRY"}
                           </button>
-                          <TxBadge status={caRootTx} />
+                          <button
+                            onClick={() => removeCaFile(idx)}
+                            className="text-on-surface-variant/50 hover:text-error transition-colors shrink-0"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
-                        <p className="text-[10px] text-on-surface-variant italic mt-2">
-                          Requires owner signature. Propagates in ~12 seconds.
-                        </p>
-                      </div>
-                    )}
+                      );
+                    })}
                   </div>
                 )}
+              </div>
+
+              {/* Registered CAs — On-chain list */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <Share2 className="text-primary w-5 h-5" />
+                    <h2 className="text-xl font-headline font-bold text-primary">
+                      Registered CAs
+                    </h2>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      {onChainCaLeaves.length}
+                    </span>
+                  </div>
+                  <button
+                    onClick={fetchCaLeaves}
+                    disabled={caListLoading}
+                    className="text-xs font-label text-tertiary hover:text-primary transition-colors disabled:opacity-50"
+                  >
+                    {caListLoading ? "Loading..." : "Refresh"}
+                  </button>
+                </div>
+
+                {onChainCaLeaves.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant/60 text-center py-8">
+                    {caListLoading
+                      ? "Loading on-chain CA list..."
+                      : "No CA certificates registered on-chain."}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {onChainCaLeaves.map((leaf, idx) => {
+                      const txStatus = removeCaTxMap[idx] ?? IDLE;
+                      return (
+                        <div
+                          key={`${idx}-${leaf}`}
+                          className="flex items-center gap-3 bg-surface-highest rounded-xl px-4 py-3"
+                        >
+                          <span className="text-[10px] font-mono text-on-surface-variant/60 w-8 text-right shrink-0">
+                            #{idx}
+                          </span>
+                          <span className="text-sm font-mono text-primary truncate flex-1">
+                            {truncateHash(leaf, 10, 8)}
+                          </span>
+                          <CopyButton text={leaf} />
+                          <TxBadge status={txStatus} />
+                          <button
+                            onClick={() => handleRemoveCa(idx)}
+                            disabled={disabled || isBusy(txStatus)}
+                            className="px-3 py-1.5 border border-error/30 text-error rounded-lg font-label font-bold text-[10px] hover:bg-error/10 disabled:opacity-50 transition-all shrink-0"
+                          >
+                            {isBusy(txStatus) ? "..." : "REMOVE"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-[10px] text-on-surface-variant italic mt-4">
+                  The on-chain Merkle root is auto-computed when CAs are added or
+                  removed.
+                </p>
               </div>
 
               {/* CRL Merkle Root */}
