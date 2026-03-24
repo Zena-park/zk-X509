@@ -44,45 +44,11 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
   --registrant 0x0000000000000000000000000000000000000001
 ```
 
-## 4. 로컬 E2E Test (Anvil)
+## 4. E2E Test (Anvil)
 
-### Step 1: Anvil 실행 (터미널 1)
-```bash
-anvil
-```
+> 로컬 환경 배포 (Anvil + 컨트랙트 + CA 등록)는 [local-setup.md](local-setup.md) Section 4 참조.
 
-### Step 2: 컨트랙트 배포 (터미널 2)
-```bash
-cd contracts
-
-forge script script/DeployLocal.s.sol --tc DeployLocalScript \
-  --rpc-url http://localhost:8545 \
-  --broadcast \
-  --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
-  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
-
-출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
-
-### Step 3: 관리자 — CA Merkle Root 계산 + 등록
-
-CA 공개키 파일의 SHA-256 해시로 Merkle Root를 계산하고, 컨트랙트에 등록한다.
-
-```bash
-# CA Root 계산 (off-chain)
-cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
-  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --registrant 0x0000000000000000000000000000000000000001
-# 출력에서 CA Merkle Root: 0x... 복사
-
-# 컨트랙트에 등록 (owner만 가능)
-cast send $REGISTRY_ADDR \
-  "updateCaMerkleRoot(bytes32)" 0x위에서_복사한_값 \
-  --rpc-url http://localhost:8545 \
-  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
-
-### Step 4: Groth16 Proof 생성 (사용자)
+### Step 1: Groth16 Proof 생성 (사용자)
 ```bash
 cargo run --release --bin evm -- --system groth16 \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
@@ -93,7 +59,7 @@ cargo run --release --bin evm -- --system groth16 \
 
 출력에서 `Proof: 0x...`와 `Public Values: 0x...` 복사.
 
-### Step 5: 등록 (사용자)
+### Step 2: 등록 (사용자)
 ```bash
 cast send $REGISTRY_ADDR \
   "register(bytes,bytes)" $PROOF $PUBLIC_VALUES \
@@ -101,7 +67,7 @@ cast send $REGISTRY_ADDR \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-### Step 6: 확인
+### Step 3: 확인
 ```bash
 cast call $REGISTRY_ADDR \
   "isVerified(address)(bool)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
@@ -111,7 +77,7 @@ cast call $REGISTRY_ADDR \
 
 ## 5. Frontend E2E Test (브라우저)
 
-Section 4의 Step 1~4 완료 후:
+Section 4의 Step 1 완료 후:
 
 ```bash
 cd frontend && npm run dev
@@ -120,7 +86,7 @@ cd frontend && npm run dev
 1. MetaMask → `localhost:8545` (Chain ID 31337) 네트워크 추가
 2. Anvil PK `0xac0974...` import
 3. `http://localhost:3000` → 지갑 연결
-4. Step 4에서 출력된 **Proof**와 **Public Values** hex 붙여넣기
+4. Step 1에서 출력된 **Proof**와 **Public Values** hex 붙여넣기
 5. 트랜잭션 전송 → "등록 완료!" 확인
 
 > 프론트엔드 컨트랙트 주소: `frontend/src/contracts/IdentityRegistry.ts`에서 수정.

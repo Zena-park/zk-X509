@@ -60,4 +60,53 @@ cd contracts && forge build        # Solidity
 cd frontend && npm install && npm run build  # Frontend
 ```
 
-환경 구축 후 테스트는 [testing-guide.md](testing-guide.md) 참조.
+## 4. 로컬 환경 배포
+
+### Step 1: Anvil 실행 (터미널 1)
+```bash
+anvil
+```
+
+기본 계정 10개 + 10000 ETH씩 제공됨.
+
+### Step 2: 컨트랙트 배포 (터미널 2)
+```bash
+cd contracts
+
+forge script script/DeployLocal.s.sol --tc DeployLocalScript \
+  --rpc-url http://localhost:8545 \
+  --broadcast \
+  --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+
+출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
+
+### Step 3: 관리자 — CA 등록
+
+CA 공개키의 SHA-256 해시로 Merkle Root를 계산하고 컨트랙트에 등록한다.
+
+```bash
+# CA Root 계산 (off-chain)
+cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0x0000000000000000000000000000000000000001
+# 출력에서 CA Merkle Root: 0x... 복사
+
+# 컨트랙트에 등록 (owner만 가능)
+cast send $REGISTRY_ADDR \
+  "updateCaMerkleRoot(bytes32)" 0x위에서_복사한_값 \
+  --rpc-url http://localhost:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+
+### Step 4: 프론트엔드 실행 (터미널 3)
+```bash
+cd frontend && npm run dev
+```
+
+`http://localhost:3000` 접속.
+
+> 프론트엔드 컨트랙트 주소: `frontend/src/contracts/IdentityRegistry.ts`에서 수정.
+
+배포 완료 후 테스트는 [testing-guide.md](testing-guide.md) 참조.
