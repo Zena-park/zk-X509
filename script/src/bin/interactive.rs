@@ -1,7 +1,7 @@
 //! zk-X509 Interactive CLI
 //!
 //! Scans NPKI directories for certificates, user selects one,
-//! enters password each time, generates proof, submits on-chain.
+//! enters password each time, generates Groth16 proof for on-chain registration.
 //! No persistent storage of keys — everything in memory, cleared after use.
 //!
 //! Usage:
@@ -11,7 +11,7 @@ use alloy_sol_types::SolType;
 use sha2::Digest;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
-    include_elf, Elf, ProvingKey, SP1Stdin,
+    include_elf, Elf, HashableKey, ProvingKey, SP1Stdin,
 };
 use std::io::{self, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,10 +22,16 @@ const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
 struct Session {
     selected: Option<NpkiCertEntry>,
-    proof_output: Option<Vec<u8>>,
+    proof_hex: Option<String>,
+    public_values_hex: Option<String>,
     nullifier: Option<String>,
     ca_root_hash: Option<String>,
     registrant: Option<String>,
+    // Saved settings (persist across proof generations)
+    rpc_url: String,
+    registry_address: String,
+    chain_id: u64,
+    max_wallets: u32,
 }
 
 fn prompt(msg: &str) -> String {
@@ -37,7 +43,6 @@ fn prompt(msg: &str) -> String {
 }
 
 fn prompt_password(msg: &str) -> String {
-    // Use regular prompt when stdin is piped, rpassword when interactive
     if atty::is(atty::Stream::Stdin) {
         rpassword::prompt_password(msg).unwrap_or_default()
     } else {
@@ -55,10 +60,15 @@ fn main() {
 
     let mut session = Session {
         selected: None,
-        proof_output: None,
+        proof_hex: None,
+        public_values_hex: None,
         nullifier: None,
         ca_root_hash: None,
         registrant: None,
+        rpc_url: "http://localhost:8545".to_string(),
+        registry_address: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512".to_string(),
+        chain_id: zk_x509_script::DEFAULT_CHAIN_ID,
+        max_wallets: 3,
     };
 
     loop {
@@ -66,14 +76,15 @@ fn main() {
         println!("  ─────────────────────────────────");
         println!("  1. Scan certificates");
         println!("  2. Select certificate");
-        println!("  3. Verify (execute mode)");
-        println!("  4. Submit on-chain");
-        println!("  5. Status");
+        println!("  3. Generate proof (Groth16)");
+        println!("  4. Show proof (copy to frontend)");
+        println!("  5. Settings");
+        println!("  6. Status");
         println!("  q. Quit");
         println!("  ─────────────────────────────────");
         if let Some(c) = &session.selected {
             print!("  [{}]", c.subject);
-            if session.proof_output.is_some() { print!(" [proof ready]"); }
+            if session.proof_hex.is_some() { print!(" [proof ready]"); }
             println!();
         }
         println!();
@@ -82,11 +93,12 @@ fn main() {
             "1" => cmd_scan(),
             "2" => cmd_select(&mut session),
             "3" => cmd_prove(&mut session),
-            "4" => cmd_submit(&session),
-            "5" => cmd_status(&session),
+            "4" => cmd_show_proof(&session),
+            "5" => cmd_settings(&mut session),
+            "6" => cmd_status(&session),
             "q" | "Q" => { println!("  Bye!"); break; }
             "" => {}
-            _ => println!("  Enter 1-5 or q."),
+            _ => println!("  Enter 1-6 or q."),
         }
     }
 }
@@ -126,7 +138,8 @@ fn cmd_select(session: &mut Session) {
     };
 
     session.selected = Some(certs[idx].clone());
-    session.proof_output = None;
+    session.proof_hex = None;
+    session.public_values_hex = None;
     session.nullifier = None;
     session.ca_root_hash = None;
     println!("  Selected: {}", certs[idx].subject);
@@ -150,7 +163,7 @@ fn cmd_prove(session: &mut Session) {
         Err(e) => { println!("  Failed to read key: {}", e); return; }
     };
 
-    let password = prompt_password("  Certificate password: ");
+    let password = prompt_password("  Certificate password (empty if unencrypted): ");
     let key_der = if password.is_empty() {
         key_raw
     } else {
@@ -159,7 +172,7 @@ fn cmd_prove(session: &mut Session) {
             Err(e) => { println!("  Decryption failed: {}", e); return; }
         }
     };
-    // password goes out of scope here — dropped from memory
+    // password dropped from memory here
 
     // CA public key
     let ca_path = prompt("  CA public key path [certs/ca_pub.der]: ");
@@ -169,39 +182,62 @@ fn cmd_prove(session: &mut Session) {
         Err(e) => { println!("  Error: {}", e); return; }
     };
 
-    let registrant = prompt("  Wallet address (0x...): ");
+    // Registrant
+    let registrant_input = prompt(&format!(
+        "  Wallet address [{}]: ",
+        session.registrant.as_deref().unwrap_or("0x...")
+    ));
+    let registrant = if registrant_input.is_empty() {
+        match &session.registrant {
+            Some(r) => r.clone(),
+            None => { println!("  Wallet address required."); return; }
+        }
+    } else {
+        registrant_input
+    };
     let registrant_bytes = match zk_x509_script::parse_eth_address(&registrant) {
         Ok(b) => b,
         Err(e) => { println!("  {}", e); return; }
     };
     session.registrant = Some(registrant.clone());
 
+    let registry_bytes = match zk_x509_script::parse_eth_address(&session.registry_address) {
+        Ok(b) => b,
+        Err(e) => { println!("  Invalid registry address: {}", e); return; }
+    };
+
+    let idx_str = prompt("  Wallet index [0]: ");
+    let wallet_index: u32 = idx_str.parse().unwrap_or(0);
+
+    let mask_str = prompt("  Disclosure mask (15=all, 0=none) [15]: ");
+    let disclosure_mask: u8 = mask_str.parse().unwrap_or(0x0F);
+
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.clone()];
     let crl_der: Vec<u8> = Vec::new();
 
-    println!("  Executing ZK program (verify mode, no proof generation)...");
-    println!("  For full proof, use the prover server's /prove endpoint.");
-    let client = ProverClient::from_env();
-
-    let idx_str = prompt("  Wallet index [0]: ");
-    let wallet_index: u32 = idx_str.parse().unwrap_or(0);
-    let max_wallets: u32 = 1;
-
-    let chain_id = zk_x509_script::DEFAULT_CHAIN_ID;
-    let registry_address = zk_x509_script::DEFAULT_REGISTRY_ADDRESS;
+    // Ownership + nullifier signatures
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
-        &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp, chain_id,
+        &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp, session.chain_id,
     ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &key_der, &registry_address, chain_id,
+        &cert_der, &key_der, &registry_bytes, session.chain_id,
     ).unwrap_or_else(|e| { println!("  Nullifier sign failed: {}", e); std::process::exit(1); });
 
-    let mask_str = prompt("  Disclosure mask (15=all, 1=country, 0=none) [15]: ");
-    let disclosure_mask: u8 = mask_str.parse().unwrap_or(0x0F);
-
-    let (_ca_leaf, ca_merkle_root, ca_merkle_proof) =
-        zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
+    // CA Merkle tree (from on-chain)
+    println!("  Fetching CA list from on-chain ({})...", session.rpc_url);
+    let (ca_merkle_root, ca_merkle_proof) = match zk_x509_script::onchain::build_ca_merkle_from_onchain(
+        &session.rpc_url, &registry_bytes, &ca_pub_key,
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            println!("  On-chain CA fetch failed: {}", e);
+            println!("  Falling back to single-CA local mode...");
+            let (_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
+            (root, proof)
+        }
+    };
+    println!("  CA Merkle Root: 0x{}", hex::encode(ca_merkle_root));
 
     let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
         cert_der: &cert_der,
@@ -212,75 +248,117 @@ fn cmd_prove(session: &mut Session) {
         crl_der: &crl_der,
         registrant: &registrant_bytes,
         wallet_index,
-        max_wallets,
+        max_wallets: session.max_wallets,
         disclosure_mask,
         ca_merkle_proof: &ca_merkle_proof,
         ca_merkle_root,
-        registry_address: &registry_address,
-        chain_id,
+        registry_address: &registry_bytes,
+        chain_id: session.chain_id,
     });
-    match client.execute(ZK_X509_ELF, stdin).run() {
-        Ok((output, report)) => {
-            let decoded = PublicValuesStruct::abi_decode(output.as_slice())
-                .expect("Failed to decode");
 
-            let nullifier = format!("0x{}", hex::encode(decoded.nullifier));
-            let ca_hash = format!("0x{}", hex::encode(decoded.caMerkleRoot));
+    // Proof mode selection
+    let mode = prompt("  Mode: [1] Execute (fast test) / [2] Groth16 proof [1]: ");
+    let client = ProverClient::from_env();
 
-            println!();
-            println!("  Verification successful! (execute mode — public values below)");
-            println!("  ├─ Nullifier:  {}", nullifier);
-            println!("  ├─ CA Hash:    {}", ca_hash);
-            println!("  ├─ Registrant: {}", registrant);
-            println!("  └─ Cycles:     {}", report.total_instruction_count());
+    if mode == "2" {
+        println!("  Generating Groth16 proof (this takes several minutes, Docker required)...");
+        let pk = client.setup(ZK_X509_ELF).expect("failed to setup elf");
+        match client.prove(&pk, stdin).groth16().run() {
+            Ok(proof) => {
+                let pv_bytes = proof.public_values.as_slice();
+                let decoded = PublicValuesStruct::abi_decode(pv_bytes).expect("Failed to decode");
 
-            session.nullifier = Some(nullifier);
-            session.ca_root_hash = Some(ca_hash);
-            session.proof_output = Some(output.to_vec());
+                let proof_bytes = proof.bytes();
+                let proof_hex = format!("0x{}", hex::encode(&proof_bytes));
+                let pv_hex = format!("0x{}", hex::encode(pv_bytes));
+
+                let nullifier = format!("0x{}", hex::encode(decoded.nullifier));
+                let ca_hash = format!("0x{}", hex::encode(decoded.caMerkleRoot));
+
+                println!();
+                println!("  Groth16 proof generated!");
+                println!("  ├─ Nullifier:  {}", nullifier);
+                println!("  ├─ CA Root:    {}", ca_hash);
+                println!("  ├─ Registrant: {}", registrant);
+                println!("  └─ Proof size: {} bytes", proof_bytes.len());
+
+                session.proof_hex = Some(proof_hex);
+                session.public_values_hex = Some(pv_hex);
+                session.nullifier = Some(nullifier);
+                session.ca_root_hash = Some(ca_hash);
+            }
+            Err(e) => println!("  Proof generation failed: {}", e),
         }
-        Err(e) => println!("  Failed: {}", e),
+    } else {
+        println!("  Executing ZK program (fast verify, no on-chain proof)...");
+        match client.execute(ZK_X509_ELF, stdin).run() {
+            Ok((output, report)) => {
+                let decoded = PublicValuesStruct::abi_decode(output.as_slice())
+                    .expect("Failed to decode");
+
+                let nullifier = format!("0x{}", hex::encode(decoded.nullifier));
+                let ca_hash = format!("0x{}", hex::encode(decoded.caMerkleRoot));
+
+                println!();
+                println!("  Verification successful! (execute mode — no proof for on-chain)");
+                println!("  ├─ Nullifier:  {}", nullifier);
+                println!("  ├─ CA Root:    {}", ca_hash);
+                println!("  ├─ Registrant: {}", registrant);
+                println!("  └─ Cycles:     {}", report.total_instruction_count());
+
+                session.nullifier = Some(nullifier);
+                session.ca_root_hash = Some(ca_hash);
+                session.proof_hex = None;
+                session.public_values_hex = None;
+            }
+            Err(e) => println!("  Failed: {}", e),
+        }
     }
 }
 
-fn cmd_submit(session: &Session) {
-    let output = match &session.proof_output {
-        Some(o) => o,
-        None => { println!("  Run verify first [3]."); return; }
-    };
+fn cmd_show_proof(session: &Session) {
+    match (&session.proof_hex, &session.public_values_hex) {
+        (Some(proof), Some(pv)) => {
+            println!();
+            println!("  ══════ Copy to Dashboard ══════");
+            println!();
+            println!("  Proof:");
+            println!("  {}", proof);
+            println!();
+            println!("  Public Values:");
+            println!("  {}", pv);
+            println!();
+            println!("  ═══════════════════════════════");
+            println!("  Paste these into the Dashboard → Submit New Proof → Register");
+        }
+        _ => {
+            println!("  No Groth16 proof available.");
+            println!("  Run [3] and select Groth16 mode [2] to generate a proof.");
+        }
+    }
+}
 
-    println!("  NOTE: CLI execute mode produces public values but not a real ZK proof.");
-    println!("  For production, use the prover server's /prove endpoint + web frontend.");
-    println!("  Proceeding with mock proof (0x1234) for testing...");
+fn cmd_settings(session: &mut Session) {
+    println!("  Current settings:");
+    println!("  ├─ RPC URL:     {}", session.rpc_url);
+    println!("  ├─ Registry:    {}", session.registry_address);
+    println!("  ├─ Chain ID:    {}", session.chain_id);
+    println!("  └─ Max Wallets: {}", session.max_wallets);
     println!();
 
-    let rpc = prompt("  RPC URL [http://localhost:8545]: ");
-    let rpc = if rpc.is_empty() { "http://localhost:8545".to_string() } else { rpc };
+    let rpc = prompt(&format!("  RPC URL [{}]: ", session.rpc_url));
+    if !rpc.is_empty() { session.rpc_url = rpc; }
 
-    let registry = prompt("  IdentityRegistry address (0x...): ");
-    if !registry.starts_with("0x") { println!("  Invalid."); return; }
+    let reg = prompt(&format!("  Registry address [{}]: ", session.registry_address));
+    if !reg.is_empty() { session.registry_address = reg; }
 
-    let eth_key = prompt_password("  Ethereum private key (0x...): ");
-    if !eth_key.starts_with("0x") { println!("  Invalid."); return; }
+    let cid = prompt(&format!("  Chain ID [{}]: ", session.chain_id));
+    if !cid.is_empty() { session.chain_id = cid.parse().unwrap_or(session.chain_id); }
 
-    let pv_hex = format!("0x{}", hex::encode(output));
+    let mw = prompt(&format!("  Max wallets per cert [{}]: ", session.max_wallets));
+    if !mw.is_empty() { session.max_wallets = mw.parse().unwrap_or(session.max_wallets); }
 
-    println!("  Submitting transaction...");
-
-    // Pass ETH key via env var instead of CLI arg (avoids /proc exposure)
-    let status = std::process::Command::new("cast")
-        .args([
-            "send", &registry,
-            "register(bytes,bytes)", "0x1234", &pv_hex,
-            "--rpc-url", &rpc,
-        ])
-        .env("ETH_PRIVATE_KEY", &eth_key)
-        .status();
-
-    match status {
-        Ok(s) if s.success() => println!("  Registration successful!"),
-        Ok(s) => println!("  Failed (exit {})", s),
-        Err(e) => println!("  `cast` not found: {}. Install Foundry.", e),
-    }
+    println!("  Settings updated.");
 }
 
 fn cmd_status(session: &Session) {
@@ -288,6 +366,11 @@ fn cmd_status(session: &Session) {
         .map(|c| c.subject.as_str()).unwrap_or("none"));
     println!("  Registrant:  {}", session.registrant.as_deref().unwrap_or("none"));
     println!("  Nullifier:   {}", session.nullifier.as_deref().unwrap_or("no proof"));
-    println!("  CA Hash:     {}", session.ca_root_hash.as_deref().unwrap_or("no proof"));
-    println!("  Proof:       {}", if session.proof_output.is_some() { "ready" } else { "none" });
+    println!("  CA Root:     {}", session.ca_root_hash.as_deref().unwrap_or("no proof"));
+    println!("  Proof:       {}", if session.proof_hex.is_some() { "Groth16 ready" } else { "none" });
+    println!("  ─────────────────────────────────");
+    println!("  RPC:         {}", session.rpc_url);
+    println!("  Registry:    {}", session.registry_address);
+    println!("  Chain ID:    {}", session.chain_id);
+    println!("  Max Wallets: {}", session.max_wallets);
 }
