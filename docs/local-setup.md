@@ -96,79 +96,159 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
+출력에서 `IdentityRegistry:` 주소를 저장:
+```bash
+export REGISTRY_ADDR=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+```
 
 > `MAX_WALLETS_PER_CERT`: 인증서당 최대 지갑 수 (기본값 1, 배포 후 변경 불가).
 >
 > 실제 SP1VerifierGroth16이 배포됩니다. Production Groth16 proof가 필요합니다 (Docker 필요).
 
-### Step 3: 관리자 — CA Merkle Root 계산
+### Step 3: 관리자 — CA 등록 (on-chain)
 
-단일 CA:
-```bash
-cargo run --release --bin zk-x509 -- --ca-root --ca-cert certs/ca_pub.der
-```
+**방법 A: Admin 웹페이지 (권장)**
 
-복수 CA:
-```bash
-cargo run --release --bin zk-x509 -- --ca-root \
-  --ca-cert certs/ca_pub.der \
-  --extra-ca certs/ec_ca_pub.der \
-  --extra-ca certs/ec384_ca_pub.der
-```
+`http://localhost:3000/admin` → Management 탭 → CA 파일(`.der`) 업로드 → "ADD TO REGISTRY" 또는 "ADD ALL"
 
-출력에서 `CA Merkle Root: 0x...` 값을 복사.
-
-### Step 4: 관리자 — CA 등록
+**방법 B: CLI**
 
 ```bash
-cast send $REGISTRY_ADDR \
-  "updateCaMerkleRoot(bytes32)" 0x위에서_복사한_값 \
-  --rpc-url http://localhost:8545 \
-  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
-
-또는 `/admin` 웹페이지에서 CA 파일 업로드 → 자동 계산 → 업데이트.
-
-### Step 5: 사용자 등록 테스트
-
-Groth16 Proof 생성 후 등록:
-```bash
-# proof 생성
-# --registrant: 등록할 지갑 주소 (MetaMask 연결 주소와 일치해야 함)
-# --wallet-index: 슬롯 번호 (0부터 시작, MAX_WALLETS_PER_CERT 미만)
-# --max-wallets: 컨트랙트의 MAX_WALLETS_PER_CERT와 일치해야 함
-# --extra-ca: Step 3에서 등록한 것과 동일한 CA 목록을 넣어야 함
-# --registry-address: IdentityRegistry 컨트랙트 주소
-cargo run --release --bin evm -- --system groth16 \
-  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --extra-ca certs/ec_ca_pub.der --extra-ca certs/ec384_ca_pub.der \
-  --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
-  --wallet-index 0 \
-  --max-wallets 3 \
-  --chain-id 31337 \
-  --registry-address $REGISTRY_ADDR
-# 출력에서 Proof: 0x... 와 Public Values: 0x... 복사
-#
-# 같은 인증서로 다른 지갑에 추가 등록:
-#   --wallet-index 1 --max-wallets 3 --registrant 0x다른지갑주소
-
-# 등록 (--private-key의 지갑 주소와 --registrant가 반드시 일치해야 함)
-cast send $REGISTRY_ADDR \
-  "register(bytes,bytes)" $PROOF $PUBLIC_VALUES \
+# 단일 CA 등록
+CA_HASH=$(cargo run --release --bin zk-x509 -- --ca-root --ca-cert certs/ca_pub.der 2>&1 | grep "CA Merkle Root:" | awk '{print $4}')
+cast send $REGISTRY_ADDR "addCA(bytes32)" $CA_HASH \
   --rpc-url http://localhost:8545 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
 등록 확인:
 ```bash
-# 인증 여부
+cast call $REGISTRY_ADDR "getCaCount()" --rpc-url http://localhost:8545
+cast call $REGISTRY_ADDR "caMerkleRoot()" --rpc-url http://localhost:8545
+```
+
+> CA는 on-chain에 저장되며 Merkle root가 자동 계산됩니다.
+> `addCA()`, `addCAs()`, `removeCA()`, `removeCAs()` 함수로 관리합니다.
+
+### Step 4: 사용자 — Groth16 Proof 생성
+
+두 가지 방법으로 proof를 생성할 수 있습니다.
+
+**방법 A: Interactive CLI (권장 — 가이드 방식)**
+
+```bash
+cargo run --release --bin interactive
+```
+
+순차적으로 안내합니다:
+```
+Step 1/5: Settings
+  RPC URL [http://localhost:8545]:              ← Enter (기본값)
+  Registry address [0xe7f1...0512]:             ← Enter (기본값)
+  Chain ID [31337]:                             ← Enter
+  ✓ MAX_WALLETS_PER_CERT: 3 (from on-chain)    ← 자동 조회
+
+Step 2/5: Select Certificate
+  1. Test User (Test CA)
+  Select certificate [1-1]: 1
+
+Step 3/5: Credentials
+  Certificate password (empty if unencrypted):  ← Enter (테스트 키는 미암호화)
+  CA public key path [certs/ca_pub.der]:        ← Enter
+  Your wallet address (0x...): 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+  Wallet index (0-2) [0]:                       ← Enter
+  Disclosure mask (0=hide all, 15=show all) [0]: ← Enter (기본: 전부 숨김)
+
+Step 4/5: Generate Proof
+  [1] Execute (fast test) / [2] Groth16 (production) [2]: ← Enter = Groth16
+  Generating Groth16 proof (Docker 필요, 수 분 소요)...
+
+Step 5/5: Copy to Dashboard
+  Proof: 0x...
+  Public Values: 0x...
+  → Dashboard에 붙여넣기
+```
+
+> Interactive CLI는 NPKI 디렉토리(`~/Library/Preferences/NPKI/`, `certs/`)를 자동 스캔합니다.
+> 비밀번호는 화면에 표시되지 않으며, 메모리에서 즉시 삭제됩니다.
+
+**방법 B: EVM CLI (한 줄 명령어)**
+
+```bash
+cargo run --release --bin evm -- --system groth16 \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --wallet-index 0 \
+  --max-wallets 3 \
+  --chain-id 31337 \
+  --registry-address $REGISTRY_ADDR \
+  --rpc-url http://localhost:8545
+```
+
+출력에서 `Proof: 0x...`와 `Public Values: 0x...`를 복사합니다.
+
+> **`--rpc-url`**: on-chain CA 목록을 자동 조회하여 Merkle proof를 생성합니다.
+> 지정하지 않으면 `--extra-ca`로 수동 지정해야 합니다 (on-chain CA 목록과 정확히 일치해야 함).
+
+**주요 파라미터:**
+
+| 파라미터 | 설명 | 기본값 |
+|---------|------|--------|
+| `--registrant` | 등록할 지갑 주소 (MetaMask 주소와 일치해야 함) | 필수 |
+| `--wallet-index` | 슬롯 번호 (0부터 시작) | 0 |
+| `--max-wallets` | 컨트랙트의 MAX_WALLETS_PER_CERT | 1 |
+| `--chain-id` | EIP-155 체인 ID | 31337 |
+| `--disclosure-mask` | 선택적 공개 (0=전부 숨김, 15=전부 공개) | 0 |
+| `--rpc-url` | on-chain CA 자동 조회용 RPC URL | 없음 |
+
+**같은 인증서로 여러 지갑 등록:**
+```bash
+# 첫 번째 지갑 (wallet-index 0)
+--wallet-index 0 --registrant 0xFirstWallet
+
+# 두 번째 지갑 (wallet-index 1)
+--wallet-index 1 --registrant 0xSecondWallet
+```
+
+**Groth16 proof 생성 요구사항:**
+- Docker Desktop 실행 중이어야 함
+- Apple Silicon: `docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0` 필요
+- 생성 시간: 약 3~10분 (하드웨어에 따라 다름)
+
+**Execute 모드 (빠른 테스트):**
+```bash
+cargo run --release --bin zk-x509 -- --execute \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --registry-address $REGISTRY_ADDR \
+  --rpc-url http://localhost:8545
+```
+> Execute 모드는 ZK 프로그램을 실행하여 검증만 합니다 (proof 미생성, on-chain 등록 불가).
+> 인증서/키 유효성을 빠르게 확인할 때 사용합니다.
+
+### Step 5: 사용자 — on-chain 등록
+
+**방법 A: Dashboard 웹페이지 (권장)**
+
+`http://localhost:3000/dashboard` → MetaMask 연결 → Proof/Public Values 붙여넣기 → Register
+
+**방법 B: CLI**
+
+```bash
+# --private-key의 지갑 주소와 --registrant가 반드시 일치해야 함
+cast send $REGISTRY_ADDR \
+  "register(bytes,bytes)" $PROOF $PUBLIC_VALUES \
+  --rpc-url http://localhost:8545 \
+  --private-key 사용자_개인키
+```
+
+등록 확인:
+```bash
 cast call $REGISTRY_ADDR \
   "isVerified(address)(bool)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --rpc-url http://localhost:8545
 # → true
 
-# 인증 만료일 (unix timestamp)
 cast call $REGISTRY_ADDR \
   "verifiedUntil(address)(uint64)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --rpc-url http://localhost:8545
@@ -181,6 +261,13 @@ cd frontend && npm run dev
 
 `http://localhost:3000` 접속.
 
-> 프론트엔드 컨트랙트 주소: `frontend/src/contracts/IdentityRegistry.ts`에서 수정.
+| 페이지 | 용도 |
+|--------|------|
+| `/` | 랜딩 페이지 |
+| `/dashboard` | 사용자: proof 제출 + 인증 확인 |
+| `/admin` | 관리자: CA 관리, 컨트랙트 설정 |
+
+> 프론트엔드 컨트랙트 주소: `frontend/.env.local`에서 `NEXT_PUBLIC_REGISTRY_ADDRESS` 설정.
+> 기본값은 Anvil 로컬 주소 `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512`.
 
 배포 완료 후 추가 테스트는 [testing-guide.md](testing-guide.md) 참조.

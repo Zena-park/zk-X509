@@ -25,7 +25,7 @@ Input:  signCert.der (X.509 certificate)
         password     (user's certificate password)
 
 Process:
-  1. Decrypt private key: PBES2/PBKDF1 + SEED-CBC/AES-256-CBC
+  1. Decrypt private key: PBES2/PBKDF2 + SEED-CBC/AES-256-CBC/ARIA-256-CBC
   2. Sign ownership challenge:
      ownership_sig = Sign(sk, H(serial ‖ addr ‖ walletIdx ‖ timestamp ‖ chainId))
   3. Sign nullifier domain:
@@ -150,7 +150,7 @@ Non-inclusion proof:
 | PBES2 + AES-256-CBC | 1.2.840.113549.1.5.13 | PBKDF2-HMAC-SHA256 | AES-256-CBC | ✅ |
 | PBES2 + SEED-CBC | 1.2.840.113549.1.5.13 | PBKDF2-HMAC-SHA1 | SEED-CBC | ✅ |
 | Legacy NPKI | 1.2.410.200004.1.15 | PBKDF1-SHA1 | SEED-CBC | ✅ |
-| NPKI ARIA | 1.2.410.200004.1.34 | PBKDF1-SHA256 | ARIA-CBC | TODO |
+| PBES2 + ARIA-256-CBC | 1.2.410.200004.1.34 | PBKDF2-HMAC-SHA256 | ARIA-256-CBC | ✅ |
 
 ### Signature Algorithms
 

@@ -215,7 +215,7 @@ Step 2.  S:        (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
                    CRL ← FetchCRL(cert.issuer)             // from CA distribution point
                    challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
                    ownership_sig ← OS_Keychain.Sign(sk', challenge)  // private key stays in keychain
-                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v2" ‖ contract_address ‖ chain_id))  // deterministic
+                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))  // deterministic
                    Erase(sk')  // private key never reaches SP1
 
 Step 3.  S → Z:   (cert, ownership_sig, nullifier_sig, chain, t, CRL, addr,
@@ -258,7 +258,7 @@ Step 4.  Z:        // Parse and validate user certificate
                    Assert: wallet_index < max_wallets
 
                    // Verify nullifier signature (deterministic, registrant-independent)
-                   nullifier_domain ← H("zk-X509-Nullifier-v2" ‖ contract_address ‖ chain_id)
+                   nullifier_domain ← H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id)
                    Assert: Sig.Verify(cert_parsed.pk, nullifier_domain, nullifier_sig)
 
                    // Compute public outputs
@@ -278,7 +278,7 @@ Step 4.  Z:        // Parse and validate user certificate
 
                    // Commit public values (caMerkleRoot, NOT caRootHash)
                    Commit(nullifier, ca_merkle_root, t, addr, wallet_index,
-                          notAfter, chain_id, contract_address, crl_merkle_root,
+                          notAfter, chain_id, registry_address, crl_merkle_root,
                           countryHash, orgHash, orgUnitHash, commonNameHash)
 
 Step 5.  Z → S:   (π, pubvals)
@@ -1058,11 +1058,11 @@ The single-owner access control for CA management represents a centralization po
 
 ### 7.4 Cross-Chain Deployment
 
-zk-X509 supports multi-chain deployment — `IdentityRegistry` can be deployed on Ethereum, Polygon, Arbitrum, or any EVM-compatible chain with the same verification key. Users generate a separate proof per chain, each bound to the target chain's `chain_id` and `contract_address`. Two privacy-by-design consequences follow from the domain separation in Section 3.2:
+zk-X509 supports multi-chain deployment — `IdentityRegistry` can be deployed on Ethereum, Polygon, Arbitrum, or any EVM-compatible chain with the same verification key. Users generate a separate proof per chain, each bound to the target chain's `chain_id` and `registry_address`. Two privacy-by-design consequences follow from the domain separation in Section 3.2:
 
 1. **Cross-chain replay resistance.** The `chain_id` in the ownership challenge ensures a proof for Ethereum (chain_id=1) is rejected on Polygon (chain_id=137).
 
-2. **Cross-chain unlinkability.** The `contract_address` in the nullifier domain means different deployments produce different nullifiers for the same certificate. An observer cannot determine whether registrations on two chains belong to the same person — this is a deliberate privacy feature, not a limitation.
+2. **Cross-chain unlinkability.** The `registry_address` in the nullifier domain means different deployments produce different nullifiers for the same certificate. An observer cannot determine whether registrations on two chains belong to the same person — this is a deliberate privacy feature, not a limitation.
 
 If cross-chain identity linkage is desired (e.g., for unified reputation), the user can voluntarily reveal their nullifiers on both chains. However, this is an opt-in decision that the protocol does not enforce, preserving privacy by default.
 

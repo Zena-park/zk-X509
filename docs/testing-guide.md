@@ -47,7 +47,7 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
 | Failed to read cert file | `cd certs && bash generate-test-certs.sh` |
 | CRL signature verification failed | `cd certs && bash generate-test-crl.sh` |
 | SP1 proof generation failed | `--release` 플래그 확인, 메모리 부족 |
-| InvalidCaMerkleRoot | CA Root 불일치. `updateCaMerkleRoot` 확인 |
+| InvalidCaMerkleRoot | CA Root 불일치. on-chain CA 목록 확인 (`getCaLeaves()`). `addCA()`/`removeCA()`로 관리 |
 | RegistrantMismatch | proof의 registrant와 트랜잭션 sender 불일치 |
 | Docker ARM64 에러 | `docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0` |
 | Anvil "nonce too high" | Anvil 재시작 |
