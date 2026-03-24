@@ -156,12 +156,12 @@ export default function DashboardPage() {
       <motion.header
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-12"
+        className="mb-6"
       >
-        <h1 className="text-4xl md:text-5xl font-headline font-bold tracking-tight text-primary mb-2">
+        <h1 className="text-3xl font-headline font-bold tracking-tight text-primary mb-1">
           Dashboard
         </h1>
-        <p className="text-on-surface-variant max-w-2xl">
+        <p className="text-on-surface-variant text-sm">
           Manage your on-chain zk-X509 identity.
         </p>
       </motion.header>
@@ -174,13 +174,13 @@ export default function DashboardPage() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1 }}
-          className="md:col-span-4 glass-panel rounded-3xl p-6 flex flex-col justify-between group overflow-hidden relative"
+          className="md:col-span-4 glass-panel rounded-2xl p-5 flex flex-col justify-between group overflow-hidden relative"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-secondary/10 transition-colors" />
 
-          <div className="flex justify-between items-start mb-8">
-            <div className={`p-3 rounded-xl ${verified ? "bg-secondary/10" : "bg-outline-variant/10"}`}>
-              <ShieldCheck className={`w-8 h-8 ${verified ? "text-secondary" : "text-on-surface-variant"}`} />
+          <div className="flex justify-between items-start mb-4">
+            <div className={`p-2 rounded-lg ${verified ? "bg-secondary/10" : "bg-outline-variant/10"}`}>
+              <ShieldCheck className={`w-6 h-6 ${verified ? "text-secondary" : "text-on-surface-variant"}`} />
             </div>
             {identityLoading ? (
               <span className="text-on-surface-variant font-label text-xs font-bold tracking-widest uppercase bg-outline-variant/10 px-3 py-1 rounded-full">
@@ -198,7 +198,7 @@ export default function DashboardPage() {
           </div>
 
           <div>
-            <h2 className="text-2xl font-headline font-bold text-on-surface mb-1">
+            <h2 className="text-lg font-headline font-bold text-on-surface mb-1">
               {verified ? "Identity Verified" : "Not Verified"}
             </h2>
             {verified && expiryDate ? (
@@ -227,9 +227,9 @@ export default function DashboardPage() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="md:col-span-8 glass-panel rounded-3xl p-6 flex flex-col justify-between"
+          className="md:col-span-8 glass-panel rounded-2xl p-5 flex flex-col justify-between"
         >
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-headline font-bold text-on-surface">
               Account Metadata
             </h2>
@@ -237,7 +237,7 @@ export default function DashboardPage() {
           </div>
           <div className="space-y-4">
             {/* Wallet */}
-            <div className="bg-surface-container-low/50 rounded-xl p-4 flex items-center justify-between">
+            <div className="bg-surface-container-low/50 rounded-lg p-3 flex items-center justify-between">
               <span className="text-on-surface-variant text-sm">Wallet</span>
               <code className="font-mono text-tertiary bg-tertiary/5 px-3 py-1 rounded border border-tertiary/10">
                 {shortAddr(account)}
@@ -284,11 +284,11 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="md:col-span-12 glass-panel rounded-3xl p-8 space-y-6"
+          className="md:col-span-12 glass-panel rounded-2xl p-6 space-y-4"
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-headline font-bold text-on-surface">
+              <h2 className="text-xl font-headline font-bold text-on-surface">
                 Submit New Proof
               </h2>
               <p className="text-on-surface-variant text-sm">
@@ -327,7 +327,7 @@ export default function DashboardPage() {
                 Proof Hex Data
               </label>
               <textarea
-                className={`w-full h-24 bg-surface-container-low border rounded-xl p-4 font-mono text-sm text-tertiary focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition-all outline-none resize-none ${
+                className={`w-full h-16 bg-surface-container-low border rounded-xl p-4 font-mono text-sm text-tertiary focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition-all outline-none resize-none ${
                   proof && !proofValid ? "border-red-500/50" : "border-outline-variant/20"
                 }`}
                 placeholder="0x..."
@@ -345,7 +345,7 @@ export default function DashboardPage() {
                 Public Values
               </label>
               <textarea
-                className={`w-full h-24 bg-surface-container-low border rounded-xl p-4 font-mono text-sm text-tertiary focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition-all outline-none resize-none ${
+                className={`w-full h-16 bg-surface-container-low border rounded-xl p-4 font-mono text-sm text-tertiary focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition-all outline-none resize-none ${
                   publicValues && !pubValid ? "border-red-500/50" : "border-outline-variant/20"
                 }`}
                 placeholder="0x..."
@@ -400,7 +400,7 @@ export default function DashboardPage() {
           )}
 
           {/* Submit button */}
-          <div className="flex items-center justify-end gap-4 pt-4">
+          <div className="flex items-center justify-end gap-4 pt-2">
             <button
               disabled={!canSubmit}
               onClick={handleSubmit}
