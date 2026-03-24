@@ -12,7 +12,7 @@ The inherent transparency of public blockchains creates a fundamental tension be
 
 We present **zk-X509**, a fully software-based, privacy-preserving identity system that bridges legacy Public Key Infrastructure (PKI) with public ledgers. Using a RISC-V-based zero-knowledge virtual machine (zkVM), zk-X509 enables users to prove ownership and validity of standard X.509 certificates—from any national PKI worldwide (Korean NPKI, Estonian eID, German eID, etc.) or corporate/TLS CAs—without revealing private keys or personal identifiers. The private key never enters the ZK circuit; ownership is proven via signature verification using the OS keychain (macOS Secure Enclave, Windows TPM). The circuit verifies six properties: (1) the full certificate chain to a trusted root, (2) temporal validity, (3) signature-based key ownership, (4) trustless CRL revocation checking (CA signature verified inside zkVM), (5) binding to a specific blockchain address, and (6) configurable nullifier generation for tunable Sybil resistance. The proof commits thirteen public values: a nullifier, a CA Merkle root (hiding which specific CA issued the certificate), a timestamp, the registrant's address, a wallet index, the certificate's expiry (`notAfter`), a chain ID (EIP-155), a registry address, a CRL Merkle root, and four optional selective disclosure hashes. On-chain verification automatically expires when the certificate does.
 
-We formalize the security model under a Dolev-Yao adversary and prove six properties via game-based definitions: unforgeability, unlinkability, double-registration resistance, front-running immunity, CA anonymity, and non-transferability — with explicit reductions to EUF-CMA signature security and ZK soundness. Our SP1 zkVM implementation achieves 11.8 million cycles for single-level ECDSA P-256 verification (17.4M for RSA-2048), and on-chain verification costs approximately 300,000 gas (Groth16) or 77,000 gas (mock verifier in testing). Unlike DID-based approaches that require building new credential issuance infrastructure from scratch, zk-X509 leverages government-grade certificates that are already deployed at scale, enabling immediate adoption without new trust establishment. zk-X509 provides a pragmatic, hardware-free pathway to integrate existing trust anchors into decentralized finance while strictly preserving user anonymity.
+We formalize the security model under a Dolev-Yao adversary and prove six properties via game-based definitions: unforgeability, unlinkability, double-registration resistance, front-running immunity, CA anonymity, and non-transferability — with explicit reductions to EUF-CMA signature security and ZK soundness. Our SP1 zkVM implementation achieves 11.8 million cycles for single-level ECDSA P-256 verification (17.4M for RSA-2048), and on-chain verification costs approximately 300,000 gas (Groth16). Unlike DID-based approaches that require building new credential issuance infrastructure from scratch, zk-X509 leverages government-grade certificates that are already deployed at scale, enabling immediate adoption without new trust establishment. zk-X509 provides a pragmatic, hardware-free pathway to integrate existing trust anchors into decentralized finance while strictly preserving user anonymity.
 
 **Keywords:** Zero-Knowledge Proofs, X.509, Digital Identity, zkVM, Ethereum, Korean NPKI, Privacy-Preserving Authentication, Proof of Personhood
 
@@ -215,7 +215,7 @@ Step 2.  S:        (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
                    CRL ← FetchCRL(cert.issuer)             // from CA distribution point
                    challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
                    ownership_sig ← OS_Keychain.Sign(sk', challenge)  // private key stays in keychain
-                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v2" ‖ contract_address ‖ chain_id))  // deterministic
+                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))  // deterministic
                    Erase(sk')  // private key never reaches SP1
 
 Step 3.  S → Z:   (cert, ownership_sig, nullifier_sig, chain, t, CRL, addr,
@@ -258,7 +258,7 @@ Step 4.  Z:        // Parse and validate user certificate
                    Assert: wallet_index < max_wallets
 
                    // Verify nullifier signature (deterministic, registrant-independent)
-                   nullifier_domain ← H("zk-X509-Nullifier-v2" ‖ contract_address ‖ chain_id)
+                   nullifier_domain ← H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id)
                    Assert: Sig.Verify(cert_parsed.pk, nullifier_domain, nullifier_sig)
 
                    // Compute public outputs
@@ -278,7 +278,7 @@ Step 4.  Z:        // Parse and validate user certificate
 
                    // Commit public values (caMerkleRoot, NOT caRootHash)
                    Commit(nullifier, ca_merkle_root, t, addr, wallet_index,
-                          notAfter, chain_id, contract_address, crl_merkle_root,
+                          notAfter, chain_id, registry_address, crl_merkle_root,
                           countryHash, orgHash, orgUnitHash, commonNameHash)
 
 Step 5.  Z → S:   (π, pubvals)
@@ -641,14 +641,13 @@ Gas measurements on Ethereum (Foundry test environment):
 
 | Operation | Gas | Notes |
 |-----------|-----|-------|
-| Contract deployment | ~1,338,947 | IdentityRegistry + MockVerifier |
-| `register()` | 77,527 | With mock verifier |
-| `register()` (estimated) | ~300,000 | With Groth16 on-chain verifier |
+| Contract deployment | ~1,338,947 | IdentityRegistry + SP1VerifierGroth16 |
+| `register()` | ~300,000 | With Groth16 on-chain verifier |
 | `addCA()` | 26,078 | Owner only, auto-recomputes Merkle root |
 | `revokeIdentity()` | ~8,500 | Owner only, permanent |
 | `isVerified()` | ~2,600 | View function |
 
-The ~77K gas cost with a mock verifier rises to an estimated ~300K with the Groth16 on-chain verifier. This remains well within practical limits for Ethereum L1 and is negligible on L2 rollups.
+The ~300K gas cost for `register()` with Groth16 verification remains well within practical limits for Ethereum L1 and is negligible on L2 rollups.
 
 #### 4.3.3 End-to-End Latency
 
@@ -1058,11 +1057,11 @@ The single-owner access control for CA management represents a centralization po
 
 ### 7.4 Cross-Chain Deployment
 
-zk-X509 supports multi-chain deployment — `IdentityRegistry` can be deployed on Ethereum, Polygon, Arbitrum, or any EVM-compatible chain with the same verification key. Users generate a separate proof per chain, each bound to the target chain's `chain_id` and `contract_address`. Two privacy-by-design consequences follow from the domain separation in Section 3.2:
+zk-X509 supports multi-chain deployment — `IdentityRegistry` can be deployed on Ethereum, Polygon, Arbitrum, or any EVM-compatible chain with the same verification key. Users generate a separate proof per chain, each bound to the target chain's `chain_id` and `registry_address`. Two privacy-by-design consequences follow from the domain separation in Section 3.2:
 
 1. **Cross-chain replay resistance.** The `chain_id` in the ownership challenge ensures a proof for Ethereum (chain_id=1) is rejected on Polygon (chain_id=137).
 
-2. **Cross-chain unlinkability.** The `contract_address` in the nullifier domain means different deployments produce different nullifiers for the same certificate. An observer cannot determine whether registrations on two chains belong to the same person — this is a deliberate privacy feature, not a limitation.
+2. **Cross-chain unlinkability.** The `registry_address` in the nullifier domain means different deployments produce different nullifiers for the same certificate. An observer cannot determine whether registrations on two chains belong to the same person — this is a deliberate privacy feature, not a limitation.
 
 If cross-chain identity linkage is desired (e.g., for unified reputation), the user can voluntarily reveal their nullifiers on both chains. However, this is an opt-in decision that the protocol does not enforce, preserving privacy by default.
 

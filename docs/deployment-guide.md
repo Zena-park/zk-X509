@@ -28,7 +28,7 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 |------|-------|
 | Chain ID | 31337 |
 | RPC | http://localhost:8545 |
-| Verifier | MockSP1Verifier (always passes) |
+| Verifier | SP1VerifierGroth16 (production) |
 | CA Merkle Root | From test certs |
 | Test ETH | 10,000 per account |
 
@@ -124,13 +124,27 @@ cast send <REGISTRY_ADDRESS> \
 # registry.acceptOwnership()
 ```
 
-### Step 4: Set CA Merkle Root
+### Step 4: Register Trusted CAs
+
+CA를 on-chain에 개별 등록하면 Merkle root가 자동 계산됩니다:
 ```bash
+# 단일 CA 등록
 cast send <REGISTRY_ADDRESS> \
-  "updateCaMerkleRoot(bytes32)" <CA_MERKLE_ROOT> \
+  "addCA(bytes32)" <CA_HASH> \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY
+
+# 복수 CA 일괄 등록
+cast send <REGISTRY_ADDRESS> \
+  "addCAs(bytes32[])" "[<HASH1>,<HASH2>,<HASH3>]" \
   --rpc-url $RPC_URL \
   --private-key $PRIVATE_KEY
 ```
+
+> CA 해시: `SHA-256(CA_public_key_SPKI_DER)`
+>
+> `updateCaMerkleRoot(bytes32)`도 사용 가능하지만, `addCA()`/`removeCA()`를 사용하면
+> CA 목록이 on-chain에 저장되어 사용자가 `getCaLeaves()`로 조회할 수 있습니다.
 
 ### Step 5: Set CRL Merkle Root (optional)
 ```bash

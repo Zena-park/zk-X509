@@ -31,8 +31,7 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
 ### Gas Cost
 ```bash
 cd contracts && forge test --gas-report
-# register() with mock verifier: ~77K gas
-# Estimated Groth16 on-chain verifier: ~300K gas
+# register() with Groth16 verifier: ~300K gas
 ```
 
 ### Automated Benchmark Script
