@@ -69,11 +69,19 @@ cast send $REGISTRY_ADDR \
 
 ### Step 3: 확인
 ```bash
+# 인증 여부
 cast call $REGISTRY_ADDR \
   "isVerified(address)(bool)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --rpc-url http://localhost:8545
 # → true
+
+# 인증 만료일 (unix timestamp)
+cast call $REGISTRY_ADDR \
+  "verifiedUntil(address)(uint64)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --rpc-url http://localhost:8545
 ```
+
+> `--registrant`와 `cast send`의 `--private-key` 지갑 주소가 반드시 일치해야 한다.
 
 ## 5. Frontend E2E Test (브라우저)
 
