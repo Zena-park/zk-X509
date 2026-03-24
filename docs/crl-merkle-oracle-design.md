@@ -207,7 +207,7 @@ struct PublicValuesStruct {
     uint32 walletIndex;
     uint64 notAfter;
     uint64 chainId;
-    address appContract;
+    address registryAddress;
     bytes32 crlMerkleRoot;    // 🆕 CRL SMT root (bytes32(0) = CRL 미사용)
     bytes32 countryHash;
     bytes32 orgHash;

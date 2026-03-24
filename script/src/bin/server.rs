@@ -225,7 +225,7 @@ fn build_stdin(
     max_wallets: u32,
     disclosure_mask: u8,
     timestamp: u64,
-    contract_address: &[u8; 20],
+    registry_address: &[u8; 20],
     chain_id: u64,
 ) -> SP1Stdin {
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
@@ -248,7 +248,7 @@ fn build_stdin(
     stdin.write(&disclosure_mask);
     stdin.write(&ca_merkle_proof);
     stdin.write(&ca_merkle_root);
-    stdin.write(contract_address);
+    stdin.write(registry_address);
     stdin.write(&chain_id);
     zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
     stdin
@@ -269,16 +269,16 @@ fn prepare_stdin(
         .map_err(|(_status, msg)| msg)?;
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
         .map_err(|e| format!("System clock error: {}", e))?.as_secs();
-    // Default chain_id and contract_address for server mode
+    // Default chain_id and registry_address for server mode
     let chain_id: u64 = 31337; // TODO: make configurable via env/request
-    let contract_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let registry_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &key_der, registrant_bytes, wallet_index, timestamp, chain_id)
         .map_err(|e| e.to_string())?;
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &key_der, &contract_address, chain_id)
+        &cert_der, &key_der, &registry_address, chain_id)
         .map_err(|e| e.to_string())?;
-    Ok(build_stdin(&cert_der, &ownership_sig, &nullifier_sig, ca_pub_key, registrant_bytes, wallet_index, max_wallets, disclosure_mask, timestamp, &contract_address, chain_id))
+    Ok(build_stdin(&cert_der, &ownership_sig, &nullifier_sig, ca_pub_key, registrant_bytes, wallet_index, max_wallets, disclosure_mask, timestamp, &registry_address, chain_id))
 }
 
 /// Execute the ZK program without generating a proof (fast, for testing).

@@ -41,9 +41,9 @@ struct EVMArgs {
     /// Chain ID (EIP-155). Default: 31337 (Anvil local).
     #[arg(long, default_value = "31337")]
     chain_id: u64,
-    /// IdentityRegistry contract address (hex).
+    /// IdentityRegistry address (hex).
     #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
-    contract_address: String,
+    registry_address: String,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -88,16 +88,16 @@ fn main() {
         .expect("Registrant address must be 20 bytes");
 
     let chain_id = args.chain_id;
-    let contract_hex = args.contract_address.strip_prefix("0x").unwrap_or(&args.contract_address);
-    let contract_address: [u8; 20] = hex::decode(contract_hex)
-        .expect("Invalid contract address hex")
+    let registry_hex = args.registry_address.strip_prefix("0x").unwrap_or(&args.registry_address);
+    let registry_address: [u8; 20] = hex::decode(registry_hex)
+        .expect("Invalid registry address hex")
         .try_into()
-        .expect("Contract address must be 20 bytes");
+        .expect("Registry address must be 20 bytes");
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, chain_id,
     ).expect("Failed to sign");
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
-        &cert_der, &priv_key, &contract_address, chain_id,
+        &cert_der, &priv_key, &registry_address, chain_id,
     ).expect("Failed to sign nullifier");
 
     let crl_der: Vec<u8> = Vec::new();
@@ -119,7 +119,7 @@ fn main() {
     stdin.write(&args.disclosure_mask);
     stdin.write(&ca_merkle_proof);
     stdin.write(&ca_merkle_root);
-    stdin.write(&contract_address);
+    stdin.write(&registry_address);
     stdin.write(&chain_id);
     zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
     println!("Proof System: {:?}", args.system);
