@@ -84,6 +84,11 @@ struct Args {
     /// IdentityRegistry address (hex). For cross-DApp nullifier separation.
     #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
     registry_address: String,
+
+    /// JSON-RPC URL to fetch on-chain CA list. When set, --extra-ca is ignored
+    /// and the CA Merkle tree is built from on-chain getCaLeaves().
+    #[arg(long)]
+    rpc_url: Option<String>,
 }
 
 fn main() {
@@ -177,18 +182,26 @@ fn main() {
     ).expect("Failed to sign nullifier domain");
     println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 
-    // Build CA Merkle tree (user's CA is always index 0)
-    let mut extra_hashes = Vec::new();
-    for extra in &args.extra_ca {
-        let extra_pub = std::fs::read(extra)
-            .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
-        let extra_hash: [u8; 32] = sha2::Sha256::digest(&extra_pub).into();
-        extra_hashes.push(extra_hash);
-        println!("Extra CA: {} (hash: 0x{})", extra.display(), hex::encode(extra_hash));
-    }
-    let (_ca_leaf, ca_merkle_root, ca_merkle_proof) =
-        zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &extra_hashes);
-    println!("CA Merkle Tree: {} leaves", 1 + extra_hashes.len());
+    // Build CA Merkle tree (from on-chain if --rpc-url, else from local files)
+    let (ca_merkle_root, ca_merkle_proof) = if let Some(rpc_url) = &args.rpc_url {
+        println!("Fetching CA list from on-chain ({})...", rpc_url);
+        let (root, proof) = zk_x509_script::onchain::build_ca_merkle_from_onchain(rpc_url, &registry_bytes, &ca_pub_key)
+            .expect("Failed to build CA Merkle tree from on-chain");
+        println!("CA Merkle Root (on-chain): 0x{}", hex::encode(root));
+        (root, proof)
+    } else {
+        let mut extra_hashes = Vec::new();
+        for extra in &args.extra_ca {
+            let extra_pub = std::fs::read(extra)
+                .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
+            let extra_hash: [u8; 32] = sha2::Sha256::digest(&extra_pub).into();
+            extra_hashes.push(extra_hash);
+            println!("Extra CA: {} (hash: 0x{})", extra.display(), hex::encode(extra_hash));
+        }
+        let (_ca_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &extra_hashes);
+        println!("CA Merkle Tree: {} leaves", 1 + extra_hashes.len());
+        (root, proof)
+    };
 
     let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
         cert_der: &cert_der,
