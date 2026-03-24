@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import {
   IDENTITY_REGISTRY_ABI,
-  REGISTRY_ADDRESSES,
+  getRegistryAddress,
 } from "@/contracts/IdentityRegistry";
 
 export default function AdminPage() {
@@ -30,7 +30,7 @@ export default function AdminPage() {
         const signer = await provider.getSigner();
         const network = await provider.getNetwork();
         const chainId = network.chainId.toString();
-        const addr = REGISTRY_ADDRESSES[chainId];
+        const addr = getRegistryAddress(chainId);
         if (!addr || addr === ethers.ZeroAddress) return;
 
         const readOnly = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, provider);

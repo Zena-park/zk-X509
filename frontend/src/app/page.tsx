@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import {
   IDENTITY_REGISTRY_ABI,
-  REGISTRY_ADDRESSES,
+  getRegistryAddress,
 } from "@/contracts/IdentityRegistry";
 
 export default function Home() {
@@ -25,7 +25,7 @@ export default function Home() {
         const provider = new ethers.BrowserProvider(window.ethereum!);
         const network = await provider.getNetwork();
         const chainId = network.chainId.toString();
-        const addr = REGISTRY_ADDRESSES[chainId];
+        const addr = getRegistryAddress(chainId);
         if (!addr || addr === ethers.ZeroAddress) return;
 
         const contract = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, provider);
@@ -55,7 +55,7 @@ export default function Home() {
       const network = await provider.getNetwork();
       const chainId = network.chainId.toString();
 
-      const registryAddress = REGISTRY_ADDRESSES[chainId];
+      const registryAddress = getRegistryAddress(chainId);
       if (!registryAddress || registryAddress === ethers.ZeroAddress) {
         setTxStatus(`체인 ${chainId}에 컨트랙트가 배포되지 않았습니다.`);
         return;

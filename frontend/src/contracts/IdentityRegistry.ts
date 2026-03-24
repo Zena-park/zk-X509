@@ -252,11 +252,19 @@ export const IDENTITY_REGISTRY_ABI = [
   { inputs: [], name: "ContractPaused", type: "error" },
 ] as const;
 
-/// Contract addresses per network.
-/// Update these after deployment.
-export const REGISTRY_ADDRESSES: Record<string, string> = {
-  // Sepolia testnet
-  "11155111": "0x0000000000000000000000000000000000000000",
-  // Localhost (Anvil)
-  "31337": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
-};
+/// Registry address from environment variable, or fallback per network.
+export function getRegistryAddress(chainId: string): string {
+  const envAddr = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
+  if (envAddr) return envAddr;
+
+  const fallback: Record<string, string> = {
+    "11155111": "0x0000000000000000000000000000000000000000",
+    "31337": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+  };
+  return fallback[chainId] || "";
+}
+
+/// RPC URL from environment variable, or fallback.
+export function getRpcUrl(): string {
+  return process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
+}

@@ -2,7 +2,7 @@
 
 import { useState, createContext, useContext, useEffect } from "react";
 import { ethers } from "ethers";
-import { REGISTRY_ADDRESSES } from "@/contracts/IdentityRegistry";
+import { getRegistryAddress } from "@/contracts/IdentityRegistry";
 
 const AccountContext = createContext<{
   account: string | null;
@@ -29,7 +29,7 @@ export function NavBarProvider({ children }: { children: React.ReactNode }) {
         const cid = network.chainId.toString();
         setChainId(cid);
         setChainName(getChainName(cid));
-        setRegistryAddr(REGISTRY_ADDRESSES[cid] || "");
+        setRegistryAddr(getRegistryAddress(cid));
       } catch {
         // ignore
       }
