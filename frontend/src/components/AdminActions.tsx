@@ -20,6 +20,7 @@ interface TxStatus {
 const IDLE: TxStatus = { state: "idle", message: "" };
 
 export function AdminActions({ contract, isOwner, isPaused, onRefresh }: AdminActionsProps) {
+  const [openSection, setOpenSection] = useState<string | null>("ca");
   const [caRoot, setCaRoot] = useState("");
   const [caTx, setCaTx] = useState<TxStatus>(IDLE);
 
@@ -62,11 +63,12 @@ export function AdminActions({ contract, isOwner, isPaused, onRefresh }: AdminAc
   if (!contract) return null;
 
   const busy = (tx: TxStatus) => tx.state === "pending" || tx.state === "confirming";
+  const toggle = (id: string) => setOpenSection(openSection === id ? null : id);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       {/* CA Merkle Root */}
-      <Section title="CA Merkle Root 업데이트">
+      <Section id="ca" title="CA Merkle Root 업데이트" open={openSection === "ca"} onToggle={toggle}>
         <input
           placeholder="0x..."
           value={caRoot}
@@ -83,7 +85,7 @@ export function AdminActions({ contract, isOwner, isPaused, onRefresh }: AdminAc
       </Section>
 
       {/* CRL Merkle Root */}
-      <Section title="CRL Merkle Root 업데이트">
+      <Section id="crl" title="CRL Merkle Root 업데이트" open={openSection === "crl"} onToggle={toggle}>
         <input
           placeholder="0x... (0x0000...0000 = 비활성화)"
           value={crlRoot}
@@ -100,7 +102,7 @@ export function AdminActions({ contract, isOwner, isPaused, onRefresh }: AdminAc
       </Section>
 
       {/* Max Proof Age */}
-      <Section title={`Max Proof Age: ${proofAge}분`}>
+      <Section id="age" title={`Max Proof Age: ${proofAge}분`} open={openSection === "age"} onToggle={toggle}>
         <input
           type="range"
           min={5}
@@ -119,7 +121,7 @@ export function AdminActions({ contract, isOwner, isPaused, onRefresh }: AdminAc
       </Section>
 
       {/* Revoke Identity */}
-      <Section title="신원 폐기">
+      <Section id="revoke" title="신원 폐기" open={openSection === "revoke"} onToggle={toggle}>
         <input
           placeholder="Nullifier (0x...)"
           value={revokeNullifier}
@@ -148,7 +150,7 @@ export function AdminActions({ contract, isOwner, isPaused, onRefresh }: AdminAc
       </Section>
 
       {/* Pause / Unpause */}
-      <Section title="긴급 정지">
+      <Section id="pause" title="긴급 정지" open={openSection === "pause"} onToggle={toggle}>
         <TxButton
           label={isPaused ? "서비스 재개 (Unpause)" : "긴급 정지 (Pause)"}
           disabled={!isOwner || busy(pauseTx)}
@@ -165,7 +167,7 @@ export function AdminActions({ contract, isOwner, isPaused, onRefresh }: AdminAc
       </Section>
 
       {/* Transfer Ownership */}
-      <Section title="소유권 이전">
+      <Section id="owner" title="소유권 이전" open={openSection === "owner"} onToggle={toggle}>
         <input
           placeholder="새 owner 주소 (0x...)"
           value={newOwner}
@@ -202,11 +204,23 @@ export function AdminActions({ contract, isOwner, isPaused, onRefresh }: AdminAc
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ id, title, open, onToggle, children }: {
+  id: string;
+  title: string;
+  open: boolean;
+  onToggle: (id: string) => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
-      <h3 className="mb-3 text-sm font-semibold text-gray-300">{title}</h3>
-      {children}
+    <div className="rounded-lg border border-gray-800 bg-gray-900/50">
+      <button
+        onClick={() => onToggle(id)}
+        className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-gray-300 hover:text-white"
+      >
+        {title}
+        <span className="text-gray-500">{open ? "−" : "+"}</span>
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
     </div>
   );
 }
