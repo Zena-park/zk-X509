@@ -44,6 +44,10 @@ struct Args {
     #[arg(long, default_value = "certs/ca_pub.der")]
     ca_cert: PathBuf,
 
+    /// Additional trusted CA public keys (SPKI DER) for multi-CA Merkle tree.
+    #[arg(long)]
+    extra_ca: Vec<PathBuf>,
+
     /// Intermediate CA certificates (full X.509 DER), in order from user→root.
     /// For single-level CA (no intermediates), omit this.
     #[arg(long)]
@@ -159,9 +163,17 @@ fn main() {
     ).expect("Failed to sign nullifier domain");
     println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 
-    // Build CA Merkle tree
+    // Build CA Merkle tree (user's CA is always index 0)
     let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-    let ca_leaves = vec![ca_leaf_hash];
+    let mut ca_leaves = vec![ca_leaf_hash];
+    for extra in &args.extra_ca {
+        let extra_pub = std::fs::read(extra)
+            .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
+        let extra_hash: [u8; 32] = sha2::Sha256::digest(&extra_pub).into();
+        ca_leaves.push(extra_hash);
+        println!("Extra CA: {} (hash: 0x{})", extra.display(), hex::encode(extra_hash));
+    }
+    println!("CA Merkle Tree: {} leaves", ca_leaves.len());
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
 
     let mut stdin = SP1Stdin::new();
