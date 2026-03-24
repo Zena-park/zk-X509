@@ -2,7 +2,7 @@
 
 *Privacy-preserving, legally binding, and zero-hardware. Why the future of on-chain identity is already in your pocket.*
 
-![zk-X509 Overview](https://github.com/user-attachments/assets/45670a59-39e4-4df1-b284-24403cfdd6b9)
+![zk-X509 Overview](https://raw.githubusercontent.com/tokamak-network/zk-X509/main/docs/images/medium-infographic.png)
 
 ---
 
