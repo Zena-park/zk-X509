@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ISP1Verifier} from "./ISP1Verifier.sol";
+import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
 
 /// @title IdentityRegistry
 /// @notice On-chain registry for ZK-verified X.509 certificate identities.
@@ -86,13 +86,21 @@ contract IdentityRegistry {
     // ============ Modifiers ============
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert OnlyOwner();
+        _onlyOwner();
         _;
     }
 
+    function _onlyOwner() internal view {
+        if (msg.sender != owner) revert OnlyOwner();
+    }
+
     modifier whenNotPaused() {
-        if (paused) revert ContractPaused();
+        _whenNotPaused();
         _;
+    }
+
+    function _whenNotPaused() internal view {
+        if (paused) revert ContractPaused();
     }
 
     // ============ Constructor ============

@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {IdentityRegistry} from "../src/IdentityRegistry.sol";
-import {ISP1Verifier} from "../src/ISP1Verifier.sol";
+import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
 
 /// @notice Mock SP1 verifier that always passes (for unit testing).
 contract MockSP1Verifier is ISP1Verifier {
