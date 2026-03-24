@@ -100,7 +100,40 @@ cast send $REGISTRY_ADDR \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-### Step 4: 프론트엔드 실행 (터미널 3)
+### Step 4: 사용자 등록 테스트
+
+Groth16 Proof 생성 후 등록:
+```bash
+# proof 생성 (--registrant 주소 = 등록할 지갑 주소)
+cargo run --release --bin evm -- --system groth16 \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --chain-id 31337 \
+  --registry-address $REGISTRY_ADDR
+# 출력에서 Proof: 0x... 와 Public Values: 0x... 복사
+
+# 등록 (--private-key의 지갑 주소와 --registrant가 반드시 일치해야 함)
+cast send $REGISTRY_ADDR \
+  "register(bytes,bytes)" $PROOF $PUBLIC_VALUES \
+  --rpc-url http://localhost:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+
+등록 확인:
+```bash
+# 인증 여부
+cast call $REGISTRY_ADDR \
+  "isVerified(address)(bool)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --rpc-url http://localhost:8545
+# → true
+
+# 인증 만료일 (unix timestamp)
+cast call $REGISTRY_ADDR \
+  "verifiedUntil(address)(uint64)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --rpc-url http://localhost:8545
+```
+
+### Step 5: 프론트엔드 실행 (터미널 3)
 ```bash
 cd frontend && npm run dev
 ```
@@ -109,4 +142,4 @@ cd frontend && npm run dev
 
 > 프론트엔드 컨트랙트 주소: `frontend/src/contracts/IdentityRegistry.ts`에서 수정.
 
-배포 완료 후 테스트는 [testing-guide.md](testing-guide.md) 참조.
+배포 완료 후 추가 테스트는 [testing-guide.md](testing-guide.md) 참조.
