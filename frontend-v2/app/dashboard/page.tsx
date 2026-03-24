@@ -344,9 +344,12 @@ cargo build --release --workspace`}</pre>
                 </a>
               </div>
 
-              <p className="text-[10px] text-on-surface-variant italic">
-                Docker is required for Groth16 wrapping. Apple Silicon: docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0
-              </p>
+              <div className="bg-tertiary/5 border border-tertiary/20 rounded-lg p-3">
+                <p className="text-xs font-headline font-medium text-tertiary mb-1">Prerequisites</p>
+                <p className="text-xs text-on-surface-variant">Docker must be running for Groth16 proof generation.</p>
+                <p className="text-xs text-on-surface-variant mt-1">Apple Silicon (M1/M2/M3) — run this first:</p>
+                <pre className="bg-surface-container p-2 rounded mt-1 text-[10px] font-mono text-tertiary overflow-x-auto">docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0</pre>
+              </div>
             </div>
           </details>
 
