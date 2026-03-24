@@ -52,13 +52,25 @@ cd certs && bash generate-test-certs.sh && cd ..
 
 > 인증서를 재생성하면 CA 키가 바뀌므로 CRL도 자동 재생성된다.
 
-## 3. 빌드 확인
+## 3. 빌드 + Verification Key 확인
 
 ```bash
-cargo check --workspace           # Rust
-cd contracts && forge build        # Solidity
-cd frontend && npm install && npm run build  # Frontend
+# Rust 전체 빌드
+cargo build --release --workspace
+
+# Verification Key 확인 (배포에 필요)
+cargo run --release --bin vkey
+# 출력: Verification Key: 0x...
+
+# Solidity 빌드
+cd contracts && forge build
+
+# Frontend 빌드
+cd frontend-v2 && npm install && npm run build
 ```
+
+> 프로그램 코드(`program/src/main.rs`)를 수정하면 Verification Key가 변경됩니다.
+> 변경 시 `cargo run --bin vkey`로 새 값을 확인하고, 컨트랙트를 재배포해야 합니다.
 
 ## 4. 로컬 환경 배포
 
