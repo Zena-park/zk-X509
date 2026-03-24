@@ -112,29 +112,6 @@ function isBusy(s: TxStatus) {
 /*  Simulated verification feed                                        */
 /* ------------------------------------------------------------------ */
 
-const INITIAL_FEED = [
-  {
-    id: 1,
-    status: "OK",
-    timestamp: "2024-05-20 14:02:11",
-    message: "Proof Verified: 0x9a...32b1",
-    latency: "242ms",
-  },
-  {
-    id: 2,
-    status: "OK",
-    timestamp: "2024-05-20 14:01:58",
-    message: "Proof Verified: 0x11...e2f3",
-    latency: "218ms",
-  },
-  {
-    id: 3,
-    status: "INF",
-    timestamp: "2024-05-20 14:01:42",
-    message: "Merkle Tree Snapshot Created: Block #19,482,000",
-    latency: "1.2s",
-  },
-];
 
 /* ------------------------------------------------------------------ */
 /*  BentoCard                                                          */
@@ -200,7 +177,6 @@ export default function AdminPage() {
   } = useWallet();
 
   /* ---------- local state ---------- */
-  const [feed, setFeed] = useState(INITIAL_FEED);
   const [blockNumber, setBlockNumber] = useState<number | null>(null);
 
   // inputs
@@ -250,26 +226,6 @@ export default function AdminPage() {
       clearInterval(id);
     };
   }, [account]);
-
-  /* ---------- simulated feed ---------- */
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!paused) {
-        const newEntry = {
-          id: Date.now(),
-          status: Math.random() > 0.1 ? "OK" : "INF",
-          timestamp: new Date()
-            .toISOString()
-            .replace("T", " ")
-            .split(".")[0],
-          message: `Proof Verified: 0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`,
-          latency: `${Math.floor(Math.random() * 300 + 100)}ms`,
-        };
-        setFeed((prev) => [newEntry, ...prev].slice(0, 10));
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [paused]);
 
   /* ---------- search handler ---------- */
   const handleSearch = useCallback(async () => {
@@ -791,75 +747,9 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Visual Accent Card */}
-            <div className="relative group h-48 rounded-3xl overflow-hidden border border-outline-variant/10">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFYS16YTYLcKy_1HSu87kHyrRUf3D7A3z4bXsJ_WIgYry0bjCjajNurHZL0SJNyd6NGD57MfPRJSYAGUV6sPKDxxUum7ygo1f9itOkeeZgims4mFP6ZxPMuLyX9GOhGk3Pp8FZRbiaVgio42VfSA2vsKLnK_qbBVFa433xcwWdhOKh30rKmMnouLXq4rki7N5MwLNa5J1W8gwZTSduV8bJQqMmte3IRtx1TWPwHn2QoY4n-RZslAL9w9UCYTt15m4N45M6uyGhvKU"
-                alt="Cryptographic Visualization"
-                className="w-full h-full object-cover grayscale opacity-30 group-hover:grayscale-0 group-hover:opacity-50 transition-all duration-1000 scale-110 group-hover:scale-100"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
-              <div className="absolute bottom-4 left-6">
-                <p className="text-xs font-mono text-tertiary">
-                  ZK-PROOF_ENGINE_v4
-                </p>
-                <p className="text-[10px] text-on-surface-variant">
-                  Substrate Node #0012
-                </p>
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* Verification Feed */}
-        <div className="bg-surface rounded-3xl p-8 border border-outline-variant/10">
-          <div className="flex justify-between items-center mb-8">
-            <div className="flex items-center gap-3">
-              <History className="w-5 h-5 text-primary" />
-              <h4 className="font-headline font-bold text-lg">
-                Real-time Verification Feed
-              </h4>
-            </div>
-            <div className="flex items-center gap-2">
-              <div
-                className={`w-1.5 h-1.5 rounded-full ${paused ? "bg-error" : "bg-secondary animate-pulse"}`}
-              />
-              <span className="text-[10px] font-mono text-on-surface-variant uppercase tracking-widest">
-                {paused ? "FEED_PAUSED" : "WS_CONNECTED"}
-              </span>
-            </div>
-          </div>
-          <div className="space-y-1 max-h-64 overflow-y-auto no-scrollbar">
-            <AnimatePresence initial={false}>
-              {feed.map((item) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-6 text-xs font-mono py-3 border-b border-outline-variant/5 hover:bg-surface-high/30 px-4 rounded-lg transition-colors group"
-                >
-                  <span
-                    className={
-                      item.status === "OK" ? "text-secondary" : "text-tertiary"
-                    }
-                  >
-                    [{item.status}]
-                  </span>
-                  <span className="text-on-surface-variant w-32">
-                    {item.timestamp}
-                  </span>
-                  <span className="text-primary flex-1">{item.message}</span>
-                  <span className="text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity">
-                    {item.latency}
-                  </span>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        </div>
       </div>
 
       {/* Footer */}
