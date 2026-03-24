@@ -112,10 +112,10 @@
 - **해결:** `setMaxProofAge(uint256)` 관리자 함수 추가 (범위: 5분~24시간)
 - **변경 범위:** contracts (constant → mutable, 범위 제한)
 
-#### 41. CA Merkle root 갱신 시 grace period
-- **문제:** `updateCaMerkleRoot()` 호출 시 이전 root로 생성된 미제출 proof가 즉시 무효화
-- **해결:** 이전 root를 grace period(예: 24시간) 동안 유지, 이후 자동 만료
-- **변경 범위:** contracts (activeCARoots 배열 또는 deprecatedAt 타임스탬프)
+#### 41. ~~CA Merkle root 갱신 시 grace period~~ ✅ DONE
+- 구현 완료: `previousCaMerkleRoot` + `caMerkleRootUpdatedAt` + `caRootGracePeriod` (기본 24h, 1h~7d 조절 가능)
+- `_rotateCaMerkleRoot()` 내부 함수로 이전 root 자동 보관
+- `_validateProof()`에서 현재 root 또는 grace period 내 이전 root 모두 허용
 
 #### 42. 컨트랙트 업그레이드 경로 (Proxy 패턴)
 - **문제:** sp1Verifier, programVKey, maxWalletsPerCert가 immutable → 버그 수정/회로 업데이트 불가

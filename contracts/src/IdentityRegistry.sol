@@ -3,6 +3,20 @@ pragma solidity ^0.8.20;
 
 import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
 
+/// @dev Struct for decoding ZK proof public values in a single abi.decode call.
+struct PublicValues {
+    bytes32 nullifier;
+    bytes32 caMerkleRoot;
+    uint64 proofTimestamp;
+    address registrant;
+    uint32 walletIndex;
+    uint64 notAfter;
+    uint64 chainId;
+    address registryAddress;
+    bytes32 crlMerkleRoot;
+    // remaining fields (disclosure hashes etc.) are ignored by the contract
+}
+
 /// @title IdentityRegistry
 /// @notice On-chain registry for ZK-verified X.509 certificate identities.
 /// @dev Users prove they hold a valid certificate (signed by a trusted CA)
@@ -26,6 +40,18 @@ contract IdentityRegistry {
 
     /// @notice Tracks whether a CA hash is already in caLeaves (prevents duplicates).
     mapping(bytes32 => bool) public caExists;
+
+    /// @notice Previous CA Merkle root (valid during grace period after root change).
+    bytes32 public previousCaMerkleRoot;
+
+    /// @notice Timestamp when the current caMerkleRoot was set.
+    uint256 public caMerkleRootUpdatedAt;
+
+    /// @notice Grace period for the previous CA Merkle root (default 24 hours).
+    uint256 public caRootGracePeriod = 24 hours;
+
+    uint256 public constant MIN_CA_GRACE_PERIOD = 1 hours;
+    uint256 public constant MAX_CA_GRACE_PERIOD = 7 days;
 
     /// @notice CRL Merkle root (bytes32(0) = CRL checking disabled).
     bytes32 public crlMerkleRoot;
@@ -68,6 +94,7 @@ contract IdentityRegistry {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
     event MaxProofAgeUpdated(uint256 oldAge, uint256 newAge);
+    event CaRootGracePeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
 
@@ -92,6 +119,7 @@ contract IdentityRegistry {
     error RegistryAddressMismatch(address proofRegistry, address expectedRegistry);
     error InvalidCrlMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
     error ProofAgeOutOfRange(uint256 age, uint256 min, uint256 max);
+    error GracePeriodOutOfRange(uint256 period, uint256 min, uint256 max);
     error ZeroCaHash();
     error DuplicateCaHash(bytes32 caHash);
     error CaIndexOutOfBounds(uint256 index, uint256 length);
@@ -135,36 +163,28 @@ contract IdentityRegistry {
         bytes calldata proof,
         bytes calldata publicValues
     ) internal view returns (bytes32 nullifier, uint64 notAfter) {
-        // Decode in two steps to avoid "stack too deep"
-        bytes32 proofMerkleRoot;
-        address registrant;
-        uint64 proofTimestamp;
-        uint32 walletIndex;
-        (nullifier, proofMerkleRoot, proofTimestamp, registrant, walletIndex, notAfter) =
-            abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64));
+        PublicValues memory pv = abi.decode(publicValues, (PublicValues));
 
-        if (registrant != msg.sender) revert RegistrantMismatch(registrant, msg.sender);
-        if (proofTimestamp > block.timestamp) revert ProofInFuture(proofTimestamp, block.timestamp);
-        if (block.timestamp - proofTimestamp > maxProofAge) revert ProofTooOld(proofTimestamp, block.timestamp);
-        if (proofMerkleRoot != caMerkleRoot) revert InvalidCaMerkleRoot(proofMerkleRoot, caMerkleRoot);
-        if (walletIndex >= MAX_WALLETS_PER_CERT) revert WalletIndexOutOfRange(walletIndex, MAX_WALLETS_PER_CERT);
-        if (notAfter < block.timestamp) revert CertAlreadyExpired(notAfter, block.timestamp);
-
-        // Decode remaining fields (chainId, registryAddress) in separate scope
-        {
-            // Skip first 6 fields (32+32+8+20+4+8 = 104 bytes padded to 6*32 = 192)
-            (, , , , , , uint64 proofChainId, address proofRegistry) =
-                abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64, uint64, address));
-            if (proofChainId != uint64(block.chainid)) revert ChainIdMismatch(proofChainId, block.chainid);
-            if (proofRegistry != address(this)) revert RegistryAddressMismatch(proofRegistry, address(this));
+        if (pv.registrant != msg.sender) revert RegistrantMismatch(pv.registrant, msg.sender);
+        if (pv.proofTimestamp > block.timestamp) revert ProofInFuture(pv.proofTimestamp, block.timestamp);
+        if (block.timestamp - pv.proofTimestamp > maxProofAge) revert ProofTooOld(pv.proofTimestamp, block.timestamp);
+        if (pv.caMerkleRoot != caMerkleRoot) {
+            bool inGrace = previousCaMerkleRoot != bytes32(0)
+                && pv.caMerkleRoot == previousCaMerkleRoot
+                && block.timestamp <= caMerkleRootUpdatedAt + caRootGracePeriod;
+            if (!inGrace) revert InvalidCaMerkleRoot(pv.caMerkleRoot, caMerkleRoot);
         }
+        if (pv.walletIndex >= MAX_WALLETS_PER_CERT) revert WalletIndexOutOfRange(pv.walletIndex, MAX_WALLETS_PER_CERT);
+        if (pv.notAfter < block.timestamp) revert CertAlreadyExpired(pv.notAfter, block.timestamp);
+        if (pv.chainId != uint64(block.chainid)) revert ChainIdMismatch(pv.chainId, block.chainid);
+        if (pv.registryAddress != address(this)) revert RegistryAddressMismatch(pv.registryAddress, address(this));
 
-        // Verify CRL Merkle root (if CRL checking is enabled)
         if (crlMerkleRoot != bytes32(0)) {
-            (, , , , , , , , bytes32 proofCrlRoot) =
-                abi.decode(publicValues, (bytes32, bytes32, uint64, address, uint32, uint64, uint64, address, bytes32));
-            if (proofCrlRoot != crlMerkleRoot) revert InvalidCrlMerkleRoot(proofCrlRoot, crlMerkleRoot);
+            if (pv.crlMerkleRoot != crlMerkleRoot) revert InvalidCrlMerkleRoot(pv.crlMerkleRoot, crlMerkleRoot);
         }
+
+        nullifier = pv.nullifier;
+        notAfter = pv.notAfter;
 
         SP1_VERIFIER.verifyProof(PROGRAM_V_KEY, publicValues, proof);
     }
@@ -221,13 +241,11 @@ contract IdentityRegistry {
     // ============ Admin Functions ============
 
     /// @notice Update the Merkle root of the allowed CA set.
-    /// @dev Recompute off-chain from the full CA list and submit the new root.
-    ///      Existing proofs generated with the old root will be rejected.
+    /// @dev The previous root remains valid during caRootGracePeriod (default 24h).
     /// @param newRoot The new Merkle root of the allowed CA hashes.
     function updateCaMerkleRoot(bytes32 newRoot) external onlyOwner {
         if (newRoot == bytes32(0)) revert ZeroMerkleRoot();
-        caMerkleRoot = newRoot;
-        emit CaMerkleRootUpdated(newRoot);
+        _rotateCaMerkleRoot(newRoot);
     }
 
     /// @notice Add a trusted CA to the on-chain list. Automatically recomputes caMerkleRoot.
@@ -285,6 +303,17 @@ contract IdentityRegistry {
         emit CrlMerkleRootUpdated(newRoot);
     }
 
+    /// @notice Adjust the grace period for the previous CA Merkle root.
+    /// @param newPeriod New grace period in seconds (1 hour to 7 days).
+    function setCaRootGracePeriod(uint256 newPeriod) external onlyOwner {
+        if (newPeriod < MIN_CA_GRACE_PERIOD || newPeriod > MAX_CA_GRACE_PERIOD) {
+            revert GracePeriodOutOfRange(newPeriod, MIN_CA_GRACE_PERIOD, MAX_CA_GRACE_PERIOD);
+        }
+        uint256 oldPeriod = caRootGracePeriod;
+        caRootGracePeriod = newPeriod;
+        emit CaRootGracePeriodUpdated(oldPeriod, newPeriod);
+    }
+
     /// @notice Adjust the maximum proof age (bounded: 5 min to 24 hours).
     /// @param newAge New max proof age in seconds.
     function setMaxProofAge(uint256 newAge) external onlyOwner {
@@ -337,20 +366,27 @@ contract IdentityRegistry {
 
     // ============ Internal ============
 
+    /// @dev Save current root as previous, set new root, and record update time.
+    ///      Skip rotation if the root hasn't actually changed (prevents grace period reset).
+    function _rotateCaMerkleRoot(bytes32 newRoot) internal {
+        if (newRoot == caMerkleRoot) return;
+        previousCaMerkleRoot = caMerkleRoot;
+        caMerkleRootUpdatedAt = block.timestamp;
+        caMerkleRoot = newRoot;
+        emit CaMerkleRootUpdated(newRoot);
+    }
+
     /// @dev Recompute caMerkleRoot from caLeaves[] using SHA-256 sorted-pair Merkle tree.
     ///      Same algorithm as zkVM (program/src/main.rs verify_merkle_membership).
     ///      In-place computation to minimize memory allocation.
     function _recomputeCaMerkleRoot() internal {
         uint256 len = caLeaves.length;
         if (len == 0) {
-            caMerkleRoot = bytes32(0);
-            emit CaMerkleRootUpdated(bytes32(0));
+            _rotateCaMerkleRoot(bytes32(0));
             return;
         }
         if (len == 1) {
-            bytes32 root = caLeaves[0];
-            caMerkleRoot = root;
-            emit CaMerkleRootUpdated(root);
+            _rotateCaMerkleRoot(caLeaves[0]);
             return;
         }
 
@@ -377,7 +413,6 @@ contract IdentityRegistry {
             size = newSize;
         }
 
-        caMerkleRoot = layer[0];
-        emit CaMerkleRootUpdated(layer[0]);
+        _rotateCaMerkleRoot(layer[0]);
     }
 }

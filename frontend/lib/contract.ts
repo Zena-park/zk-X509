@@ -82,6 +82,27 @@ export const IDENTITY_REGISTRY_ABI = [
   },
   {
     inputs: [],
+    name: "previousCaMerkleRoot",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "caMerkleRootUpdatedAt",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "caRootGracePeriod",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
     name: "crlMerkleRoot",
     outputs: [{ name: "", type: "bytes32" }],
     stateMutability: "view",
@@ -157,6 +178,13 @@ export const IDENTITY_REGISTRY_ABI = [
   {
     inputs: [{ name: "newAge", type: "uint256" }],
     name: "setMaxProofAge",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "newPeriod", type: "uint256" }],
+    name: "setCaRootGracePeriod",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",

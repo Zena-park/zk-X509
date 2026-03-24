@@ -215,45 +215,6 @@ fn load_cert_and_key(
 }
 
 /// Build SP1 stdin from cert, key, CA, timestamp, registrant.
-fn build_stdin(
-    cert_der: &[u8],
-    ownership_sig: &[u8],
-    nullifier_sig: &[u8],
-    ca_pub_key: &[u8],
-    registrant_bytes: &[u8; 20],
-    wallet_index: u32,
-    max_wallets: u32,
-    disclosure_mask: u8,
-    timestamp: u64,
-    registry_address: &[u8; 20],
-    chain_id: u64,
-) -> SP1Stdin {
-    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
-    let crl_der: Vec<u8> = Vec::new();
-
-    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(ca_pub_key).into();
-    let ca_leaves = vec![ca_leaf_hash];
-    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
-
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&cert_der);
-    stdin.write(&ownership_sig);
-    stdin.write(&nullifier_sig);
-    stdin.write(&cert_chain);
-    stdin.write(&timestamp);
-    stdin.write(&crl_der);
-    stdin.write(registrant_bytes);
-    stdin.write(&wallet_index);
-    stdin.write(&max_wallets);
-    stdin.write(&disclosure_mask);
-    stdin.write(&ca_merkle_proof);
-    stdin.write(&ca_merkle_root);
-    stdin.write(registry_address);
-    stdin.write(&chain_id);
-    zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
-    stdin
-}
-
 /// Shared logic: load cert, sign ownership + nullifier, build stdin.
 fn prepare_stdin(
     state: &AppState,
@@ -278,7 +239,27 @@ fn prepare_stdin(
     let nullifier_sig = zk_x509_script::ownership::sign_nullifier(
         &cert_der, &key_der, &registry_address, chain_id)
         .map_err(|e| e.to_string())?;
-    Ok(build_stdin(&cert_der, &ownership_sig, &nullifier_sig, ca_pub_key, registrant_bytes, wallet_index, max_wallets, disclosure_mask, timestamp, &registry_address, chain_id))
+    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.to_vec()];
+    let crl_der: Vec<u8> = Vec::new();
+    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(ca_pub_key).into();
+    let ca_leaves = vec![ca_leaf_hash];
+    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+    Ok(zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
+        cert_der: &cert_der,
+        ownership_sig: &ownership_sig,
+        nullifier_sig: &nullifier_sig,
+        cert_chain: &cert_chain,
+        timestamp,
+        crl_der: &crl_der,
+        registrant: registrant_bytes,
+        wallet_index,
+        max_wallets,
+        disclosure_mask,
+        ca_merkle_proof: &ca_merkle_proof,
+        ca_merkle_root,
+        registry_address: &registry_address,
+        chain_id,
+    }))
 }
 
 /// Execute the ZK program without generating a proof (fast, for testing).
