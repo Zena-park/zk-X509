@@ -1,16 +1,156 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import {
-  ShieldCheck,
-  Wallet,
-  Send,
-  Copy,
-  Check,
-  ExternalLink,
-} from "lucide-react";
+import { ShieldCheck, Wallet, Send, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { useWallet } from "../../lib/wallet";
 
+/* ------------------------------------------------------------------ */
+/*  Hex validation helper                                              */
+/* ------------------------------------------------------------------ */
+function isValidHex(v: string): boolean {
+  if (!v.startsWith("0x")) return false;
+  const body = v.slice(2);
+  if (body.length === 0 || body.length % 2 !== 0) return false;
+  if (body.length < 2) return false; // min 4 chars total (0x + 2)
+  return /^[0-9a-fA-F]+$/.test(body);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Known contract error names                                         */
+/* ------------------------------------------------------------------ */
+const ERROR_MESSAGES: Record<string, string> = {
+  AlreadyRegistered: "This nullifier is already registered to another wallet.",
+  UserAlreadyVerified: "This wallet is already verified.",
+  RegistrantMismatch: "The proof was generated for a different wallet address.",
+  ProofTooOld: "The proof timestamp is too old. Please generate a fresh proof.",
+  InvalidCaMerkleRoot: "The CA Merkle root in the proof does not match the on-chain root.",
+  NullifierRevoked: "This certificate nullifier has been revoked.",
+  CertAlreadyExpired: "The X.509 certificate has already expired.",
+  ContractPaused: "The registry contract is currently paused.",
+};
+
+function parseContractError(err: unknown): string {
+  const msg = (err as { message?: string })?.message ?? String(err);
+  // ethers v6 wraps custom errors: look for error name
+  for (const [name, human] of Object.entries(ERROR_MESSAGES)) {
+    if (msg.includes(name)) return human;
+  }
+  if (msg.includes("user rejected") || msg.includes("ACTION_REJECTED")) {
+    return "Transaction was rejected by the user.";
+  }
+  return msg.length > 200 ? msg.slice(0, 200) + "..." : msg;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shorten address                                                    */
+/* ------------------------------------------------------------------ */
+function shortAddr(a: string): string {
+  return `${a.slice(0, 6)}...${a.slice(-4)}`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+type TxStatus = "idle" | "pending" | "confirming" | "success" | "error";
+
+/* ================================================================== */
+/*  Dashboard Page                                                     */
+/* ================================================================== */
 export default function DashboardPage() {
+  const { account, readContract, writeContract, isOwner, refresh, chainName, registryAddr } =
+    useWallet();
+
+  /* ---------- identity state ---------- */
+  const [verified, setVerified] = useState<boolean | null>(null);
+  const [expiryDate, setExpiryDate] = useState<Date | null>(null);
+  const [identityLoading, setIdentityLoading] = useState(false);
+
+  /* ---------- form state ---------- */
+  const [mode, setMode] = useState<"register" | "reRegister">("register");
+  const [proof, setProof] = useState("");
+  const [publicValues, setPublicValues] = useState("");
+
+  /* ---------- tx state ---------- */
+  const [txStatus, setTxStatus] = useState<TxStatus>("idle");
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [txError, setTxError] = useState<string | null>(null);
+
+  /* ---------- fetch identity ---------- */
+  const fetchIdentity = useCallback(async () => {
+    if (!readContract || !account) return;
+    setIdentityLoading(true);
+    try {
+      const [isV, until] = await Promise.all([
+        readContract.isVerified(account),
+        readContract.verifiedUntil(account),
+      ]);
+      setVerified(isV);
+      const ts = Number(until);
+      setExpiryDate(ts > 0 ? new Date(ts * 1000) : null);
+    } catch (e) {
+      console.error("Failed to fetch identity:", e);
+      setVerified(null);
+      setExpiryDate(null);
+    } finally {
+      setIdentityLoading(false);
+    }
+  }, [readContract, account]);
+
+  useEffect(() => {
+    fetchIdentity();
+  }, [fetchIdentity]);
+
+  /* ---------- submit proof ---------- */
+  const proofValid = isValidHex(proof);
+  const pubValid = isValidHex(publicValues);
+  const canSubmit = proofValid && pubValid && txStatus !== "pending" && txStatus !== "confirming";
+
+  async function handleSubmit() {
+    if (!writeContract || !canSubmit) return;
+    setTxStatus("pending");
+    setTxHash(null);
+    setTxError(null);
+    try {
+      const fn = writeContract.getFunction(mode);
+      const tx = await fn(proof, publicValues);
+      setTxStatus("confirming");
+      setTxHash(tx.hash);
+      await tx.wait();
+      setTxStatus("success");
+      refresh();
+      fetchIdentity();
+    } catch (e) {
+      console.error("Submit failed:", e);
+      setTxStatus("error");
+      setTxError(parseContractError(e));
+    }
+  }
+
+  /* ---------- not connected ---------- */
+  if (!account) {
+    return (
+      <main className="md:ml-64 pt-28 px-8 pb-12 flex items-center justify-center min-h-[60vh]">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-panel rounded-3xl p-12 text-center max-w-md"
+        >
+          <Wallet className="w-12 h-12 text-on-surface-variant mx-auto mb-4" />
+          <h2 className="text-2xl font-headline font-bold text-on-surface mb-2">
+            Connect Wallet
+          </h2>
+          <p className="text-on-surface-variant">
+            Connect wallet to view dashboard
+          </p>
+        </motion.div>
+      </main>
+    );
+  }
+
+  /* ================================================================ */
+  /*  Render                                                           */
+  /* ================================================================ */
   return (
     <main className="md:ml-64 pt-28 px-8 pb-12">
       <motion.header
@@ -19,16 +159,17 @@ export default function DashboardPage() {
         className="mb-12"
       >
         <h1 className="text-4xl md:text-5xl font-headline font-bold tracking-tight text-primary mb-2">
-          Network Overview
+          Dashboard
         </h1>
         <p className="text-on-surface-variant max-w-2xl">
-          Cryptographic identity management for secure X.509 certificate
-          validation using zero-knowledge architecture.
+          Manage your on-chain zk-X509 identity.
         </p>
       </motion.header>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* Identity Verified Card */}
+        {/* ============================================================ */}
+        {/*  Identity Card                                                */}
+        {/* ============================================================ */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -36,25 +177,52 @@ export default function DashboardPage() {
           className="md:col-span-4 glass-panel rounded-3xl p-6 flex flex-col justify-between group overflow-hidden relative"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-secondary/10 transition-colors" />
+
           <div className="flex justify-between items-start mb-8">
-            <div className="p-3 bg-secondary/10 rounded-xl">
-              <ShieldCheck className="w-8 h-8 text-secondary" />
+            <div className={`p-3 rounded-xl ${verified ? "bg-secondary/10" : "bg-outline-variant/10"}`}>
+              <ShieldCheck className={`w-8 h-8 ${verified ? "text-secondary" : "text-on-surface-variant"}`} />
             </div>
-            <span className="text-secondary font-label text-xs font-bold tracking-widest uppercase bg-secondary/10 px-3 py-1 rounded-full">
-              Active
-            </span>
+            {identityLoading ? (
+              <span className="text-on-surface-variant font-label text-xs font-bold tracking-widest uppercase bg-outline-variant/10 px-3 py-1 rounded-full">
+                Loading...
+              </span>
+            ) : verified ? (
+              <span className="text-secondary font-label text-xs font-bold tracking-widest uppercase bg-secondary/10 px-3 py-1 rounded-full">
+                Verified
+              </span>
+            ) : (
+              <span className="text-on-surface-variant font-label text-xs font-bold tracking-widest uppercase bg-outline-variant/10 px-3 py-1 rounded-full">
+                Not Verified
+              </span>
+            )}
           </div>
+
           <div>
             <h2 className="text-2xl font-headline font-bold text-on-surface mb-1">
-              Identity Verified
+              {verified ? "Identity Verified" : "Not Verified"}
             </h2>
-            <p className="text-on-surface-variant text-sm">
-              Last validated: 2h 14m ago
-            </p>
+            {verified && expiryDate ? (
+              <p className="text-on-surface-variant text-sm">
+                Expires:{" "}
+                {expiryDate.toLocaleString("ko-KR", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            ) : (
+              <p className="text-on-surface-variant text-sm">
+                Submit a proof to verify your identity.
+              </p>
+            )}
           </div>
         </motion.div>
 
-        {/* Account Metadata Card */}
+        {/* ============================================================ */}
+        {/*  Account Metadata Card                                        */}
+        {/* ============================================================ */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -68,41 +236,55 @@ export default function DashboardPage() {
             <Wallet className="w-5 h-5 text-on-surface-variant" />
           </div>
           <div className="space-y-4">
+            {/* Wallet */}
             <div className="bg-surface-container-low/50 rounded-xl p-4 flex items-center justify-between">
-              <span className="text-on-surface-variant text-sm">
-                Primary Wallet
-              </span>
+              <span className="text-on-surface-variant text-sm">Wallet</span>
               <code className="font-mono text-tertiary bg-tertiary/5 px-3 py-1 rounded border border-tertiary/10">
-                0xf39f...2266
+                {shortAddr(account)}
               </code>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            {/* Chain / Registry / Owner */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-surface-container-low/50 rounded-xl p-4">
                 <p className="text-on-surface-variant text-[10px] uppercase tracking-tighter mb-1">
-                  Nodes Connected
+                  Chain
                 </p>
                 <p className="text-xl font-headline font-bold text-primary">
-                  12 / 12
+                  {chainName || "--"}
                 </p>
               </div>
               <div className="bg-surface-container-low/50 rounded-xl p-4">
                 <p className="text-on-surface-variant text-[10px] uppercase tracking-tighter mb-1">
-                  Trust Score
+                  Registry
                 </p>
-                <p className="text-xl font-headline font-bold text-secondary">
-                  99.8%
+                <p className="font-mono text-sm text-tertiary break-all">
+                  {registryAddr ? shortAddr(registryAddr) : "--"}
+                </p>
+              </div>
+              <div className="bg-surface-container-low/50 rounded-xl p-4">
+                <p className="text-on-surface-variant text-[10px] uppercase tracking-tighter mb-1">
+                  Role
+                </p>
+                <p className="text-xl font-headline font-bold">
+                  {isOwner ? (
+                    <span className="text-secondary">Owner</span>
+                  ) : (
+                    <span className="text-on-surface-variant">User</span>
+                  )}
                 </p>
               </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Submit New Proof Section */}
+        {/* ============================================================ */}
+        {/*  Submit New Proof                                             */}
+        {/* ============================================================ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="md:col-span-8 glass-panel rounded-3xl p-8 space-y-6"
+          className="md:col-span-12 glass-panel rounded-3xl p-8 space-y-6"
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -113,195 +295,134 @@ export default function DashboardPage() {
                 Generate and submit a zero-knowledge proof to the registry.
               </p>
             </div>
+            {/* Mode toggle */}
             <div className="flex bg-surface-container-low rounded-full p-1 border border-outline-variant/20 self-start">
-              <button className="px-6 py-2 bg-surface-container-highest text-primary font-headline text-sm rounded-full shadow-sm">
+              <button
+                onClick={() => setMode("register")}
+                className={`px-6 py-2 font-headline text-sm rounded-full transition-all ${
+                  mode === "register"
+                    ? "bg-surface-container-highest text-primary shadow-sm"
+                    : "text-on-surface-variant hover:text-primary"
+                }`}
+              >
                 Register
               </button>
-              <button className="px-6 py-2 text-on-surface-variant font-headline text-sm rounded-full hover:text-primary transition-colors">
+              <button
+                onClick={() => setMode("reRegister")}
+                className={`px-6 py-2 font-headline text-sm rounded-full transition-all ${
+                  mode === "reRegister"
+                    ? "bg-surface-container-highest text-primary shadow-sm"
+                    : "text-on-surface-variant hover:text-primary"
+                }`}
+              >
                 Re-Register
               </button>
             </div>
           </div>
+
+          {/* Inputs */}
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest px-1">
                 Proof Hex Data
               </label>
-              <div className="relative">
-                <textarea
-                  className="w-full h-24 bg-surface-container-low border border-outline-variant/20 rounded-xl p-4 font-mono text-sm text-tertiary focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition-all outline-none resize-none"
-                  placeholder="0x4a9d7b..."
-                  defaultValue="0x4a9d7b..."
-                />
-                <button className="absolute right-4 bottom-4 text-outline-variant hover:text-tertiary transition-colors">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
+              <textarea
+                className={`w-full h-24 bg-surface-container-low border rounded-xl p-4 font-mono text-sm text-tertiary focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition-all outline-none resize-none ${
+                  proof && !proofValid ? "border-red-500/50" : "border-outline-variant/20"
+                }`}
+                placeholder="0x..."
+                value={proof}
+                onChange={(e) => setProof(e.target.value)}
+              />
+              {proof && !proofValid && (
+                <p className="text-red-400 text-xs px-1">
+                  Must start with 0x, even hex length, minimum 4 characters.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <label className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest px-1">
                 Public Values
               </label>
-              <input
-                className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl p-4 font-mono text-sm text-tertiary focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition-all outline-none"
-                placeholder="0x0000..."
-                defaultValue="0x0000000000000000000000000000000000000000000000000000000000000001"
+              <textarea
+                className={`w-full h-24 bg-surface-container-low border rounded-xl p-4 font-mono text-sm text-tertiary focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition-all outline-none resize-none ${
+                  publicValues && !pubValid ? "border-red-500/50" : "border-outline-variant/20"
+                }`}
+                placeholder="0x..."
+                value={publicValues}
+                onChange={(e) => setPublicValues(e.target.value)}
               />
+              {publicValues && !pubValid && (
+                <p className="text-red-400 text-xs px-1">
+                  Must start with 0x, even hex length, minimum 4 characters.
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Transaction status */}
+          {txStatus !== "idle" && (
+            <div
+              className={`rounded-xl p-4 flex items-start gap-3 ${
+                txStatus === "success"
+                  ? "bg-secondary/10 text-secondary"
+                  : txStatus === "error"
+                  ? "bg-red-500/10 text-red-400"
+                  : "bg-tertiary/10 text-tertiary"
+              }`}
+            >
+              {(txStatus === "pending" || txStatus === "confirming") && (
+                <Loader2 className="w-5 h-5 animate-spin shrink-0 mt-0.5" />
+              )}
+              {txStatus === "success" && (
+                <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+              )}
+              {txStatus === "error" && (
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0">
+                <p className="font-headline font-bold text-sm">
+                  {txStatus === "pending" && "Waiting for wallet confirmation..."}
+                  {txStatus === "confirming" && "Transaction submitted. Waiting for confirmation..."}
+                  {txStatus === "success" && "Transaction confirmed!"}
+                  {txStatus === "error" && "Transaction failed"}
+                </p>
+                {txHash && (
+                  <p className="font-mono text-xs mt-1 break-all opacity-80">
+                    TX: {txHash}
+                  </p>
+                )}
+                {txError && (
+                  <p className="text-xs mt-1 break-all opacity-80">{txError}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Submit button */}
           <div className="flex items-center justify-end gap-4 pt-4">
-            <button className="text-on-surface-variant hover:text-primary font-headline text-sm transition-colors">
-              Discard Draft
+            <button
+              disabled={!canSubmit}
+              onClick={handleSubmit}
+              className="px-10 py-4 bg-primary text-surface font-headline font-bold rounded-full hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              {txStatus === "pending" || txStatus === "confirming" ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Submitting...
+                </>
+              ) : (
+                <>
+                  Submit Proof <Send className="w-4 h-4" />
+                </>
+              )}
             </button>
-            <button className="px-10 py-4 bg-primary text-surface font-headline font-bold rounded-full hover:scale-105 active:scale-95 transition-all flex items-center gap-2">
-              Submit Proof <Send className="w-4 h-4" />
-            </button>
-          </div>
-        </motion.div>
-
-        {/* Live Status Tracker */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.4 }}
-          className="md:col-span-4"
-        >
-          <div className="glass-panel rounded-3xl p-6 h-full flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-headline font-bold text-on-surface">
-                  Live Status
-                </h2>
-                <div className="flex gap-1">
-                  <span className="w-1 h-4 bg-tertiary/40 rounded-full" />
-                  <span className="w-1 h-4 bg-tertiary/40 rounded-full" />
-                  <motion.span
-                    animate={{ opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 1.5, repeat: Infinity }}
-                    className="w-1 h-4 bg-tertiary rounded-full"
-                  />
-                </div>
-              </div>
-              <div className="space-y-8 relative">
-                <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-outline-variant/20" />
-
-                <div className="relative flex items-center gap-4">
-                  <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center z-10">
-                    <Check className="w-4 h-4 text-surface" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-headline font-bold text-primary">
-                      Connection established
-                    </p>
-                    <p className="text-xs text-on-surface-variant">
-                      Validated by node cluster-A
-                    </p>
-                  </div>
-                </div>
-
-                <div className="relative flex items-center gap-4">
-                  <div className="w-8 h-8 rounded-full bg-tertiary/20 border-2 border-tertiary flex items-center justify-center z-10">
-                    <motion.div
-                      animate={{ scale: [0.8, 1.2, 0.8] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="w-2 h-2 rounded-full bg-tertiary"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-sm font-headline font-bold text-tertiary">
-                      Waiting for Signature
-                    </p>
-                    <p className="text-xs text-on-surface-variant">
-                      Step 1 of 3 Processing...
-                    </p>
-                  </div>
-                </div>
-
-                <div className="relative flex items-center gap-4 opacity-40">
-                  <div className="w-8 h-8 rounded-full bg-surface-container border-2 border-outline-variant/20 flex items-center justify-center z-10">
-                    <span className="text-[10px] font-bold">3</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-headline font-bold text-on-surface">
-                      Merkle Tree Update
-                    </p>
-                    <p className="text-xs text-on-surface-variant">
-                      Pending completion
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="mt-8 pt-6 border-t border-outline-variant/10">
-              <div className="flex justify-between items-center text-xs font-mono text-on-surface-variant">
-                <span>TX_HASH</span>
-                <span className="text-tertiary">0x88c2...d91e</span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Architecture Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="md:col-span-12 glass-panel rounded-3xl p-1 border-none relative overflow-hidden group"
-        >
-          <div
-            className="absolute inset-0 z-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-            style={{
-              backgroundImage: `linear-gradient(to right, rgba(14,14,16,0.95), rgba(14,14,16,0.6)), url('https://picsum.photos/seed/cryptography/1200/400?blur=2')`,
-            }}
-          />
-          <div className="relative z-10 p-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-            <div className="max-w-xl">
-              <h2 className="text-3xl font-headline font-bold text-primary mb-4">
-                About zk-X509 Architecture
-              </h2>
-              <p className="text-on-surface-variant leading-relaxed mb-6">
-                Our protocol leverages SNARK-based recursion to prove the
-                validity of standard X.509 certificates without revealing
-                sensitive subject metadata. By mapping traditional PKI into
-                Merkleized state, we ensure that every verification is instant,
-                private, and cryptographically sound.
-              </p>
-              <div className="flex gap-4">
-                <button className="px-6 py-2 border border-outline-variant/30 text-on-surface font-headline text-sm rounded-full hover:bg-surface-container-highest transition-all">
-                  Whitepaper
-                </button>
-                <button className="px-6 py-2 border border-outline-variant/30 text-on-surface font-headline text-sm rounded-full hover:bg-surface-container-highest transition-all">
-                  Audit Report
-                </button>
-              </div>
-            </div>
-            <div className="flex flex-col items-center justify-center bg-surface/40 backdrop-blur-md p-8 rounded-3xl border border-outline-variant/20">
-              <div className="text-5xl font-headline font-bold text-tertiary mb-1">
-                0.03s
-              </div>
-              <div className="text-[10px] text-on-surface font-label uppercase tracking-[0.2em] opacity-60 text-center">
-                Verification Latency
-              </div>
-            </div>
           </div>
         </motion.div>
       </div>
 
+      {/* Footer */}
       <footer className="mt-20 pt-8 border-t border-outline-variant/10 flex flex-col md:flex-row justify-between items-center gap-4 text-on-surface-variant">
-        <p className="text-sm font-label">
-          Developed by Tokamak Network
-        </p>
-        <div className="flex gap-8 text-[10px] font-label uppercase tracking-widest">
-          <a className="hover:text-primary transition-colors" href="#">
-            Privacy Policy
-          </a>
-          <a className="hover:text-primary transition-colors" href="#">
-            Node Operator Terms
-          </a>
-          <a className="hover:text-primary transition-colors" href="#">
-            System Status
-          </a>
-        </div>
+        <p className="text-sm font-label">Developed by Tokamak Network</p>
       </footer>
     </main>
   );
