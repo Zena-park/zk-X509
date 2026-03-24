@@ -196,8 +196,14 @@ fn cmd_prove(session: &mut Session) {
     let wallet_index: u32 = idx_str.parse().unwrap_or(0);
     let max_wallets: u32 = 1;
 
-    let chain_id: u64 = 31337; // TODO: make configurable
-    let registry_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let chain_id_str = prompt("  Chain ID [31337]: ");
+    let chain_id: u64 = chain_id_str.parse().unwrap_or(31337);
+    let registry_str = prompt("  Registry address (0x...): ");
+    let registry_hex = registry_str.strip_prefix("0x").unwrap_or(&registry_str);
+    let registry_address: [u8; 20] = hex::decode(if registry_hex.is_empty() { "0000000000000000000000000000000000000000" } else { registry_hex })
+        .unwrap_or_else(|_| { println!("  Invalid hex. Using zero address."); vec![0u8; 20] })
+        .try_into()
+        .unwrap_or([0u8; 20]);
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &key_der, &registrant_bytes, wallet_index, timestamp, chain_id,
     ).unwrap_or_else(|e| { println!("  Sign failed: {}", e); std::process::exit(1); });

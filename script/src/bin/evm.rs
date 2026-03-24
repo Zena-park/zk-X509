@@ -38,6 +38,12 @@ struct EVMArgs {
     max_wallets: u32,
     #[arg(long, default_value = "15")]
     disclosure_mask: u8,
+    /// Chain ID (EIP-155). Default: 31337 (Anvil local).
+    #[arg(long, default_value = "31337")]
+    chain_id: u64,
+    /// IdentityRegistry address (hex). Bound into nullifier for registry-specific proof.
+    #[arg(long)]
+    registry_address: String,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -83,8 +89,12 @@ fn main() {
         .try_into()
         .expect("Registrant address must be 20 bytes");
 
-    let chain_id: u64 = 31337; // TODO: make configurable
-    let registry_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let chain_id = args.chain_id;
+    let registry_hex = args.registry_address.strip_prefix("0x").unwrap_or(&args.registry_address);
+    let registry_address: [u8; 20] = hex::decode(registry_hex)
+        .expect("Invalid registry address hex")
+        .try_into()
+        .expect("Registry address must be 20 bytes");
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &priv_key, &registrant_bytes, args.wallet_index, current_timestamp, chain_id,
     ).expect("Failed to sign");

@@ -269,9 +269,14 @@ fn prepare_stdin(
         .map_err(|(_status, msg)| msg)?;
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
         .map_err(|e| format!("System clock error: {}", e))?.as_secs();
-    // Default chain_id and registry_address for server mode
-    let chain_id: u64 = 31337; // TODO: make configurable via env/request
-    let registry_address: [u8; 20] = [0u8; 20]; // TODO: make configurable
+    let chain_id: u64 = std::env::var("CHAIN_ID").ok()
+        .and_then(|s| s.parse().ok()).unwrap_or(31337);
+    let registry_address: [u8; 20] = std::env::var("REGISTRY_ADDRESS").ok()
+        .and_then(|s| {
+            let hex = s.strip_prefix("0x").unwrap_or(&s);
+            hex::decode(hex).ok()?.try_into().ok()
+        })
+        .unwrap_or([0u8; 20]);
     let ownership_sig = zk_x509_script::ownership::sign_ownership(
         &cert_der, &key_der, registrant_bytes, wallet_index, timestamp, chain_id)
         .map_err(|e| e.to_string())?;
