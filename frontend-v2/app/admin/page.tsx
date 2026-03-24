@@ -120,6 +120,19 @@ async function merkleRoot(leaves: Uint8Array[]): Promise<string> {
 /*  Tx Status Badge                                                    */
 /* ------------------------------------------------------------------ */
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      className="ml-1 text-[10px] text-on-surface-variant hover:text-primary transition-colors"
+      title="Copy tx hash"
+    >
+      {copied ? "✓" : "📋"}
+    </button>
+  );
+}
+
 function TxBadge({ status }: { status: TxStatus }) {
   if (status.kind === "idle") return null;
   if (status.kind === "pending")
@@ -130,19 +143,21 @@ function TxBadge({ status }: { status: TxStatus }) {
     );
   if (status.kind === "confirming")
     return (
-      <span className="text-[10px] font-mono text-tertiary animate-pulse">
+      <span className="text-[10px] font-mono text-tertiary animate-pulse inline-flex items-center">
         Confirming {truncateHash(status.hash)}...
+        <CopyButton text={status.hash} />
       </span>
     );
   if (status.kind === "success")
     return (
-      <span className="text-[10px] font-mono text-secondary">
+      <span className="text-[10px] font-mono text-secondary inline-flex items-center">
         Confirmed: {truncateHash(status.hash)}
+        <CopyButton text={status.hash} />
       </span>
     );
   return (
     <span className="text-[10px] font-mono text-error truncate max-w-xs inline-block">
-      Error: {status.message.slice(0, 80)}
+      Error: {status.message.slice(0, 120)}
     </span>
   );
 }
