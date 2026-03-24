@@ -307,19 +307,18 @@ export default function AdminPage() {
   /* ---------------------------------------------------------------- */
   if (!account) {
     return (
-      <main className="max-w-6xl mx-auto pt-24 px-8 min-h-screen flex items-center justify-center">
+      <main className="max-w-6xl mx-auto pt-24 px-8 pb-12 flex items-center justify-center min-h-[60vh]">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center space-y-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-panel rounded-3xl p-12 text-center max-w-md"
         >
-          <Shield className="w-16 h-16 text-primary mx-auto opacity-40" />
-          <h2 className="text-2xl font-headline font-bold text-primary">
+          <Shield className="w-12 h-12 text-on-surface-variant mx-auto mb-4" />
+          <h2 className="text-2xl font-headline font-bold text-on-surface mb-2">
             Admin Console
           </h2>
-          <p className="text-on-surface-variant text-sm max-w-md">
-            Connect your wallet to access the admin console. Only the contract
-            owner can execute administrative transactions.
+          <p className="text-on-surface-variant">
+            Connect wallet to access admin console
           </p>
         </motion.div>
       </main>
