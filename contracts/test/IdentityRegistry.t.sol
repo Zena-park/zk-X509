@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {IdentityRegistry} from "../src/IdentityRegistry.sol";
-import {ISP1Verifier} from "../src/ISP1Verifier.sol";
+import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
 
 /// @notice Mock SP1 verifier that always passes (for unit testing).
 contract MockSP1Verifier is ISP1Verifier {
@@ -14,7 +14,7 @@ contract IdentityRegistryTest is Test {
     IdentityRegistry public registry;
     MockSP1Verifier public mockVerifier;
 
-    bytes32 constant PROGRAM_VKEY = bytes32(uint256(0x1234));
+    bytes32 constant PROGRAM_V_KEY = bytes32(uint256(0x1234));
     bytes32 constant CA_MERKLE_ROOT = bytes32(uint256(0xCAFE));
     bytes32 constant NULLIFIER = bytes32(uint256(0xDEAD));
 
@@ -42,7 +42,7 @@ contract IdentityRegistryTest is Test {
 
     function setUp() public {
         mockVerifier = new MockSP1Verifier();
-        registry = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 1);
+        registry = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1);
         registry.updateCaMerkleRoot(CA_MERKLE_ROOT);
     }
 
@@ -296,8 +296,8 @@ contract IdentityRegistryTest is Test {
     // ============ Multi-wallet tests ============
 
     function test_MultiWallet_TwoSlots() public {
-        // Deploy a multi-wallet registry (maxWalletsPerCert = 3)
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        // Deploy a multi-wallet registry (MAX_WALLETS_PER_CERT = 3)
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Alice registers wallet index 0
@@ -318,7 +318,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_RevertIndexOutOfRange() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 2);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 2);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Index 2 is out of range for max=2 (valid: 0, 1)
@@ -330,7 +330,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_SameAddressTwoSlots_Reverts() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Alice registers slot 0
@@ -348,7 +348,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_SameNullifierTwice_Reverts() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xC000));
@@ -364,7 +364,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_ReRegister() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xD000));
@@ -379,7 +379,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_RevokeOneSlot_OtherUnaffected() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xE000));
@@ -399,7 +399,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_BoundaryIndices() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Index 0 (first)
@@ -416,7 +416,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_MaxZero_AllReverts() public {
-        IdentityRegistry zeroReg = new IdentityRegistry(address(mockVerifier), PROGRAM_VKEY, 0);
+        IdentityRegistry zeroReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 0);
         zeroReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Any index reverts (0 >= 0)

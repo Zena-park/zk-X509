@@ -3,31 +3,30 @@ pragma solidity ^0.8.20;
 
 import {Script, console} from "forge-std/Script.sol";
 import {IdentityRegistry} from "../src/IdentityRegistry.sol";
-import {ISP1Verifier} from "../src/ISP1Verifier.sol";
-
-/// Mock verifier for local testing (always passes)
-contract MockSP1Verifier is ISP1Verifier {
-    function verifyProof(bytes32, bytes calldata, bytes calldata) external pure {}
-}
+import {SP1Verifier} from "sp1-contracts/v6.0.0/SP1VerifierGroth16.sol";
 
 contract DeployLocalScript is Script {
     function run() external {
         vm.startBroadcast();
 
-        // Deploy mock verifier
-        MockSP1Verifier mockVerifier = new MockSP1Verifier();
-        console.log("MockSP1Verifier:", address(mockVerifier));
+        // Deploy real SP1 Verifier
+        SP1Verifier verifier = new SP1Verifier();
+        console.log("SP1VerifierGroth16 (v6.0.0):", address(verifier));
 
         // Deploy IdentityRegistry
-        bytes32 vkey = 0x008382f44d5f06fc1f6280e9584abc5945d185352389fbab4dda8e40436fbdd8;
+        bytes32 vkey = vm.envOr("PROGRAM_V_KEY", bytes32(0x0072633ccccee97a9e508e3c73306048284a98ee1f7c32bd6a0eed5a407522f5));
         uint32 maxWallets = uint32(vm.envOr("MAX_WALLETS_PER_CERT", uint256(1)));
-        IdentityRegistry registry = new IdentityRegistry(address(mockVerifier), vkey, maxWallets);
+        IdentityRegistry registry = new IdentityRegistry(address(verifier), vkey, maxWallets);
         console.log("IdentityRegistry:", address(registry));
 
-        // Set CA Merkle root (compute off-chain from allowed CA hashes)
-        bytes32 caMerkleRoot = vm.envOr("CA_MERKLE_ROOT", bytes32(0x5dfedc0a984f5720b81b7f2a73ed6028858ce6c4c6305e8abff0aba33dd0d468));
-        registry.updateCaMerkleRoot(caMerkleRoot);
-        console.log("Set CA Merkle root");
+        // Set CA Merkle root if provided
+        bytes32 caMerkleRoot = vm.envOr("CA_MERKLE_ROOT", bytes32(0));
+        if (caMerkleRoot != bytes32(0)) {
+            registry.updateCaMerkleRoot(caMerkleRoot);
+            console.log("CA Merkle Root:", vm.toString(caMerkleRoot));
+        } else {
+            console.log("CA Merkle Root: not set (use updateCaMerkleRoot after deployment)");
+        }
 
         vm.stopBroadcast();
     }

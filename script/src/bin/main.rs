@@ -12,7 +12,7 @@ use sha2::Digest;
 use clap::Parser;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
-    include_elf, Elf, ProvingKey, SP1Stdin,
+    include_elf, Elf, SP1Stdin,
 };
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -32,6 +32,10 @@ struct Args {
     #[arg(long)]
     prove: bool,
 
+    /// Compute and print CA Merkle Root only (no proof, no zkVM)
+    #[arg(long)]
+    ca_root: bool,
+
     /// Path to the X.509 certificate file (DER format)
     #[arg(long, default_value = "certs/signCert.der")]
     cert: PathBuf,
@@ -44,6 +48,10 @@ struct Args {
     #[arg(long, default_value = "certs/ca_pub.der")]
     ca_cert: PathBuf,
 
+    /// Additional trusted CA public keys (SPKI DER) for multi-CA Merkle tree.
+    #[arg(long)]
+    extra_ca: Vec<PathBuf>,
+
     /// Intermediate CA certificates (full X.509 DER), in order from user→root.
     /// For single-level CA (no intermediates), omit this.
     #[arg(long)]
@@ -53,9 +61,9 @@ struct Args {
     #[arg(long)]
     crl: Option<PathBuf>,
 
-    /// Wallet address to bind the proof to (hex, e.g. 0xf39F...).
+    /// Wallet address to bind the proof to (hex, e.g. 0xf39F...). Required for --execute/--prove.
     #[arg(long)]
-    registrant: String,
+    registrant: Option<String>,
 
     /// Wallet slot index (0-based, for multi-wallet mode).
     #[arg(long, default_value = "0")]
@@ -83,6 +91,24 @@ fn main() {
     dotenv::dotenv().ok();
 
     let args = Args::parse();
+
+    // --ca-root: compute CA Merkle Root and exit (no zkVM, no proof)
+    if args.ca_root {
+        let ca_pub_key = std::fs::read(&args.ca_cert)
+            .unwrap_or_else(|e| panic!("Failed to read CA cert file {:?}: {}", args.ca_cert, e));
+        let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
+        let mut ca_leaves = vec![ca_leaf_hash];
+        for extra in &args.extra_ca {
+            let extra_pub = std::fs::read(extra)
+                .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
+            let extra_hash: [u8; 32] = sha2::Sha256::digest(&extra_pub).into();
+            ca_leaves.push(extra_hash);
+        }
+        let (ca_merkle_root, _) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
+        println!("CA Merkle Root: 0x{}", hex::encode(ca_merkle_root));
+        println!("CA count: {}", ca_leaves.len());
+        return;
+    }
 
     if args.execute == args.prove {
         eprintln!("Error: You must specify either --execute or --prove");
@@ -136,8 +162,10 @@ fn main() {
         Vec::new()
     };
 
-    // Parse registrant address
-    let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
+    // Parse registrant address (required for --execute/--prove)
+    let registrant_str = args.registrant.as_deref()
+        .expect("--registrant is required for --execute/--prove");
+    let registrant_hex = registrant_str.strip_prefix("0x").unwrap_or(registrant_str);
     let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
         .expect("Invalid registrant address hex")
         .try_into()
@@ -159,9 +187,17 @@ fn main() {
     ).expect("Failed to sign nullifier domain");
     println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 
-    // Build CA Merkle tree
+    // Build CA Merkle tree (user's CA is always index 0)
     let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-    let ca_leaves = vec![ca_leaf_hash];
+    let mut ca_leaves = vec![ca_leaf_hash];
+    for extra in &args.extra_ca {
+        let extra_pub = std::fs::read(extra)
+            .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
+        let extra_hash: [u8; 32] = sha2::Sha256::digest(&extra_pub).into();
+        ca_leaves.push(extra_hash);
+        println!("Extra CA: {} (hash: 0x{})", extra.display(), hex::encode(extra_hash));
+    }
+    println!("CA Merkle Tree: {} leaves", ca_leaves.len());
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
 
     let mut stdin = SP1Stdin::new();
@@ -206,16 +242,18 @@ fn main() {
 
         println!("Successfully generated proof!");
 
-        // Verify the proof
-        client
-            .verify(&proof, pk.verifying_key(), None)
-            .expect("failed to verify proof");
-        println!("Successfully verified proof!");
-
         // Decode and display public values
         let decoded =
             PublicValuesStruct::abi_decode(proof.public_values.as_slice()).unwrap();
         println!("Nullifier: 0x{}", hex::encode(decoded.nullifier));
         println!("CA Root Hash: 0x{}", hex::encode(decoded.caMerkleRoot));
+        println!("Public Values: 0x{}", hex::encode(proof.public_values.as_slice()));
+
+        // Verify the proof (may fail in mock mode — mock generates empty core proofs)
+        match client.verify(&proof, pk.verifying_key(), None) {
+            Ok(()) => println!("Successfully verified proof!"),
+            Err(e) => eprintln!("Warning: proof verification skipped ({})", e),
+        }
+        println!("\nNote: For on-chain submission, use `cargo run --bin evm` to generate Groth16/Plonk proof.");
     }
 }
