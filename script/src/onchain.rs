@@ -8,8 +8,11 @@ use crate::merkle::{self, Hash};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 
+/// keccak256("getCaLeaves()")[:4]
+const SELECTOR_GET_CA_LEAVES: &str = "0xae88b426";
+
 /// Fetch on-chain CA list, find user's CA, and return (root, proof).
-/// Panics with a clear message if the CA is not registered on-chain.
+/// Returns `Err` if the CA is not found or no CAs are registered.
 pub fn build_ca_merkle_from_onchain(
     rpc_url: &str,
     registry: &[u8; 20],
@@ -31,9 +34,8 @@ pub fn build_ca_merkle_from_onchain(
     Ok(merkle::merkle_root_and_proof(&ca_leaves, my_index))
 }
 
-/// Fetch the on-chain CA leaf hashes from IdentityRegistry.getCaLeaves().
 fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
-    let data = eth_call(rpc_url, registry, "0xae88b426")?; // getCaLeaves()
+    let data = eth_call(rpc_url, registry, SELECTOR_GET_CA_LEAVES)?;
     decode_bytes32_array(&data)
 }
 
@@ -68,16 +70,30 @@ fn eth_call(rpc_url: &str, registry: &[u8; 20], selector: &str) -> Result<String
 }
 
 /// Decode ABI-encoded bytes32[] from hex string.
+/// Validates offset word == 0x20 and length word upper bytes == 0.
 fn decode_bytes32_array(hex_str: &str) -> Result<Vec<Hash>, String> {
     let raw = hex::decode(hex_str.strip_prefix("0x").unwrap_or(hex_str))
         .map_err(|e| format!("Invalid hex: {}", e))?;
 
     if raw.len() < 64 {
-        return Ok(vec![]);
+        return Err(format!(
+            "ABI data too short: expected at least 64 bytes (offset + length), got {}",
+            raw.len()
+        ));
+    }
+
+    // Validate offset word == 0x20
+    if raw[31] != 0x20 || raw[..31].iter().any(|&b| b != 0) {
+        return Err("Invalid ABI offset: expected 0x20".to_string());
+    }
+
+    // Validate upper 24 bytes of length word are zero
+    if raw[32..56].iter().any(|&b| b != 0) {
+        return Err("Array length overflow: upper bytes non-zero".to_string());
     }
 
     let len_bytes: [u8; 8] = raw[56..64].try_into()
-        .map_err(|_| "Invalid array length encoding")?;
+        .map_err(|_| "Invalid array length encoding".to_string())?;
     let count = u64::from_be_bytes(len_bytes) as usize;
 
     let data_start = 64;
@@ -89,13 +105,10 @@ fn decode_bytes32_array(hex_str: &str) -> Result<Vec<Hash>, String> {
         ));
     }
 
-    let mut leaves = Vec::with_capacity(count);
-    for i in 0..count {
-        let offset = data_start + i * 32;
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&raw[offset..offset + 32]);
-        leaves.push(hash);
-    }
+    let leaves = raw[data_start..expected_len]
+        .chunks_exact(32)
+        .map(|chunk| chunk.try_into().unwrap())
+        .collect();
     Ok(leaves)
 }
 
@@ -140,12 +153,30 @@ mod tests {
 
     #[test]
     fn test_decode_truncated_data() {
-        // count=2 but only 1 element of data
         let hex = format!(
             "0x{}{}{}",
             "0000000000000000000000000000000000000000000000000000000000000020",
             "0000000000000000000000000000000000000000000000000000000000000002",
             "1111111111111111111111111111111111111111111111111111111111111111",
+        );
+        assert!(decode_bytes32_array(&hex).is_err());
+    }
+
+    #[test]
+    fn test_decode_too_short_rejects() {
+        // Only 32 bytes (missing length word)
+        assert!(decode_bytes32_array("0x0000000000000000000000000000000000000000000000000000000000000020").is_err());
+        // Empty hex
+        assert!(decode_bytes32_array("0x").is_err());
+    }
+
+    #[test]
+    fn test_decode_invalid_offset_rejects() {
+        // offset = 0x40 instead of 0x20
+        let hex = format!(
+            "0x{}{}",
+            "0000000000000000000000000000000000000000000000000000000000000040",
+            "0000000000000000000000000000000000000000000000000000000000000000",
         );
         assert!(decode_bytes32_array(&hex).is_err());
     }
