@@ -12,7 +12,7 @@ curl -L https://foundry.paradigm.xyz | bash
 foundryup
 
 # Generate test certificates
-cd certs && bash generate-test-certs.sh && bash generate-test-crl.sh && cd ..
+cd certs && bash generate-test-certs.sh && cd ..
 
 # Apple Silicon (M1/M2/M3): Groth16에 Docker gnark 이미지 필요
 docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0
@@ -25,8 +25,6 @@ docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0
 | `zk-x509 --execute` | proof 없음 | 로직 검증 + cycle 측정 | 가장 빠름 |
 | `zk-x509 --prove` | Core proof | 로컬 검증 | on-chain 제출 불가 |
 | `evm --system groth16` | Groth16 proof | **on-chain 제출** | Docker 필요 |
-
-로컬 Anvil에서도 실제 SP1Verifier를 배포하여 Groth16 proof를 검증한다.
 
 ## 1. Unit Tests
 
@@ -62,45 +60,7 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
   --registrant 0x0000000000000000000000000000000000000001
 ```
 
-## 4. CA Merkle Root 관리 (관리자)
-
-컨트랙트는 신뢰하는 CA 목록을 Merkle Root로 저장한다.
-관리자가 CA를 등록/변경할 때 아래 과정을 거친다:
-
-**Step 1: CA Root 계산 (off-chain, 블록체인에 등록되지 않음)**
-
-단일 CA:
-```bash
-cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
-  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --registrant 0x0000000000000000000000000000000000000001
-```
-
-복수 CA (`--extra-ca`로 추가):
-```bash
-cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
-  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
-  --extra-ca certs/ec_ca_pub.der --extra-ca certs/ec384_ca_pub.der \
-  --registrant 0x0000000000000000000000000000000000000001
-```
-
-출력에서 `CA Merkle Root: 0x...` 값을 복사.
-
-**Step 2: 컨트랙트에 등록**
-
-배포 시: `CA_MERKLE_ROOT=0x... forge script DeployLocal.s.sol ...` (Section 5 참조)
-
-배포 후 갱신:
-```bash
-cast send $REGISTRY_ADDR \
-  "updateCaMerkleRoot(bytes32)" 0xNEW_ROOT \
-  --rpc-url http://localhost:8545 \
-  --private-key $OWNER_PRIVATE_KEY
-```
-
-> `updateCaMerkleRoot`는 owner만 호출 가능. 기존 root로 생성된 proof는 업데이트 후 거부된다.
-
-## 5. 로컬 E2E Test (Anvil)
+## 4. 로컬 E2E Test (Anvil)
 
 ### Step 1: Anvil 실행 (터미널 1)
 ```bash
@@ -120,17 +80,25 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 출력에서 `IdentityRegistry:` 주소를 `REGISTRY_ADDR`로 저장.
 
-### Step 3: CA 등록
+### Step 3: 관리자 — CA Merkle Root 계산 + 등록
 
-Proof 생성 시 출력되는 `CA Merkle Root` 값을 컨트랙트에 등록한다 (Section 4 참조).
+CA 공개키 파일의 SHA-256 해시로 Merkle Root를 계산하고, 컨트랙트에 등록한다.
+
 ```bash
+# CA Root 계산 (off-chain)
+cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0x0000000000000000000000000000000000000001
+# 출력에서 CA Merkle Root: 0x... 복사
+
+# 컨트랙트에 등록 (owner만 가능)
 cast send $REGISTRY_ADDR \
-  "updateCaMerkleRoot(bytes32)" 0xCA_MERKLE_ROOT_값 \
+  "updateCaMerkleRoot(bytes32)" 0x위에서_복사한_값 \
   --rpc-url http://localhost:8545 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-### Step 4: Groth16 Proof 생성
+### Step 4: Groth16 Proof 생성 (사용자)
 ```bash
 cargo run --release --bin evm -- --system groth16 \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
@@ -141,7 +109,7 @@ cargo run --release --bin evm -- --system groth16 \
 
 출력에서 `Proof: 0x...`와 `Public Values: 0x...` 복사.
 
-### Step 5: 등록
+### Step 5: 등록 (사용자)
 ```bash
 cast send $REGISTRY_ADDR \
   "register(bytes,bytes)" $PROOF $PUBLIC_VALUES \
@@ -157,9 +125,9 @@ cast call $REGISTRY_ADDR \
 # → true
 ```
 
-## 6. Frontend E2E Test (브라우저)
+## 5. Frontend E2E Test (브라우저)
 
-Section 5의 Step 1~4 완료 후:
+Section 4의 Step 1~4 완료 후:
 
 ```bash
 cd frontend && npm run dev
@@ -172,6 +140,32 @@ cd frontend && npm run dev
 5. 트랜잭션 전송 → "등록 완료!" 확인
 
 > 프론트엔드 컨트랙트 주소: `frontend/src/contracts/IdentityRegistry.ts`에서 수정.
+
+## 6. CA Merkle Root 관리 (관리자 참조)
+
+컨트랙트는 신뢰하는 CA 목록을 Merkle Root 하나로 저장한다.
+CA를 추가/삭제하면 전체 CA 목록으로 root를 다시 계산하여 업데이트해야 한다.
+
+> 기존 등록 사용자에게는 영향 없음. 새로 등록하려는 사용자만 새 root 기준으로 proof를 생성하면 된다.
+
+### 복수 CA Merkle Root 계산
+`--extra-ca`로 추가 CA를 지정:
+```bash
+cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --extra-ca certs/ec_ca_pub.der --extra-ca certs/ec384_ca_pub.der \
+  --registrant 0x0000000000000000000000000000000000000001
+```
+
+### CA Root 갱신
+```bash
+cast send $REGISTRY_ADDR \
+  "updateCaMerkleRoot(bytes32)" 0xNEW_ROOT \
+  --rpc-url http://localhost:8545 \
+  --private-key $OWNER_PRIVATE_KEY
+```
+
+> `updateCaMerkleRoot`는 owner만 호출 가능.
 
 ## 7. Interactive Mode (NPKI 인증서)
 
@@ -199,7 +193,7 @@ cargo run --release --bin server
 | Failed to read cert file | `cd certs && bash generate-test-certs.sh` |
 | CRL signature verification failed | `cd certs && bash generate-test-crl.sh` (CA 재생성 후 CRL도 재생성) |
 | SP1 proof generation failed | `--release` 플래그 확인, 메모리 부족 |
-| InvalidCaMerkleRoot | CA Root 불일치. Section 4 참조하여 `updateCaMerkleRoot` 또는 재배포 |
+| InvalidCaMerkleRoot | CA Root 불일치. Step 3에서 `updateCaMerkleRoot` 확인 |
 | Docker ARM64 에러 | `docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0` |
 | Anvil "nonce too high" | Anvil 재시작 |
 | Forge "stack too deep" | `foundry.toml`에 `via_ir = true` |
