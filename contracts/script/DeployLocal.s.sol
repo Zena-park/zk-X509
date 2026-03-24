@@ -14,7 +14,7 @@ contract DeployLocalScript is Script {
         console.log("SP1VerifierGroth16 (v6.0.0):", address(verifier));
 
         // Deploy IdentityRegistry
-        bytes32 vkey = 0x008382f44d5f06fc1f6280e9584abc5945d185352389fbab4dda8e40436fbdd8;
+        bytes32 vkey = vm.envOr("PROGRAM_V_KEY", bytes32(0x0072633ccccee97a9e508e3c73306048284a98ee1f7c32bd6a0eed5a407522f5));
         uint32 maxWallets = uint32(vm.envOr("MAX_WALLETS_PER_CERT", uint256(1)));
         IdentityRegistry registry = new IdentityRegistry(address(verifier), vkey, maxWallets);
         console.log("IdentityRegistry:", address(registry));
