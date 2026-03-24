@@ -384,16 +384,17 @@ fn decrypt_aria256_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, Np
         .map_err(|e| NpkiError::DecryptionFailed(format!("ARIA key init: {}", e)))?;
 
     let mut out = Vec::with_capacity(data.len());
-    let mut prev = iv.to_vec();
+    let mut prev = [0u8; BLOCK];
+    prev.copy_from_slice(&iv[..BLOCK]);
 
     for chunk in data.chunks(BLOCK) {
         let mut block: aria::cipher::Array<u8, _> = chunk.try_into()
             .map_err(|_| NpkiError::DecryptionFailed("ARIA block size mismatch".into()))?;
         cipher.decrypt_block(&mut block);
-        // CBC: plaintext = decrypt(ciphertext) XOR previous_ciphertext
-        let plain: Vec<u8> = block.iter().zip(prev.iter()).map(|(a, b)| a ^ b).collect();
-        out.extend_from_slice(&plain);
-        prev = chunk.to_vec();
+        for (b, p) in block.iter().zip(prev.iter()) {
+            out.push(b ^ p);
+        }
+        prev.copy_from_slice(chunk);
     }
     Ok(out)
 }
@@ -540,12 +541,25 @@ mod tests {
         assert_eq!(unpadded, plaintext);
     }
 
+    /// Test helper: ARIA-256-CBC encrypt (mirrors decrypt_aria256_cbc).
+    fn encrypt_aria256_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Vec<u8> {
+        use aria::cipher::{BlockCipherEncrypt, KeyInit};
+        let cipher = Aria256::new_from_slice(key).unwrap();
+        let mut out = Vec::with_capacity(data.len());
+        let mut prev = [0u8; 16];
+        prev.copy_from_slice(iv);
+        for chunk in data.chunks(16) {
+            let xored: [u8; 16] = std::array::from_fn(|i| chunk[i] ^ prev[i]);
+            let mut block: aria::cipher::Array<u8, _> = (&xored[..]).try_into().unwrap();
+            cipher.encrypt_block(&mut block);
+            out.extend_from_slice(&block);
+            prev.copy_from_slice(&block);
+        }
+        out
+    }
+
     #[test]
     fn test_decrypt_aria256_cbc_known_answer() {
-        // ARIA-256-CBC round-trip test.
-        // Encrypt with ARIA-256-CBC manually, then decrypt with our function.
-        use aria::cipher::{BlockCipherEncrypt, KeyInit};
-
         let key = [0x42u8; 32];
         let iv = [0x00u8; 16];
         let plaintext = b"hello zk-aria!!!"; // exactly 16 bytes
@@ -553,19 +567,7 @@ mod tests {
         let mut input = Vec::from(&plaintext[..]);
         input.extend_from_slice(&[0x10u8; 16]); // PKCS#7 padding
 
-        // Manual CBC encrypt
-        let cipher = Aria256::new_from_slice(&key).unwrap();
-        let mut ciphertext = Vec::new();
-        let mut prev = iv.to_vec();
-        for chunk in input.chunks(16) {
-            let xored: Vec<u8> = chunk.iter().zip(prev.iter()).map(|(a, b)| a ^ b).collect();
-            let mut block: aria::cipher::Array<u8, _> = (&xored[..]).try_into().unwrap();
-            cipher.encrypt_block(&mut block);
-            ciphertext.extend_from_slice(&block);
-            prev = block.to_vec();
-        }
-
-        // Decrypt with our function
+        let ciphertext = encrypt_aria256_cbc(&key, &iv, &input);
         let decrypted = decrypt_aria256_cbc(&key, &iv, &ciphertext).unwrap();
         let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
         assert_eq!(unpadded, plaintext);
@@ -573,8 +575,6 @@ mod tests {
 
     #[test]
     fn test_aria256_cbc_pbes2_roundtrip() {
-        // Full PBES2 + ARIA-256-CBC round-trip: build ASN.1 DER, decrypt, verify.
-        use aria::cipher::{BlockCipherEncrypt, KeyInit};
 
         let password = "test_password";
         let salt = [0xAAu8; 16];
@@ -605,18 +605,8 @@ mod tests {
             password.as_bytes(), &salt, iterations, &mut derived_key,
         ).unwrap();
 
-        // Encrypt with ARIA-256-CBC
         let iv = [0xBBu8; 16];
-        let cipher = Aria256::new_from_slice(&derived_key).unwrap();
-        let mut ciphertext = Vec::new();
-        let mut prev = iv.to_vec();
-        for chunk in pkcs8.chunks(16) {
-            let xored: Vec<u8> = chunk.iter().zip(prev.iter()).map(|(a, b)| a ^ b).collect();
-            let mut block: aria::cipher::Array<u8, _> = (&xored[..]).try_into().unwrap();
-            cipher.encrypt_block(&mut block);
-            ciphertext.extend_from_slice(&block);
-            prev = block.to_vec();
-        }
+        let ciphertext = encrypt_aria256_cbc(&derived_key, &iv, &pkcs8);
 
         // Build ASN.1 DER EncryptedPrivateKeyInfo
         // SEQUENCE {
