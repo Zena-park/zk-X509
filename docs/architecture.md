@@ -96,7 +96,7 @@ address registrant      — Wallet bound to proof
 uint32  walletIndex     — Multi-wallet slot (0-based)
 uint64  notAfter        — Certificate expiry (auto-expire on-chain)
 uint64  chainId         — EIP-155 chain ID (cross-chain replay defense)
-address registryAddress     — Target contract (cross-chain unlinkability)
+address registryAddress — IdentityRegistry address (cross-chain unlinkability)
 bytes32 crlMerkleRoot   — CRL sorted Merkle root (bytes32(0) = disabled)
 bytes32 countryHash     — H(len ‖ "KR" ‖ salt) or bytes32(0)
 bytes32 orgHash         — H(len ‖ "yessign" ‖ salt) or bytes32(0)

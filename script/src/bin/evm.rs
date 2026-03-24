@@ -74,7 +74,9 @@ fn main() {
         .unwrap()
         .as_secs();
 
-    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.clone()];
+    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
+    let ca_leaves = vec![ca_leaf_hash];
+    let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key]; // move after hash, no clone needed
     let registrant_hex = args.registrant.strip_prefix("0x").unwrap_or(&args.registrant);
     let registrant_bytes: [u8; 20] = hex::decode(registrant_hex)
         .expect("Invalid registrant address hex")
@@ -91,9 +93,6 @@ fn main() {
     ).expect("Failed to sign nullifier");
 
     let crl_der: Vec<u8> = Vec::new();
-
-    let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
-    let ca_leaves = vec![ca_leaf_hash];
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
 
     let mut stdin = SP1Stdin::new();
