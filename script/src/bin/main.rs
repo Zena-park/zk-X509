@@ -12,7 +12,7 @@ use sha2::Digest;
 use clap::Parser;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
-    include_elf, Elf, ProvingKey, SP1Stdin,
+    include_elf, Elf, SP1Stdin,
 };
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};

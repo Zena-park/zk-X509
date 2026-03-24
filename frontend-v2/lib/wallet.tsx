@@ -105,9 +105,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           await Promise.all([
             ro.owner(), ro.paused(), ro.caMerkleRoot(), ro.crlMerkleRoot(), ro.maxProofAge(), ro.MAX_WALLETS_PER_CERT(),
           ]);
-        console.log("Contract addr:", addr);
-        console.log("MAX_WALLETS_PER_CERT raw:", MAX_WALLETS_PER_CERT, typeof MAX_WALLETS_PER_CERT);
-        console.log("All state:", { owner, paused, caMerkleRoot, maxProofAge: maxProofAge.toString(), MAX_WALLETS_PER_CERT: MAX_WALLETS_PER_CERT.toString() });
         setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT: Number(MAX_WALLETS_PER_CERT) });
         setIsOwner(owner.toLowerCase() === account.toLowerCase());
       } catch (e) {
