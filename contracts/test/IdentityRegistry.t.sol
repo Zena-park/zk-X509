@@ -825,4 +825,19 @@ contract IdentityRegistryTest is Test {
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
         registry.setCaRootGracePeriod(12 hours);
     }
+
+    function test_GracePeriod_SameRootDoesNotResetGrace() public {
+        bytes32 oldRoot = CA_MERKLE_ROOT;
+        bytes32 newRoot = bytes32(uint256(0xBEEF));
+
+        registry.updateCaMerkleRoot(newRoot);
+        assertEq(registry.previousCaMerkleRoot(), oldRoot);
+        uint256 updatedAt = registry.caMerkleRootUpdatedAt();
+
+        // Calling with same root should be a no-op (not reset grace period)
+        vm.warp(block.timestamp + 1 hours);
+        registry.updateCaMerkleRoot(newRoot);
+        assertEq(registry.previousCaMerkleRoot(), oldRoot); // still oldRoot
+        assertEq(registry.caMerkleRootUpdatedAt(), updatedAt); // timestamp unchanged
+    }
 }

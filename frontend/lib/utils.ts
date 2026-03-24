@@ -7,8 +7,9 @@ export function cn(...inputs: ClassValue[]) {
 
 /** Truncate a hex string (address or hash) for display. */
 export function truncateHex(h: string, head = 6, tail = 4): string {
-  if (!h || h.length < head + tail + 2) return h ?? "";
-  return `${h.slice(0, head)}...${h.slice(-tail)}`;
+  if (!h) return "";
+  const truncated = `${h.slice(0, head)}...${h.slice(-tail)}`;
+  return truncated.length < h.length ? truncated : h;
 }
 
 /** Validate a hex-encoded bytes string (0x-prefixed, even length). */

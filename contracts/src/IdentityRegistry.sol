@@ -241,8 +241,7 @@ contract IdentityRegistry {
     // ============ Admin Functions ============
 
     /// @notice Update the Merkle root of the allowed CA set.
-    /// @dev Recompute off-chain from the full CA list and submit the new root.
-    ///      Existing proofs generated with the old root will be rejected.
+    /// @dev The previous root remains valid during caRootGracePeriod (default 24h).
     /// @param newRoot The new Merkle root of the allowed CA hashes.
     function updateCaMerkleRoot(bytes32 newRoot) external onlyOwner {
         if (newRoot == bytes32(0)) revert ZeroMerkleRoot();
@@ -368,7 +367,9 @@ contract IdentityRegistry {
     // ============ Internal ============
 
     /// @dev Save current root as previous, set new root, and record update time.
+    ///      Skip rotation if the root hasn't actually changed (prevents grace period reset).
     function _rotateCaMerkleRoot(bytes32 newRoot) internal {
+        if (newRoot == caMerkleRoot) return;
         previousCaMerkleRoot = caMerkleRoot;
         caMerkleRootUpdatedAt = block.timestamp;
         caMerkleRoot = newRoot;
