@@ -10,10 +10,12 @@
 //!   }
 //!
 //! PBES2 parameters:
-//!   - KDF: PBKDF2 with HMAC-SHA1
-//!   - Encryption: SEED-CBC (OID 1.2.410.200004.1.4) or AES-256-CBC
+//!   - KDF: PBKDF2 with HMAC-SHA1 or HMAC-SHA256
+//!   - Encryption: SEED-CBC, AES-256-CBC, or ARIA-256-CBC
 
 use aes::Aes256;
+use aria::cipher::{BlockCipherDecrypt, KeyInit};
+use aria::Aria256;
 use cbc::cipher::{BlockDecryptMut, KeyIvInit};
 use hmac::Hmac;
 use kisaseed::SEED;
@@ -35,6 +37,11 @@ const OID_AES256_CBC: &[u8] =
 
 /// OID for hmacWithSHA256: 1.2.840.113549.2.9
 const OID_HMAC_SHA256: &[u8] = &[0x06, 0x08, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x02, 0x09];
+
+/// OID for ARIA-256-CBC: 1.2.410.200004.1.34
+/// Used in newer Korean NPKI certificates with pbeWithSHA256AndARIA-CBC.
+const OID_ARIA256_CBC: &[u8] =
+    &[0x06, 0x08, 0x2a, 0x83, 0x1a, 0x8c, 0x9a, 0x44, 0x01, 0x22];
 
 /// OID for legacy NPKI SEED-CBC-SHA1: 1.2.410.200004.1.15
 /// Combined KDF+cipher OID (not PBES2 wrapped). Used by older Korean NPKI keys.
@@ -76,6 +83,7 @@ struct Pbes2Params {
 enum CipherType {
     SeedCbc,
     Aes256Cbc,
+    Aria256Cbc,
     LegacySeedCbc, // OID 1.2.410.200004.1.15
 }
 
@@ -117,7 +125,7 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
             let iv = &iv_full[0..16];
             decrypt_cbc::<cbc::Decryptor<SEED>>(key, iv, &encrypted_data, "SEED-legacy")?
         }
-        CipherType::Aes256Cbc | CipherType::SeedCbc => {
+        CipherType::Aes256Cbc | CipherType::SeedCbc | CipherType::Aria256Cbc => {
             // PBES2: derive key using PBKDF2
             let mut derived_key = vec![0u8; params.key_length];
             if params.use_sha256_prf {
@@ -132,6 +140,7 @@ pub fn decrypt_npki_key(encrypted_key_der: &[u8], password: &str) -> Result<Vec<
             match params.cipher {
                 CipherType::Aes256Cbc => decrypt_cbc::<cbc::Decryptor<Aes256>>(&derived_key, &params.iv, &encrypted_data, "AES")?,
                 CipherType::SeedCbc => decrypt_cbc::<cbc::Decryptor<SEED>>(&derived_key, &params.iv, &encrypted_data, "SEED")?,
+                CipherType::Aria256Cbc => decrypt_aria256_cbc(&derived_key, &params.iv, &encrypted_data)?,
                 _ => unreachable!(),
             }
         }
@@ -213,19 +222,26 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
         let iv = find_octet_string_after(&data[alg_start..alg_end], OID_AES256_CBC)
             .ok_or_else(|| NpkiError::InvalidFormat("Cannot find AES IV".into()))?;
         (CipherType::Aes256Cbc, iv)
+    } else if window_contains(&data[alg_start..alg_end], OID_ARIA256_CBC) {
+        let iv = find_octet_string_after(&data[alg_start..alg_end], OID_ARIA256_CBC)
+            .ok_or_else(|| NpkiError::InvalidFormat("Cannot find ARIA IV".into()))?;
+        if iv.len() != 16 {
+            return Err(NpkiError::InvalidFormat(format!("ARIA IV must be 16 bytes, got {}", iv.len())));
+        }
+        (CipherType::Aria256Cbc, iv)
     } else if window_contains(&data[alg_start..alg_end], OID_SEED_CBC) {
         let iv = find_octet_string_after(&data[alg_start..alg_end], OID_SEED_CBC)
             .ok_or_else(|| NpkiError::InvalidFormat("Cannot find SEED IV".into()))?;
         (CipherType::SeedCbc, iv)
     } else {
         return Err(NpkiError::UnsupportedAlgorithm(
-            "Unknown encryption cipher (expected AES-256-CBC or SEED-CBC)".into(),
+            "Unknown encryption cipher (expected AES-256-CBC, ARIA-256-CBC, or SEED-CBC)".into(),
         ));
     };
 
     // Key length based on cipher
     let key_length = match cipher {
-        CipherType::Aes256Cbc => 32,
+        CipherType::Aes256Cbc | CipherType::Aria256Cbc => 32,
         CipherType::SeedCbc => 16,
         CipherType::LegacySeedCbc => 20, // unreachable here, handled above
     };
@@ -358,6 +374,35 @@ fn decrypt_cbc<C: BlockDecryptMut + KeyIvInit>(
         .len();
     buf.truncate(decrypted_len);
     Ok(buf)
+}
+
+/// ARIA-256-CBC decryption using the `aria` crate (cipher v0.5 API).
+/// Manual CBC mode because `aria` uses cipher v0.5 while `cbc` uses cipher v0.4.
+fn decrypt_aria256_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, NpkiError> {
+    const BLOCK: usize = 16;
+    if iv.len() != BLOCK {
+        return Err(NpkiError::InvalidFormat(format!("ARIA IV must be {} bytes, got {}", BLOCK, iv.len())));
+    }
+    if data.len() % BLOCK != 0 {
+        return Err(NpkiError::DecryptionFailed("ARIA data not block-aligned".into()));
+    }
+    let cipher = Aria256::new_from_slice(key)
+        .map_err(|e| NpkiError::DecryptionFailed(format!("ARIA key init: {}", e)))?;
+
+    let mut out = Vec::with_capacity(data.len());
+    let mut prev = [0u8; BLOCK];
+    prev.copy_from_slice(&iv[..BLOCK]);
+
+    for chunk in data.chunks(BLOCK) {
+        let mut block: aria::cipher::Array<u8, _> = chunk.try_into()
+            .map_err(|_| NpkiError::DecryptionFailed("ARIA block size mismatch".into()))?;
+        cipher.decrypt_block(&mut block);
+        for (b, p) in block.iter().zip(prev.iter()) {
+            out.push(b ^ p);
+        }
+        prev.copy_from_slice(chunk);
+    }
+    Ok(out)
 }
 
 /// Remove PKCS#7 padding.
@@ -500,6 +545,128 @@ mod tests {
         let decrypted = decrypt_cbc::<cbc::Decryptor<Aes256>>(&key, &iv, &ciphertext, "AES").unwrap();
         let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
         assert_eq!(unpadded, plaintext);
+    }
+
+    /// Test helper: ARIA-256-CBC encrypt (mirrors decrypt_aria256_cbc).
+    fn encrypt_aria256_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Vec<u8> {
+        use aria::cipher::{BlockCipherEncrypt, KeyInit};
+        let cipher = Aria256::new_from_slice(key).unwrap();
+        let mut out = Vec::with_capacity(data.len());
+        let mut prev = [0u8; 16];
+        prev.copy_from_slice(iv);
+        for chunk in data.chunks(16) {
+            let xored: [u8; 16] = std::array::from_fn(|i| chunk[i] ^ prev[i]);
+            let mut block: aria::cipher::Array<u8, _> = (&xored[..]).try_into().unwrap();
+            cipher.encrypt_block(&mut block);
+            out.extend_from_slice(&block);
+            prev.copy_from_slice(&block);
+        }
+        out
+    }
+
+    #[test]
+    fn test_decrypt_aria256_cbc_known_answer() {
+        let key = [0x42u8; 32];
+        let iv = [0x00u8; 16];
+        let plaintext = b"hello zk-aria!!!"; // exactly 16 bytes
+
+        let mut input = Vec::from(&plaintext[..]);
+        input.extend_from_slice(&[0x10u8; 16]); // PKCS#7 padding
+
+        let ciphertext = encrypt_aria256_cbc(&key, &iv, &input);
+        let decrypted = decrypt_aria256_cbc(&key, &iv, &ciphertext).unwrap();
+        let unpadded = remove_pkcs7_padding(&decrypted).unwrap();
+        assert_eq!(unpadded, plaintext);
+    }
+
+    #[test]
+    fn test_aria256_cbc_pbes2_roundtrip() {
+
+        let password = "test_password";
+        let salt = [0xAAu8; 16];
+        let iterations: u32 = 2048;
+
+        // Build a fake PKCS#8 RSA key (just enough to pass extract_rsa_key_from_pkcs8)
+        let fake_rsa_key = vec![0x30, 0x04, 0x02, 0x02, 0x00, 0x01]; // minimal SEQUENCE
+        // Wrap as PKCS#8: SEQUENCE { version INTEGER 0, algorithm OID rsaEncryption, key OCTET STRING }
+        let rsa_oid: &[u8] = &[0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01];
+        let mut pkcs8 = vec![0x30]; // SEQUENCE
+        let inner_len = 3 + 2 + rsa_oid.len() + 2 + 2 + fake_rsa_key.len();
+        pkcs8.push(inner_len as u8);
+        pkcs8.extend_from_slice(&[0x02, 0x01, 0x00]); // version INTEGER 0
+        pkcs8.extend_from_slice(&[0x30, (rsa_oid.len() + 2) as u8]); // AlgorithmIdentifier SEQUENCE
+        pkcs8.extend_from_slice(rsa_oid);
+        pkcs8.extend_from_slice(&[0x05, 0x00]); // NULL params
+        pkcs8.push(0x04); // OCTET STRING
+        pkcs8.push(fake_rsa_key.len() as u8);
+        pkcs8.extend_from_slice(&fake_rsa_key);
+
+        // PKCS#7 pad to 16-byte boundary
+        let pad_len = 16 - (pkcs8.len() % 16);
+        pkcs8.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+
+        // Derive key via PBKDF2-SHA256
+        let mut derived_key = vec![0u8; 32];
+        pbkdf2::<Hmac<sha2::Sha256>>(
+            password.as_bytes(), &salt, iterations, &mut derived_key,
+        ).unwrap();
+
+        let iv = [0xBBu8; 16];
+        let ciphertext = encrypt_aria256_cbc(&derived_key, &iv, &pkcs8);
+
+        // Build ASN.1 DER EncryptedPrivateKeyInfo
+        // SEQUENCE {
+        //   SEQUENCE { -- AlgorithmIdentifier
+        //     OID PBES2
+        //     SEQUENCE { -- PBES2 params
+        //       SEQUENCE { OID PBKDF2, SEQUENCE { salt, iterations, SEQUENCE { OID hmacSHA256 } } }
+        //       SEQUENCE { OID ARIA256CBC, IV }
+        //     }
+        //   }
+        //   OCTET STRING (encrypted data)
+        // }
+        let mut pbkdf2_inner = Vec::new();
+        pbkdf2_inner.push(0x04); pbkdf2_inner.push(salt.len() as u8); pbkdf2_inner.extend_from_slice(&salt);
+        pbkdf2_inner.push(0x02); pbkdf2_inner.push(0x02);
+        pbkdf2_inner.push((iterations >> 8) as u8); pbkdf2_inner.push(iterations as u8);
+        // PRF: hmacWithSHA256
+        let mut prf_seq = Vec::new();
+        prf_seq.extend_from_slice(OID_HMAC_SHA256);
+        pbkdf2_inner.push(0x30); pbkdf2_inner.push(prf_seq.len() as u8); pbkdf2_inner.extend_from_slice(&prf_seq);
+
+        let mut pbkdf2_seq = Vec::new();
+        pbkdf2_seq.extend_from_slice(OID_PBKDF2);
+        pbkdf2_seq.push(0x30); pbkdf2_seq.push(pbkdf2_inner.len() as u8);
+        pbkdf2_seq.extend_from_slice(&pbkdf2_inner);
+
+        let mut aria_seq = Vec::new();
+        aria_seq.extend_from_slice(OID_ARIA256_CBC);
+        aria_seq.push(0x04); aria_seq.push(iv.len() as u8); aria_seq.extend_from_slice(&iv);
+
+        let mut pbes2_params = Vec::new();
+        pbes2_params.push(0x30); pbes2_params.push(pbkdf2_seq.len() as u8); pbes2_params.extend_from_slice(&pbkdf2_seq);
+        pbes2_params.push(0x30); pbes2_params.push(aria_seq.len() as u8); pbes2_params.extend_from_slice(&aria_seq);
+
+        let mut alg_id = Vec::new();
+        alg_id.extend_from_slice(OID_PBES2);
+        alg_id.push(0x30); alg_id.push(pbes2_params.len() as u8); alg_id.extend_from_slice(&pbes2_params);
+
+        let mut der = vec![0x30]; // outer SEQUENCE
+        let inner = {
+            let mut v = vec![0x30]; // AlgorithmIdentifier SEQUENCE
+            v.push(alg_id.len() as u8);
+            v.extend_from_slice(&alg_id);
+            v.push(0x04); // encrypted data OCTET STRING
+            v.push(ciphertext.len() as u8);
+            v.extend_from_slice(&ciphertext);
+            v
+        };
+        der.push(inner.len() as u8);
+        der.extend_from_slice(&inner);
+
+        // Decrypt using the full pipeline
+        let result = decrypt_npki_key(&der, password);
+        assert!(result.is_ok(), "ARIA PBES2 decryption failed: {:?}", result.err());
     }
 
     #[test]

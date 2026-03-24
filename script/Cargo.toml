@@ -51,6 +51,7 @@ x509-parser = "0.16"
 dirs = "5.0"
 rpassword = "7.3"
 atty = "0.2"
+aria = "0.2.0-rc.1"
 
 [dev-dependencies]
 tempfile = "3"
