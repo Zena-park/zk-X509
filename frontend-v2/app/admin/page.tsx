@@ -718,6 +718,28 @@ export default function AdminPage() {
                 </BentoCard>
               </div>
 
+              {/* Contract Addresses */}
+              <div className="bg-surface p-5 rounded-2xl border border-outline-variant/10 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                  <div>
+                    <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Registry Contract</p>
+                    <p className="font-mono text-sm text-tertiary">{registryAddr || "—"}</p>
+                  </div>
+                  {registryAddr && (
+                    <CopyButton text={registryAddr} />
+                  )}
+                </div>
+                <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                  <div>
+                    <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">SP1 Verifier</p>
+                    <p className="font-mono text-sm text-tertiary">{process.env.NEXT_PUBLIC_SP1_VERIFIER_ADDRESS || "—"}</p>
+                  </div>
+                  {process.env.NEXT_PUBLIC_SP1_VERIFIER_ADDRESS && (
+                    <CopyButton text={process.env.NEXT_PUBLIC_SP1_VERIFIER_ADDRESS} />
+                  )}
+                </div>
+              </div>
+
               {/* Search Bar */}
               <div className="bg-surface p-4 rounded-2xl border border-outline-variant/10">
                 <div className="flex gap-2">
