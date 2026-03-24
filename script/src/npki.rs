@@ -225,6 +225,9 @@ fn parse_encrypted_private_key_info(data: &[u8]) -> Result<Pbes2Params, NpkiErro
     } else if window_contains(&data[alg_start..alg_end], OID_ARIA256_CBC) {
         let iv = find_octet_string_after(&data[alg_start..alg_end], OID_ARIA256_CBC)
             .ok_or_else(|| NpkiError::InvalidFormat("Cannot find ARIA IV".into()))?;
+        if iv.len() != 16 {
+            return Err(NpkiError::InvalidFormat(format!("ARIA IV must be 16 bytes, got {}", iv.len())));
+        }
         (CipherType::Aria256Cbc, iv)
     } else if window_contains(&data[alg_start..alg_end], OID_SEED_CBC) {
         let iv = find_octet_string_after(&data[alg_start..alg_end], OID_SEED_CBC)
@@ -377,6 +380,9 @@ fn decrypt_cbc<C: BlockDecryptMut + KeyIvInit>(
 /// Manual CBC mode because `aria` uses cipher v0.5 while `cbc` uses cipher v0.4.
 fn decrypt_aria256_cbc(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, NpkiError> {
     const BLOCK: usize = 16;
+    if iv.len() != BLOCK {
+        return Err(NpkiError::InvalidFormat(format!("ARIA IV must be {} bytes, got {}", BLOCK, iv.len())));
+    }
     if data.len() % BLOCK != 0 {
         return Err(NpkiError::DecryptionFailed("ARIA data not block-aligned".into()));
     }
