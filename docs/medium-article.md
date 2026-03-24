@@ -28,7 +28,7 @@ Your Certificate → Local ZK Prover → On-Chain Proof → Verified Wallet
 1. You have an X.509 certificate (e.g., Korean NPKI from your bank)
 2. A local prover on your machine generates a zero-knowledge proof inside SP1's zkVM
 3. The proof goes on-chain — a smart contract verifies it in ~77,000 gas
-4. Your wallet is "verified" — the blockchain sees only an anonymous nullifier and which CA issued your cert
+4. Your wallet is "verified" — the blockchain sees only an anonymous nullifier; which CA issued your cert remains hidden (CA-Membership Hiding via Merkle proof)
 
 **No personal data on-chain. No central server. No hardware. No new credentials needed.**
 
@@ -63,7 +63,7 @@ Different applications need different rules. A DAO needs "one person, one vote."
 | `= 3` | DeFi protocols | Strong — trading / custody / cold |
 | `= N` | zk-DEX, multi-account | Flexible — all tied to a real person |
 
-The nullifier is derived from the certificate's public key and wallet index: `SHA-256(cert_public_key ‖ wallet_index)`. The ZK circuit enforces the limit. Regardless of the setting, every wallet is always backed by a real, government-issued certificate.
+The nullifier is derived from a deterministic signature: `SHA-256(Sign(sk, domain) ‖ wallet_index)`. Since only the private key holder can produce the signature, nullifiers cannot be predicted or brute-forced by third parties. The ZK circuit enforces the wallet limit. Regardless of the setting, every wallet is always backed by a real, government-issued certificate.
 
 A single zk-X509 deployment on an L2 can serve multiple protocols — a governance module at `= 1`, a lending protocol at `= 3`, a DEX at `= 10` — all sharing the same identity layer.
 
@@ -105,7 +105,7 @@ Breaking our system means breaking RSA or SHA-256.
 |--------|-------|
 | ZK proving (single-level) | ~7.2M SP1 cycles |
 | ZK proving (3-level NPKI chain) | ~13M SP1 cycles |
-| On-chain verification | ~77K gas (mock) / ~300K gas (Groth16) |
+| On-chain verification | ~300K gas (Groth16) |
 | Proving time (GPU, estimated) | ~1–2 minutes |
 | On L2 rollups | Negligible gas cost |
 
@@ -113,10 +113,11 @@ Full stack implemented: SP1 zkVM (Rust), Solidity smart contracts, Axum prover s
 
 ## What's Next
 
-- **Self-service re-registration** — change wallets without admin approval
 - **Client-side proving** — SP1 WASM for fully browser-based proofs
 - **Cross-chain deployment** — one identity across multiple L2s
 - **Academic publication** — submission to Financial Cryptography (FC)
+
+> Self-service re-registration (`reRegister()`) is already implemented — users can change wallets without admin approval.
 
 ## Try It
 

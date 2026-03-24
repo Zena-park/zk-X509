@@ -184,8 +184,7 @@ struct PublicValuesStruct {
 
 | 연산 | Gas |
 |------|-----|
-| `register()` (mock) | ~77K |
-| `register()` (Groth16 예상) | ~300K |
+| `register()` (Groth16) | ~300K |
 | `addCA()` | ~26K |
 | `isVerified()` | ~2.6K |
 

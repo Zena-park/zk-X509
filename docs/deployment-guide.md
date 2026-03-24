@@ -28,7 +28,7 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 |------|-------|
 | Chain ID | 31337 |
 | RPC | http://localhost:8545 |
-| Verifier | MockSP1Verifier (always passes) |
+| Verifier | SP1VerifierGroth16 (production) |
 | CA Merkle Root | From test certs |
 | Test ETH | 10,000 per account |
 
