@@ -1,14 +1,6 @@
 /// ABI and deployment info for the IdentityRegistry contract.
 
 export const IDENTITY_REGISTRY_ABI = [
-  {
-    inputs: [
-      { name: "_sp1Verifier", type: "address" },
-      { name: "_programVKey", type: "bytes32" },
-    ],
-    stateMutability: "nonpayable",
-    type: "constructor",
-  },
   // register(bytes proof, bytes publicValues)
   {
     inputs: [
@@ -16,6 +8,17 @@ export const IDENTITY_REGISTRY_ABI = [
       { name: "publicValues", type: "bytes" },
     ],
     name: "register",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  // reRegister(bytes proof, bytes publicValues)
+  {
+    inputs: [
+      { name: "proof", type: "bytes" },
+      { name: "publicValues", type: "bytes" },
+    ],
+    name: "reRegister",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
@@ -28,27 +31,19 @@ export const IDENTITY_REGISTRY_ABI = [
     stateMutability: "view",
     type: "function",
   },
-  // verifiedUsers(address) -> bool
+  // verifiedUntil(address) -> uint64
   {
     inputs: [{ name: "", type: "address" }],
-    name: "verifiedUsers",
-    outputs: [{ name: "", type: "bool" }],
+    name: "verifiedUntil",
+    outputs: [{ name: "", type: "uint64" }],
     stateMutability: "view",
     type: "function",
   },
-  // nullifiers(bytes32) -> bool
+  // nullifierOwner(bytes32) -> address
   {
     inputs: [{ name: "", type: "bytes32" }],
-    name: "nullifiers",
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  // validCARoots(bytes32) -> bool
-  {
-    inputs: [{ name: "", type: "bytes32" }],
-    name: "validCARoots",
-    outputs: [{ name: "", type: "bool" }],
+    name: "nullifierOwner",
+    outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
     type: "function",
   },
@@ -58,15 +53,27 @@ export const IDENTITY_REGISTRY_ABI = [
     inputs: [
       { indexed: true, name: "user", type: "address" },
       { indexed: false, name: "nullifier", type: "bytes32" },
-      { indexed: false, name: "caRootHash", type: "bytes32" },
     ],
     name: "UserRegistered",
     type: "event",
   },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "oldUser", type: "address" },
+      { indexed: true, name: "newUser", type: "address" },
+      { indexed: false, name: "nullifier", type: "bytes32" },
+    ],
+    name: "UserReRegistered",
+    type: "event",
+  },
   // Errors
   {
-    inputs: [{ name: "caRootHash", type: "bytes32" }],
-    name: "UnsupportedCA",
+    inputs: [
+      { name: "proofRoot", type: "bytes32" },
+      { name: "expectedRoot", type: "bytes32" },
+    ],
+    name: "InvalidCaMerkleRoot",
     type: "error",
   },
   {
@@ -77,6 +84,35 @@ export const IDENTITY_REGISTRY_ABI = [
   {
     inputs: [{ name: "user", type: "address" }],
     name: "UserAlreadyVerified",
+    type: "error",
+  },
+  {
+    inputs: [
+      { name: "proofRegistrant", type: "address" },
+      { name: "actualSender", type: "address" },
+    ],
+    name: "RegistrantMismatch",
+    type: "error",
+  },
+  {
+    inputs: [{ name: "nullifier", type: "bytes32" }],
+    name: "NullifierRevoked",
+    type: "error",
+  },
+  {
+    inputs: [
+      { name: "proofTimestamp", type: "uint64" },
+      { name: "blockTimestamp", type: "uint256" },
+    ],
+    name: "ProofTooOld",
+    type: "error",
+  },
+  {
+    inputs: [
+      { name: "notAfter", type: "uint64" },
+      { name: "blockTimestamp", type: "uint256" },
+    ],
+    name: "CertAlreadyExpired",
     type: "error",
   },
 ] as const;

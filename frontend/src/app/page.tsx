@@ -1,8 +1,8 @@
 "use client";
 
-import { Upload } from "@/components/Upload";
+import { ProofInput } from "@/components/ProofInput";
 import { WalletConnect } from "@/components/WalletConnect";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import {
   IDENTITY_REGISTRY_ABI,
@@ -11,17 +11,40 @@ import {
 
 export default function Home() {
   const [account, setAccount] = useState<string | null>(null);
-  const [proofResult, setProofResult] = useState<{
-    nullifier: string;
-    caRootHash: string;
-    proof: string;
-    public_values?: string;
-  } | null>(null);
   const [txStatus, setTxStatus] = useState<string>("");
-  const [isRegistered, setIsRegistered] = useState(false);
+  const [verified, setVerified] = useState<boolean | null>(null);
+  const [verifiedExpiry, setVerifiedExpiry] = useState<string>("");
+  const [mode, setMode] = useState<"register" | "reRegister">("register");
 
-  async function registerOnChain() {
-    if (!proofResult || !window.ethereum) return;
+  // Check verification status when wallet connects
+  useEffect(() => {
+    if (!account || !window.ethereum) return;
+
+    (async () => {
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum!);
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+        const addr = REGISTRY_ADDRESSES[chainId];
+        if (!addr || addr === "0x0000000000000000000000000000000000000000") return;
+
+        const contract = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, provider);
+        const isV = await contract.isVerified(account);
+        setVerified(isV);
+
+        if (isV) {
+          const until: bigint = await contract.verifiedUntil(account);
+          const date = new Date(Number(until) * 1000);
+          setVerifiedExpiry(date.toLocaleDateString("ko-KR"));
+        }
+      } catch {
+        // contract not deployed or network mismatch
+      }
+    })();
+  }, [account]);
+
+  async function submitProof(proof: string, publicValues: string) {
+    if (!window.ethereum) return;
 
     setTxStatus("트랜잭션 전송 중...");
 
@@ -33,7 +56,7 @@ export default function Home() {
 
       const registryAddress = REGISTRY_ADDRESSES[chainId];
       if (!registryAddress || registryAddress === "0x0000000000000000000000000000000000000000") {
-        setTxStatus(`체인 ${chainId}에 컨트랙트가 배포되지 않았습니다. Deploy.s.sol로 먼저 배포하세요.`);
+        setTxStatus(`체인 ${chainId}에 컨트랙트가 배포되지 않았습니다.`);
         return;
       }
 
@@ -43,27 +66,31 @@ export default function Home() {
         signer
       );
 
-      // Send the register transaction
-      const proofBytes = proofResult.proof;
-      const publicValues = proofResult.public_values || "0x";
-
-      const tx = await contract.register(proofBytes, publicValues);
+      const fn = mode === "reRegister" ? "reRegister" : "register";
+      const tx = await contract[fn](proof, publicValues);
       setTxStatus(`트랜잭션 전송됨: ${tx.hash.slice(0, 18)}...`);
 
-      // Wait for confirmation
       const receipt = await tx.wait();
       setTxStatus(`등록 완료! 블록: ${receipt.blockNumber}`);
-      setIsRegistered(true);
+      setVerified(true);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      if (errorMsg.includes("UnsupportedCA")) {
-        setTxStatus("오류: 지원되지 않는 CA입니다. 관리자에게 CA 등록을 요청하세요.");
-      } else if (errorMsg.includes("AlreadyRegistered")) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("AlreadyRegistered")) {
         setTxStatus("오류: 이미 등록된 인증서입니다.");
-      } else if (errorMsg.includes("UserAlreadyVerified")) {
+      } else if (msg.includes("UserAlreadyVerified")) {
         setTxStatus("오류: 이미 인증된 지갑 주소입니다.");
+      } else if (msg.includes("RegistrantMismatch")) {
+        setTxStatus("오류: proof의 registrant와 현재 지갑 주소가 다릅니다.");
+      } else if (msg.includes("ProofTooOld")) {
+        setTxStatus("오류: proof가 만료되었습니다. 다시 생성하세요.");
+      } else if (msg.includes("InvalidCaMerkleRoot")) {
+        setTxStatus("오류: CA Merkle Root가 컨트랙트와 일치하지 않습니다.");
+      } else if (msg.includes("NullifierRevoked")) {
+        setTxStatus("오류: 해당 인증서는 폐기되었습니다.");
+      } else if (msg.includes("CertAlreadyExpired")) {
+        setTxStatus("오류: 인증서가 만료되었습니다.");
       } else {
-        setTxStatus(`오류: ${errorMsg}`);
+        setTxStatus(`오류: ${msg}`);
       }
     }
   }
@@ -80,59 +107,58 @@ export default function Home() {
 
         {/* Step 1: Connect Wallet */}
         <section className="rounded-xl border border-gray-800 bg-gray-900 p-6">
-          <h2 className="mb-4 text-lg font-semibold">
-            1. 지갑 연결
-          </h2>
+          <h2 className="mb-4 text-lg font-semibold">1. 지갑 연결</h2>
           <WalletConnect onConnect={setAccount} />
           {account && (
             <p className="mt-2 text-sm text-green-400">
               연결됨: {account.slice(0, 6)}...{account.slice(-4)}
             </p>
           )}
+          {verified === true && (
+            <p className="mt-1 text-sm text-blue-400">
+              인증됨 (만료: {verifiedExpiry})
+            </p>
+          )}
         </section>
 
-        {/* Step 2: Upload Certificate */}
+        {/* Step 2: Submit Proof */}
         <section className="rounded-xl border border-gray-800 bg-gray-900 p-6">
-          <h2 className="mb-4 text-lg font-semibold">
-            2. 인증서 업로드 및 증명 생성
-          </h2>
-          <Upload
-            disabled={!account}
-            account={account}
-            onProofGenerated={setProofResult}
-          />
-        </section>
-
-        {/* Step 3: Register On-Chain */}
-        {proofResult && (
-          <section className="rounded-xl border border-gray-800 bg-gray-900 p-6">
-            <h2 className="mb-4 text-lg font-semibold">
-              3. 온체인 등록
-            </h2>
-            <div className="space-y-2 text-sm">
-              <p>
-                <span className="text-gray-400">Nullifier:</span>{" "}
-                <code className="text-blue-400">{proofResult.nullifier.slice(0, 18)}...</code>
-              </p>
-              <p>
-                <span className="text-gray-400">CA Hash:</span>{" "}
-                <code className="text-blue-400">{proofResult.caRootHash.slice(0, 18)}...</code>
-              </p>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">2. 증명 제출</h2>
+            <div className="flex gap-2 text-sm">
+              <button
+                onClick={() => setMode("register")}
+                className={`rounded px-3 py-1 ${
+                  mode === "register"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-800 text-gray-400"
+                }`}
+              >
+                등록
+              </button>
+              <button
+                onClick={() => setMode("reRegister")}
+                className={`rounded px-3 py-1 ${
+                  mode === "reRegister"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-800 text-gray-400"
+                }`}
+              >
+                재등록
+              </button>
             </div>
-            <button
-              className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-3 font-medium hover:bg-blue-700 disabled:opacity-50"
-              disabled={isRegistered}
-              onClick={registerOnChain}
+          </div>
+          <ProofInput disabled={!account} onSubmit={submitProof} />
+          {txStatus && (
+            <p
+              className={`mt-3 text-sm ${
+                txStatus.includes("오류") ? "text-red-400" : "text-yellow-400"
+              }`}
             >
-              {isRegistered ? "등록 완료" : "블록체인에 등록하기"}
-            </button>
-            {txStatus && (
-              <p className={`mt-2 text-sm ${txStatus.includes("오류") ? "text-red-400" : "text-yellow-400"}`}>
-                {txStatus}
-              </p>
-            )}
-          </section>
-        )}
+              {txStatus}
+            </p>
+          )}
+        </section>
       </div>
     </main>
   );

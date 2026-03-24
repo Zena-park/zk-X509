@@ -217,5 +217,10 @@ fn main() {
             PublicValuesStruct::abi_decode(proof.public_values.as_slice()).unwrap();
         println!("Nullifier: 0x{}", hex::encode(decoded.nullifier));
         println!("CA Root Hash: 0x{}", hex::encode(decoded.caMerkleRoot));
+
+        // Output hex values for frontend submission
+        println!("\n=== Frontend Input ===");
+        println!("Proof: 0x{}", hex::encode(proof.bytes()));
+        println!("Public Values: 0x{}", hex::encode(proof.public_values.as_slice()));
     }
 }
