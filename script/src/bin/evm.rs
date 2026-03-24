@@ -106,22 +106,22 @@ fn main() {
     let ca_leaves = vec![ca_leaf_hash];
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
 
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&cert_der);
-    stdin.write(&ownership_sig);
-    stdin.write(&nullifier_sig);
-    stdin.write(&cert_chain);
-    stdin.write(&current_timestamp);
-    stdin.write(&crl_der);
-    stdin.write(&registrant_bytes);
-    stdin.write(&args.wallet_index);
-    stdin.write(&args.max_wallets);
-    stdin.write(&args.disclosure_mask);
-    stdin.write(&ca_merkle_proof);
-    stdin.write(&ca_merkle_root);
-    stdin.write(&registry_address);
-    stdin.write(&chain_id);
-    zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
+    let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
+        cert_der: &cert_der,
+        ownership_sig: &ownership_sig,
+        nullifier_sig: &nullifier_sig,
+        cert_chain: &cert_chain,
+        timestamp: current_timestamp,
+        crl_der: &crl_der,
+        registrant: &registrant_bytes,
+        wallet_index: args.wallet_index,
+        max_wallets: args.max_wallets,
+        disclosure_mask: args.disclosure_mask,
+        ca_merkle_proof: &ca_merkle_proof,
+        ca_merkle_root,
+        registry_address: &registry_address,
+        chain_id,
+    });
     println!("Proof System: {:?}", args.system);
 
     let proof = match args.system {

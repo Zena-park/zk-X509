@@ -727,4 +727,102 @@ contract IdentityRegistryTest is Test {
         assertEq(registry.getCaCount(), 1);
         assertEq(registry.caLeaves(0), ca1);
     }
+
+    // ============ CA Root Grace Period Tests ============
+
+    function test_GracePeriod_OldRootAcceptedDuringGrace() public {
+        bytes32 oldRoot = CA_MERKLE_ROOT;
+        bytes32 newRoot = bytes32(uint256(0xBEEF));
+
+        // Update root → oldRoot becomes previousCaMerkleRoot
+        registry.updateCaMerkleRoot(newRoot);
+        assertEq(registry.previousCaMerkleRoot(), oldRoot);
+
+        // Proof with old root should still work within grace period
+        vm.prank(alice);
+        registry.register(hex"1234", _pv(NULLIFIER, oldRoot, alice));
+        assertTrue(registry.isVerified(alice));
+    }
+
+    function test_GracePeriod_OldRootRejectedAfterExpiry() public {
+        bytes32 oldRoot = CA_MERKLE_ROOT;
+        bytes32 newRoot = bytes32(uint256(0xBEEF));
+
+        registry.updateCaMerkleRoot(newRoot);
+
+        // Fast-forward past grace period (default 24h)
+        vm.warp(block.timestamp + 24 hours + 1);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.InvalidCaMerkleRoot.selector, oldRoot, newRoot)
+        );
+        registry.register(hex"1234", _pv(NULLIFIER, oldRoot, alice));
+    }
+
+    function test_GracePeriod_NewRootAlwaysWorks() public {
+        bytes32 newRoot = bytes32(uint256(0xBEEF));
+        registry.updateCaMerkleRoot(newRoot);
+
+        vm.prank(alice);
+        registry.register(hex"1234", _pv(NULLIFIER, newRoot, alice));
+        assertTrue(registry.isVerified(alice));
+    }
+
+    function test_GracePeriod_AddCAPreservesPreviousRoot() public {
+        bytes32 rootBefore = registry.caMerkleRoot();
+        bytes32 ca1 = bytes32(uint256(0xAA));
+        registry.addCA(ca1);
+
+        assertEq(registry.previousCaMerkleRoot(), rootBefore);
+        assertTrue(registry.caMerkleRoot() != rootBefore);
+    }
+
+    function test_SetCaRootGracePeriod() public {
+        uint256 newPeriod = 12 hours;
+        registry.setCaRootGracePeriod(newPeriod);
+        assertEq(registry.caRootGracePeriod(), newPeriod);
+    }
+
+    function test_RevertSetCaRootGracePeriodOutOfRange() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IdentityRegistry.GracePeriodOutOfRange.selector,
+                30 minutes, 1 hours, 7 days
+            )
+        );
+        registry.setCaRootGracePeriod(30 minutes);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IdentityRegistry.GracePeriodOutOfRange.selector,
+                8 days, 1 hours, 7 days
+            )
+        );
+        registry.setCaRootGracePeriod(8 days);
+    }
+
+    function test_GracePeriod_ShortenedGracePeriodExpires() public {
+        bytes32 oldRoot = CA_MERKLE_ROOT;
+        bytes32 newRoot = bytes32(uint256(0xBEEF));
+
+        // Shorten grace period to 1 hour
+        registry.setCaRootGracePeriod(1 hours);
+        registry.updateCaMerkleRoot(newRoot);
+
+        // After 1h+1s, old root should be rejected
+        vm.warp(block.timestamp + 1 hours + 1);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.InvalidCaMerkleRoot.selector, oldRoot, newRoot)
+        );
+        registry.register(hex"1234", _pv(NULLIFIER, oldRoot, alice));
+    }
+
+    function test_RevertSetCaRootGracePeriodNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        registry.setCaRootGracePeriod(12 hours);
+    }
 }

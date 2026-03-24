@@ -4,50 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { ShieldCheck, Wallet, Send, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useWallet } from "../../lib/wallet";
-
-/* ------------------------------------------------------------------ */
-/*  Hex validation helper                                              */
-/* ------------------------------------------------------------------ */
-function isValidHex(v: string): boolean {
-  if (!v.startsWith("0x")) return false;
-  const body = v.slice(2);
-  if (body.length === 0 || body.length % 2 !== 0) return false;
-  if (body.length < 2) return false; // min 4 chars total (0x + 2)
-  return /^[0-9a-fA-F]+$/.test(body);
-}
-
-/* ------------------------------------------------------------------ */
-/*  Known contract error names                                         */
-/* ------------------------------------------------------------------ */
-const ERROR_MESSAGES: Record<string, string> = {
-  AlreadyRegistered: "This nullifier is already registered to another wallet.",
-  UserAlreadyVerified: "This wallet is already verified.",
-  RegistrantMismatch: "The proof was generated for a different wallet address.",
-  ProofTooOld: "The proof timestamp is too old. Please generate a fresh proof.",
-  InvalidCaMerkleRoot: "The CA Merkle root in the proof does not match the on-chain root.",
-  NullifierRevoked: "This certificate nullifier has been revoked.",
-  CertAlreadyExpired: "The X.509 certificate has already expired.",
-  ContractPaused: "The registry contract is currently paused.",
-};
-
-function parseContractError(err: unknown): string {
-  const msg = (err as { message?: string })?.message ?? String(err);
-  // ethers v6 wraps custom errors: look for error name
-  for (const [name, human] of Object.entries(ERROR_MESSAGES)) {
-    if (msg.includes(name)) return human;
-  }
-  if (msg.includes("user rejected") || msg.includes("ACTION_REJECTED")) {
-    return "Transaction was rejected by the user.";
-  }
-  return msg.length > 200 ? msg.slice(0, 200) + "..." : msg;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Shorten address                                                    */
-/* ------------------------------------------------------------------ */
-function shortAddr(a: string): string {
-  return `${a.slice(0, 6)}...${a.slice(-4)}`;
-}
+import { truncateHex, isValidHex, parseContractError } from "../../lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -240,7 +197,7 @@ export default function DashboardPage() {
             <div className="bg-surface-container-low/50 rounded-lg p-3 flex items-center justify-between">
               <span className="text-on-surface-variant text-sm">Wallet</span>
               <code className="font-mono text-tertiary bg-tertiary/5 px-3 py-1 rounded border border-tertiary/10">
-                {shortAddr(account)}
+                {truncateHex(account)}
               </code>
             </div>
             {/* Chain / Registry / Owner */}
@@ -258,7 +215,7 @@ export default function DashboardPage() {
                   Registry
                 </p>
                 <p className="font-mono text-sm text-tertiary break-all">
-                  {registryAddr ? shortAddr(registryAddr) : "--"}
+                  {registryAddr ? truncateHex(registryAddr) : "--"}
                 </p>
               </div>
               <div className="bg-surface-container-low/50 rounded-xl p-4">

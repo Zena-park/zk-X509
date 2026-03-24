@@ -205,29 +205,29 @@ fn cmd_prove(session: &mut Session) {
         &cert_der, &key_der, &registry_address, chain_id,
     ).unwrap_or_else(|e| { println!("  Nullifier sign failed: {}", e); std::process::exit(1); });
 
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&cert_der);
-    stdin.write(&ownership_sig);
-    stdin.write(&nullifier_sig);
-    stdin.write(&cert_chain);
-    stdin.write(&timestamp);
-    stdin.write(&crl_der);
-    stdin.write(&registrant_bytes);
-    stdin.write(&wallet_index);
-    stdin.write(&max_wallets);
     let mask_str = prompt("  Disclosure mask (15=all, 1=country, 0=none) [15]: ");
     let disclosure_mask: u8 = mask_str.parse().unwrap_or(0x0F);
-    stdin.write(&disclosure_mask);
 
-    // Build CA Merkle tree (single-CA for now)
     let ca_leaf_hash: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
     let ca_leaves = vec![ca_leaf_hash];
     let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, 0);
-    stdin.write(&ca_merkle_proof);
-    stdin.write(&ca_merkle_root);
-    stdin.write(&registry_address);
-    stdin.write(&chain_id);
-    zk_x509_script::smt::write_disabled_crl_inputs(&mut stdin);
+
+    let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
+        cert_der: &cert_der,
+        ownership_sig: &ownership_sig,
+        nullifier_sig: &nullifier_sig,
+        cert_chain: &cert_chain,
+        timestamp,
+        crl_der: &crl_der,
+        registrant: &registrant_bytes,
+        wallet_index,
+        max_wallets,
+        disclosure_mask,
+        ca_merkle_proof: &ca_merkle_proof,
+        ca_merkle_root,
+        registry_address: &registry_address,
+        chain_id,
+    });
     match client.execute(ZK_X509_ELF, stdin).run() {
         Ok((output, report)) => {
             let decoded = PublicValuesStruct::abi_decode(output.as_slice())

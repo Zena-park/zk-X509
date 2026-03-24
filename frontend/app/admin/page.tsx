@@ -19,6 +19,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { ethers } from "ethers";
 import { useWallet } from "@/lib/wallet";
+import { truncateHex } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -38,11 +39,6 @@ type AdminTab = "status" | "management" | "security";
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function truncateHash(h: string, head = 6, tail = 4): string {
-  if (!h || h.length < head + tail + 2) return h ?? "";
-  return `${h.slice(0, head)}...${h.slice(-tail)}`;
-}
 
 function isZeroHash(h: string): boolean {
   return !h || h === ethers.ZeroHash;
@@ -117,14 +113,14 @@ function TxBadge({ status }: { status: TxStatus }) {
   if (status.kind === "confirming")
     return (
       <span className="text-[10px] font-mono text-tertiary animate-pulse inline-flex items-center">
-        Confirming {truncateHash(status.hash)}...
+        Confirming {truncateHex(status.hash)}...
         <CopyButton text={status.hash} />
       </span>
     );
   if (status.kind === "success")
     return (
       <span className="text-[10px] font-mono text-secondary inline-flex items-center">
-        Confirmed: {truncateHash(status.hash)}
+        Confirmed: {truncateHex(status.hash)}
         <CopyButton text={status.hash} />
       </span>
     );
@@ -316,7 +312,7 @@ export default function AdminPage() {
             ? new Date(Number(until) * 1000).toISOString().split("T")[0]
             : "N/A";
         setSearchResult(
-          `Address ${truncateHash(q)}: verified=${verified}, expires=${expiry}`,
+          `Address ${truncateHex(q)}: verified=${verified}, expires=${expiry}`,
         );
       } else if (q.length === 66 && q.startsWith("0x")) {
         // nullifier lookup
@@ -325,9 +321,9 @@ export default function AdminPage() {
           readContract.revokedNullifiers(q),
         ]);
         const ownerStr =
-          owner === ethers.ZeroAddress ? "unregistered" : truncateHash(owner);
+          owner === ethers.ZeroAddress ? "unregistered" : truncateHex(owner);
         setSearchResult(
-          `Nullifier ${truncateHash(q)}: owner=${ownerStr}, revoked=${revoked}`,
+          `Nullifier ${truncateHex(q)}: owner=${ownerStr}, revoked=${revoked}`,
         );
       } else {
         setSearchResult(
@@ -504,7 +500,7 @@ export default function AdminPage() {
 
   const caRoot = contractState?.caMerkleRoot ?? "";
   const crlRoot = contractState?.crlMerkleRoot ?? "";
-  const crlDisplay = isZeroHash(crlRoot) ? "Disabled" : truncateHash(crlRoot);
+  const crlDisplay = isZeroHash(crlRoot) ? "Disabled" : truncateHex(crlRoot);
 
   const maxProofAge = contractState ? Number(contractState.maxProofAge) : 0;
   const maxWallets = contractState?.MAX_WALLETS_PER_CERT ?? 0;
@@ -541,7 +537,7 @@ export default function AdminPage() {
                 READ-ONLY ACCESS RESTRICTED
               </p>
               <p className="text-xs text-on-surface-variant">
-                Your connected wallet ({truncateHash(account)}) is not the
+                Your connected wallet ({truncateHex(account)}) is not the
                 protocol owner. Transaction signing is disabled.
               </p>
             </div>
@@ -619,7 +615,7 @@ export default function AdminPage() {
                 >
                   <p className="text-[10px] font-mono mt-4 text-on-surface-variant truncate">
                     {registryAddr
-                      ? truncateHash(registryAddr, 8, 6)
+                      ? truncateHex(registryAddr, 8, 6)
                       : "Not deployed"}
                   </p>
                   <div className="mt-6 flex items-center gap-2">
@@ -642,7 +638,7 @@ export default function AdminPage() {
                 {/* CA Merkle Root */}
                 <BentoCard
                   title="CA Merkle Root"
-                  value={caRoot ? truncateHash(caRoot) : "Loading..."}
+                  value={caRoot ? truncateHex(caRoot) : "Loading..."}
                   color="primary"
                   mono
                   icon={<Share2 className="w-12 h-12 opacity-10" />}
@@ -856,7 +852,7 @@ export default function AdminPage() {
                             {entry.name}
                           </span>
                           <span className="text-[10px] font-mono text-on-surface-variant truncate flex-1">
-                            {truncateHash(entry.hashHex, 10, 8)}
+                            {truncateHex(entry.hashHex, 10, 8)}
                           </span>
                           <TxBadge status={txStatus} />
                           <button
@@ -919,7 +915,7 @@ export default function AdminPage() {
                             #{idx}
                           </span>
                           <span className="text-sm font-mono text-primary truncate flex-1">
-                            {truncateHash(leaf, 10, 8)}
+                            {truncateHex(leaf, 10, 8)}
                           </span>
                           <CopyButton text={leaf} />
                           <TxBadge status={txStatus} />
