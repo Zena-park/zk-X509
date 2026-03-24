@@ -62,21 +62,21 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- --prove \
   --registrant 0x0000000000000000000000000000000000000001
 ```
 
-## 4. CA Merkle Root 관리
+## 4. CA Merkle Root 관리 (관리자)
 
 컨트랙트는 신뢰하는 CA 목록을 Merkle Root로 저장한다.
-관리자가 CA를 등록/변경하면 root를 재계산하여 컨트랙트에 업데이트해야 한다.
+관리자가 CA를 등록/변경할 때 아래 과정을 거친다:
 
-### 단일 CA
+**Step 1: CA Root 계산 (off-chain, 블록체인에 등록되지 않음)**
+
+단일 CA:
 ```bash
 cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
   --registrant 0x0000000000000000000000000000000000000001
 ```
-출력에서 `CA Merkle Root: 0x...` 확인.
 
-### 복수 CA
-`--extra-ca`로 추가 CA를 지정:
+복수 CA (`--extra-ca`로 추가):
 ```bash
 cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
   --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
@@ -84,7 +84,13 @@ cargo run --release -p zk-x509-script --bin zk-x509 -- --execute \
   --registrant 0x0000000000000000000000000000000000000001
 ```
 
-### CA Root 갱신 (배포 후)
+출력에서 `CA Merkle Root: 0x...` 값을 복사.
+
+**Step 2: 컨트랙트에 등록**
+
+배포 시: `CA_MERKLE_ROOT=0x... forge script DeployLocal.s.sol ...` (Section 5 참조)
+
+배포 후 갱신:
 ```bash
 cast send $REGISTRY_ADDR \
   "updateCaMerkleRoot(bytes32)" 0xNEW_ROOT \
