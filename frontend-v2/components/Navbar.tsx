@@ -10,6 +10,8 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/admin", label: "Admin Console" },
   { href: "/faq", label: "Knowledge Base" },
+  { href: "/landing-a", label: "Landing A" },
+  { href: "/landing-b", label: "Landing B" },
 ];
 
 export function Navbar() {
