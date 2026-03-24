@@ -201,7 +201,10 @@ export default function AdminPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-zinc-500">Max Wallets/Cert</span>
-                  <span className="text-sm font-medium text-white">{state.maxWalletsPerCert}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-white">{state.maxWalletsPerCert}</span>
+                    <span className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">immutable</span>
+                  </div>
                 </div>
               </div>
             </div>
