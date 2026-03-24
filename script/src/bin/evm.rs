@@ -44,6 +44,9 @@ struct EVMArgs {
     /// IdentityRegistry address (hex).
     #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
     registry_address: String,
+    /// JSON-RPC URL to fetch on-chain CA list. When set, CA tree is built from on-chain data.
+    #[arg(long)]
+    rpc_url: Option<String>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -94,8 +97,19 @@ fn main() {
     ).expect("Failed to sign nullifier");
 
     let crl_der: Vec<u8> = Vec::new();
-    let (_ca_leaf, ca_merkle_root, ca_merkle_proof) =
-        zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
+    let (ca_merkle_root, ca_merkle_proof) = if let Some(rpc_url) = &args.rpc_url {
+        println!("Fetching CA list from on-chain ({})...", rpc_url);
+        let ca_leaves = zk_x509_script::onchain::fetch_ca_leaves(rpc_url, &registry_address)
+            .expect("Failed to fetch on-chain CA leaves");
+        let ca_leaf: [u8; 32] = sha2::Sha256::digest(&ca_pub_key).into();
+        let my_index = ca_leaves.iter().position(|h| *h == ca_leaf)
+            .expect("Your CA is not registered on-chain");
+        println!("On-chain CAs: {}, your index: {}", ca_leaves.len(), my_index);
+        zk_x509_script::merkle::merkle_root_and_proof(&ca_leaves, my_index)
+    } else {
+        let (_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
+        (root, proof)
+    };
 
     let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
         cert_der: &cert_der,
