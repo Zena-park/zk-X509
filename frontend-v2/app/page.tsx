@@ -84,6 +84,44 @@ export default function LandingPage() {
           className="absolute right-[20%] bottom-[15%] w-64 h-64 border border-tertiary/3 rounded-full pointer-events-none"
         />
 
+        {/* Masked face SVG */}
+        <motion.div
+          animate={{ y: [0, -15, 0, 10, 0], x: [0, 5, -5, 0] }}
+          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute right-[12%] top-[25%] pointer-events-none opacity-[0.07] hidden lg:block"
+        >
+          <svg width="280" height="280" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Head outline */}
+            <ellipse cx="100" cy="85" rx="55" ry="65" stroke="currentColor" strokeWidth="1.5" className="text-tertiary" />
+            {/* Hair/top */}
+            <path d="M50 75 Q55 30 100 25 Q145 30 150 75" stroke="currentColor" strokeWidth="1.5" fill="none" className="text-tertiary" />
+            {/* Left eye */}
+            <ellipse cx="78" cy="78" rx="10" ry="7" stroke="currentColor" strokeWidth="1.2" className="text-tertiary" />
+            <circle cx="78" cy="78" r="3" fill="currentColor" className="text-tertiary" />
+            {/* Right eye */}
+            <ellipse cx="122" cy="78" rx="10" ry="7" stroke="currentColor" strokeWidth="1.2" className="text-tertiary" />
+            <circle cx="122" cy="78" r="3" fill="currentColor" className="text-tertiary" />
+            {/* Mask covering lower face */}
+            <path d="M60 90 Q62 85 80 88 L100 90 L120 88 Q138 85 140 90 L138 115 Q130 135 100 140 Q70 135 62 115 Z"
+              fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5" className="text-secondary" />
+            {/* Mask strap lines */}
+            <path d="M60 90 Q50 85 45 80" stroke="currentColor" strokeWidth="1" className="text-secondary" opacity="0.6" />
+            <path d="M140 90 Q150 85 155 80" stroke="currentColor" strokeWidth="1" className="text-secondary" opacity="0.6" />
+            {/* Lock keyhole on mask */}
+            <circle cx="100" cy="108" r="5" stroke="currentColor" strokeWidth="1.2" className="text-secondary" />
+            <rect x="98" y="112" width="4" height="8" rx="1" fill="currentColor" className="text-secondary" opacity="0.5" />
+            {/* Neck */}
+            <path d="M85 148 L85 170 Q85 180 100 180 Q115 180 115 170 L115 148" stroke="currentColor" strokeWidth="1.2" className="text-tertiary" opacity="0.5" />
+            {/* Digital particles around */}
+            <circle cx="35" cy="60" r="1.5" fill="currentColor" className="text-tertiary" opacity="0.4" />
+            <circle cx="165" cy="55" r="1" fill="currentColor" className="text-tertiary" opacity="0.3" />
+            <circle cx="30" cy="120" r="1" fill="currentColor" className="text-secondary" opacity="0.3" />
+            <circle cx="170" cy="110" r="1.5" fill="currentColor" className="text-secondary" opacity="0.4" />
+            <circle cx="55" cy="160" r="1" fill="currentColor" className="text-tertiary" opacity="0.2" />
+            <circle cx="145" cy="155" r="1" fill="currentColor" className="text-tertiary" opacity="0.2" />
+          </svg>
+        </motion.div>
+
         <div className="relative max-w-5xl mx-auto px-8 py-20 text-center">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
