@@ -340,6 +340,15 @@ export const IDENTITY_REGISTRY_ABI = [
   },
   { inputs: [], name: "OnlyOwner", type: "error" },
   { inputs: [], name: "ContractPaused", type: "error" },
+
+  // ============ MIN_DISCLOSURE_MASK ============
+  {
+    inputs: [],
+    name: "MIN_DISCLOSURE_MASK",
+    outputs: [{ name: "", type: "uint8" }],
+    stateMutability: "view",
+    type: "function",
+  },
 ] as const;
 
 /// Registry address from environment variable, or fallback per network.
@@ -350,6 +359,117 @@ export function getRegistryAddress(chainId: string): string {
   const fallback: Record<string, string> = {
     "11155111": "0x0000000000000000000000000000000000000000",
     "31337": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+  };
+  return fallback[chainId] || "";
+}
+
+// ============================================================
+// RegistryFactory ABI
+// ============================================================
+
+export const REGISTRY_FACTORY_ABI = [
+  // ============ Write Functions ============
+  {
+    inputs: [
+      { name: "name", type: "string" },
+      { name: "maxWallets", type: "uint32" },
+      { name: "minDisclosureMask", type: "uint8" },
+    ],
+    name: "createRegistry",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+
+  // ============ View Functions ============
+  {
+    inputs: [],
+    name: "getRegistries",
+    outputs: [{ name: "", type: "address[]" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "getRegistryCount",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "offset", type: "uint256" },
+      { name: "limit", type: "uint256" },
+    ],
+    name: "getRegistriesPaginated",
+    outputs: [{ name: "", type: "address[]" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "", type: "address" }],
+    name: "registryInfo",
+    outputs: [
+      { name: "creator", type: "address" },
+      { name: "name", type: "string" },
+      { name: "maxWallets", type: "uint32" },
+      { name: "minDisclosureMask", type: "uint8" },
+      { name: "createdAt", type: "uint256" },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "", type: "address" }],
+    name: "isRegistry",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "owner",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "SP1_VERIFIER",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "PROGRAM_V_KEY",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+
+  // ============ Events ============
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "registry", type: "address" },
+      { indexed: true, name: "owner", type: "address" },
+      { indexed: false, name: "name", type: "string" },
+      { indexed: false, name: "maxWallets", type: "uint32" },
+      { indexed: false, name: "minDisclosureMask", type: "uint8" },
+    ],
+    name: "RegistryCreated",
+    type: "event",
+  },
+] as const;
+
+/// Factory address from environment variable, or fallback per network.
+export function getFactoryAddress(chainId: string): string {
+  const envAddr = process.env.NEXT_PUBLIC_FACTORY_ADDRESS;
+  if (envAddr) return envAddr;
+
+  const fallback: Record<string, string> = {
+    "31337": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
   };
   return fallback[chainId] || "";
 }

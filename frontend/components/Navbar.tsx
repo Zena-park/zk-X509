@@ -2,21 +2,41 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/wallet";
 
-const navLinks = [
+const defaultNavLinks = [
   { href: "/", label: "Home" },
+  { href: "/create", label: "Platform" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/admin", label: "Admin Console" },
   { href: "/faq", label: "Knowledge Base" },
 ];
 
+/** Extract registry address from a /registry/[address]/... path, or null */
+function extractRegistryScope(pathname: string): string | null {
+  const match = pathname.match(/^\/registry\/(0x[a-fA-F0-9]+)/);
+  return match ? match[1] : null;
+}
+
 export function Navbar() {
   const pathname = usePathname();
   const { account, chainName, chainId, registryAddr, connect, disconnect } = useWallet();
   const [showMenu, setShowMenu] = useState(false);
+
+  const registryScope = extractRegistryScope(pathname);
+
+  const navLinks = useMemo(() => {
+    if (!registryScope) return defaultNavLinks;
+    return [
+      { href: "/", label: "Home" },
+      { href: "/create", label: "Platform" },
+      { href: `/registry/${registryScope}/dashboard`, label: "Dashboard" },
+      { href: `/registry/${registryScope}/admin`, label: "Admin Console" },
+      { href: "/faq", label: "Knowledge Base" },
+    ];
+  }, [registryScope]);
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl border-b border-outline-variant/20 flex justify-between items-center px-8 h-20 shadow-2xl shadow-tertiary/5">
@@ -47,8 +67,21 @@ export function Navbar() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Registry address */}
-        {account && registryAddr && (
+        {/* Scoped registry indicator */}
+        {registryScope && (
+          <Link
+            href={`/registry/${registryScope}`}
+            className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-tertiary/10 border border-tertiary/20 rounded-full hover:bg-tertiary/20 transition-colors"
+          >
+            <span className="text-[10px] text-tertiary font-label font-bold uppercase tracking-widest">Scoped</span>
+            <span className="text-xs font-mono text-tertiary">
+              {registryScope.slice(0, 8)}...{registryScope.slice(-4)}
+            </span>
+          </Link>
+        )}
+
+        {/* Registry address (shown when not scoped) */}
+        {!registryScope && account && registryAddr && (
           <div className="hidden lg:flex flex-col items-end mr-2">
             <span className="text-[10px] text-on-surface-variant font-mono">Registry</span>
             <span className="text-xs font-mono text-on-surface-variant">

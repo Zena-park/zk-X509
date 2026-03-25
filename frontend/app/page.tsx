@@ -1,7 +1,9 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { ethers } from "ethers";
 import {
   ShieldCheck,
   EyeOff,
@@ -13,7 +15,195 @@ import {
   Globe,
   Fingerprint,
   Database,
+  Plus,
+  Loader2,
+  Users,
 } from "lucide-react";
+import {
+  REGISTRY_FACTORY_ABI,
+  IDENTITY_REGISTRY_ABI,
+  getFactoryAddress,
+  getRpcUrl,
+} from "@/lib/contract";
+import { truncateHex } from "@/lib/utils";
+import { useWallet } from "@/lib/wallet";
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+
+interface RegistryCard {
+  address: string;
+  name: string;
+  maxWallets: number;
+  minDisclosureMask: number;
+  caCount: number;
+}
+
+const DISCLOSURE_LABELS = ["C", "O", "OU", "CN"] as const;
+
+function decodeMaskShort(mask: number): string {
+  const fields: string[] = [];
+  for (let i = 0; i < DISCLOSURE_LABELS.length; i++) {
+    if (mask & (1 << i)) fields.push(DISCLOSURE_LABELS[i]);
+  }
+  return fields.length > 0 ? fields.join(", ") : "None";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Platform Section Component                                         */
+/* ------------------------------------------------------------------ */
+
+function PlatformSection() {
+  const { chainId } = useWallet();
+  const [registries, setRegistries] = useState<RegistryCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cid = chainId || "31337";
+        const factoryAddr = getFactoryAddress(cid);
+        if (!factoryAddr) {
+          setLoading(false);
+          return;
+        }
+
+        const provider = new ethers.JsonRpcProvider(getRpcUrl());
+        const factory = new ethers.Contract(factoryAddr, REGISTRY_FACTORY_ABI, provider);
+
+        let addresses: string[];
+        try {
+          addresses = await factory.getRegistries();
+        } catch {
+          // Factory not deployed or no registries
+          setLoading(false);
+          return;
+        }
+
+        const cards: RegistryCard[] = [];
+        for (const addr of addresses) {
+          try {
+            const [infoResult, registry] = await Promise.all([
+              factory.registryInfo(addr),
+              new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, provider),
+            ]);
+            const caCount = await registry.getCaCount();
+            cards.push({
+              address: addr,
+              name: infoResult.name || infoResult[1] || "Unnamed",
+              maxWallets: Number(infoResult.maxWallets ?? infoResult[2]),
+              minDisclosureMask: Number(infoResult.minDisclosureMask ?? infoResult[3]),
+              caCount: Number(caCount),
+            });
+          } catch (e) {
+            console.error(`Failed to load registry ${addr}:`, e);
+          }
+        }
+
+        setRegistries(cards);
+      } catch (e) {
+        console.error("Failed to load registries:", e);
+        setError("Failed to load registry directory.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [chainId]);
+
+  return (
+    <section className="max-w-6xl mx-auto px-8 py-20">
+      <motion.div
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        className="text-center mb-12"
+      >
+        <h2 className="text-3xl md:text-4xl font-headline font-bold text-primary mb-4">
+          Registry Directory
+        </h2>
+        <p className="text-on-surface-variant max-w-xl mx-auto mb-8">
+          Browse deployed identity registries or create your own.
+        </p>
+        <Link
+          href="/create"
+          className="inline-flex items-center gap-2 px-8 py-3 bg-tertiary/10 text-tertiary border border-tertiary/20 font-headline font-bold rounded-full hover:bg-tertiary/20 transition-all"
+        >
+          <Plus className="w-5 h-5" />
+          Create New Registry
+        </Link>
+      </motion.div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-6 h-6 text-tertiary animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="text-center py-12">
+          <p className="text-on-surface-variant text-sm">{error}</p>
+        </div>
+      ) : registries.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-on-surface-variant text-sm">No registries deployed yet. Be the first!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {registries.map((reg, i) => (
+            <motion.div
+              key={reg.address}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: i * 0.1 }}
+            >
+              <Link
+                href={`/registry/${reg.address}`}
+                className="block bg-surface-container rounded-2xl p-6 border border-outline-variant/10 hover:border-outline-variant/30 transition-all group"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <h3 className="text-lg font-headline font-bold text-primary group-hover:text-tertiary transition-colors truncate">
+                    {reg.name}
+                  </h3>
+                  <ArrowRight className="w-4 h-4 text-on-surface-variant group-hover:text-tertiary transition-colors shrink-0 mt-1" />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-on-surface-variant text-xs">Address</span>
+                    <span className="font-mono text-xs text-tertiary">{truncateHex(reg.address)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-on-surface-variant text-xs flex items-center gap-1">
+                      <Users className="w-3 h-3" /> Max Wallets
+                    </span>
+                    <span className="text-sm font-headline font-bold text-on-surface">{reg.maxWallets}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-on-surface-variant text-xs flex items-center gap-1">
+                      <Fingerprint className="w-3 h-3" /> Disclosure
+                    </span>
+                    <span className="text-xs font-mono text-on-surface">{decodeMaskShort(reg.minDisclosureMask)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-on-surface-variant text-xs flex items-center gap-1">
+                      <Database className="w-3 h-3" /> Trusted CAs
+                    </span>
+                    <span className="text-sm font-headline font-bold text-on-surface">{reg.caCount}</span>
+                  </div>
+                </div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ================================================================== */
+/*  Landing Page                                                       */
+/* ================================================================== */
 
 export default function LandingPage() {
   return (
@@ -126,6 +316,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
+
+      {/* Platform: Registry Directory */}
+      <PlatformSection />
 
       {/* How It Works */}
       <section className="max-w-6xl mx-auto px-8 py-20">
