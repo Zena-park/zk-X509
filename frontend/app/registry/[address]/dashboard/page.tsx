@@ -13,10 +13,10 @@ export default function ScopedDashboardPage() {
     <>
       <div className="max-w-6xl mx-auto pt-24 px-8 pb-2">
         <Link
-          href={`/registry/${address}`}
+          href="/dashboard"
           className="inline-flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors font-headline text-sm"
         >
-          <ArrowLeft className="w-4 h-4" /> Back to Registry
+          <ArrowLeft className="w-4 h-4" /> Back to Explore Services
         </Link>
       </div>
       <DashboardContent />

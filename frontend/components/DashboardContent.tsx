@@ -109,17 +109,14 @@ export default function DashboardContent() {
   /*  Render                                                           */
   /* ================================================================ */
   return (
-    <main className="max-w-6xl mx-auto pt-24 px-8 pb-12">
+    <main className="max-w-6xl mx-auto pt-4 px-8 pb-12">
       <motion.header
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="mb-6"
       >
-        <h1 className="text-3xl font-headline font-bold tracking-tight text-primary mb-1">
-          Dashboard
-        </h1>
         <p className="text-on-surface-variant text-sm">
-          Manage your on-chain zk-X509 identity.
+          Verify your identity for this service.
         </p>
       </motion.header>
 
