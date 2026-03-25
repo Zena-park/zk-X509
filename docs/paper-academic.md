@@ -59,7 +59,7 @@ Thirteen values are revealed publicly: a **nullifier**, a **CA Merkle root** (pr
 
 zk-X509 is designed to work with **any X.509 certificate from any CA worldwide**. The smart contract maintains a configurable whitelist of trusted CA root hashes, enabling deployment-specific trust policies: a Korean DeFi protocol may whitelist only Korean NPKI CAs, while a global DAO may whitelist government CAs from multiple nations simultaneously.
 
-**Primary validation target: Korean NPKI.** Our implementation is validated against the Korean National Public Key Infrastructure (NPKI) as a concrete case study. Korean digital certificates (공인인증서) are issued by authorized CAs such as the Korea Financial Telecommunications and Clearings Institute (금융결제원), employing a 3-level certificate chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 and SHA-256 or SHA-1 signatures. Private keys use PBES2 encryption with PBKDF2-HMAC-SHA1 and SEED-CBC or AES-256-CBC ciphers.
+**Primary validation target: Korean NPKI.** Our implementation is validated against the Korean National Public Key Infrastructure (NPKI) as a concrete case study. Korean digital certificates (공인인증서) are issued by authorized CAs such as the Korea Financial Telecommunications and Clearings Institute (금융결제원), employing a 3-level certificate chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 and SHA-256 or SHA-1 signatures. Certificates and private keys are imported into the OS keychain, where the private key is managed by the secure hardware (macOS Secure Enclave or software keystore).
 
 **Multi-national deployment.** The architecture supports simultaneous whitelisting of CAs from multiple jurisdictions. For example, a single `IdentityRegistry` deployment could accept certificates from Korean NPKI (~20M users), Estonian eID (~1.3M e-residents), German eID — all operating under the eIDAS regulation [26] — and corporate PKI systems—each user proving identity under their national CA without any cross-border credential issuance. The `caMerkleRoot` in the public values attests that the certificate was issued by one of the whitelisted CAs without revealing which one, preserving jurisdictional privacy. Applications requiring jurisdiction-specific logic can request the user to additionally disclose `countryHash` via selective disclosure (Section 3.11).
 
@@ -210,28 +210,18 @@ We define the registration protocol formally. Let $\mathcal{P}$ denote the prove
 **Protocol.**
 
 ```
-Step 1.  P → S:   (cert_index, password?, addr, wallet_index?, max_wallets?, disclosure_mask?)
+Step 1.  P → S:   (cert_index, addr, wallet_index?, max_wallets?, disclosure_mask?)
                    via HTTP POST to localhost
                    cert_index identifies a certificate discovered by the
-                   server's scanner (keychain or filesystem)
-                   password is required only for file-based NPKI certificates
+                   server's keychain scanner
                    wallet_index, max_wallets, disclosure_mask have sensible defaults
 
-Step 2.  S:        // Load certificate and generate signatures
-                   If source = Keychain:                     // macOS Keychain path
-                     (cert, identity) ← Keychain.GetIdentity(cert_index)
-                     CRL ← FetchCRL(cert.issuer)
-                     challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
-                     ownership_sig ← identity.Sign(challenge)     // Security.framework; key never in memory
-                     nullifier_sig ← identity.Sign(H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))
-                   Else:                                     // File-based NPKI path
-                     (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
-                     sk' ← PBES2_Decrypt(sk_enc, password)   // SEED-CBC or AES-256-CBC
-                     CRL ← FetchCRL(cert.issuer)
-                     challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
-                     ownership_sig ← Sign(sk', challenge)
-                     nullifier_sig ← Sign(sk', H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))
-                     Erase(sk')                               // private key never reaches SP1
+Step 2.  S:        (cert, identity) ← Keychain.GetIdentity(cert_index)
+                   CRL ← FetchCRL(cert.issuer)             // from CA distribution point
+                   challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
+                   ownership_sig ← identity.Sign(challenge)  // Security.framework; key never in memory
+                   nullifier_sig ← identity.Sign(H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))
+                   // Private key never leaves OS keychain — no Erase() needed
 
 Step 3.  S → Z:   (cert, ownership_sig, nullifier_sig, chain, t, CRL, addr,
                     wallet_index, max_wallets, disclosure_mask,
@@ -350,7 +340,7 @@ struct PublicValuesStruct {
 }
 ```
 
-This struct is ABI-encoded using `alloy-sol-types` in Rust and ABI-decoded in Solidity, ensuring binary compatibility across the stack. The `caMerkleRoot` field replaces a direct `caRootHash` with the Merkle root of the whitelisted CA set, hiding which specific CA issued the certificate (Section 3.12). The `walletIndex` field enables configurable multi-wallet registration (Section 3.6). The `notAfter` field enables automatic identity expiry (Section 3.9). The `chainId` and `registryAddress` fields enable cross-chain replay prevention and cross-DApp unlinkability — each deployment produces different nullifiers. The `crlMerkleRoot` field commits the CRL Sorted Merkle Tree root, enabling on-chain validation of revocation checking (`bytes32(0)` disables CRL enforcement). The four disclosure hash fields enable selective attribute disclosure (Section 3.11) — each field is either the SHA-256 hash of the corresponding certificate attribute salted with a private-key-derived salt (when disclosed) or zero (when hidden), controlled by the user's `disclosure_mask`.
+This struct is ABI-encoded using `alloy-sol-types` in Rust and ABI-decoded in Solidity, ensuring binary compatibility across the stack. The `caMerkleRoot` field replaces a direct `caRootHash` with the Merkle root of the whitelisted CA set, hiding which specific CA issued the certificate (Section 3.12). The `walletIndex` field enables configurable multi-wallet registration (Section 3.6). The `notAfter` field enables automatic identity expiry (Section 3.9). The `chainId` and `registryAddress` fields ensure that each blockchain and each contract deployment produces distinct nullifiers. This design intentionally prevents cross-chain identity portability, as different chains may have different trust requirements, regulatory environments, and economic models. A user must register separately on each chain, enabling per-chain and per-DApp Sybil resistance policies. The `crlMerkleRoot` field commits the CRL Sorted Merkle Tree root, enabling on-chain validation of revocation checking (`bytes32(0)` disables CRL enforcement). The four disclosure hash fields enable selective attribute disclosure (Section 3.11) — each field is either the SHA-256 hash of the corresponding certificate attribute salted with a private-key-derived salt (when disclosed) or zero (when hidden), controlled by the user's `disclosure_mask`.
 
 ### 3.4 ZK Guest Program
 
@@ -493,22 +483,13 @@ zk-X509 solves this with `reRegister()`: a user generates a new proof with the s
 
 This design ensures that wallet migration is **self-sovereign**: users control their own identity lifecycle without depending on any centralized party.
 
-### 3.8 Certificate Sources and Key Management
+### 3.8 OS Keychain Integration
 
-The prover server supports two certificate sources, each with a distinct key management model:
+The prover server scans the OS keychain for identities (certificate + private key pairs) via platform-native APIs. On macOS, the login keychain is queried through Security.framework; on Windows, the certificate store is accessed via CNG (Cryptography API: Next Generation).
 
-**Source 1: macOS Keychain (recommended).** On macOS, the prover server scans the login keychain via Security.framework for identities (certificate + private key pairs). The private key is managed entirely by the OS keychain and **never leaves the secure hardware boundary**. Signing is performed by calling `SecKey.createSignature()` through the Security.framework API — the prover server receives only the resulting signature bytes and never accesses the raw private key material. The signing algorithm (RSA PKCS#1 v1.5 or ECDSA) is auto-detected from the certificate's SPKI algorithm OID. This model provides the strongest private key isolation: even the prover server's process memory never contains the key.
+The private key is managed entirely by the OS keychain and **never leaves the secure hardware boundary**. Signing is performed by calling the keychain's signing API (`SecKey.createSignature()` on macOS) — the prover server receives only the resulting signature bytes and never accesses the raw private key material. The signing algorithm (RSA PKCS#1 v1.5 or ECDSA) is auto-detected from the certificate's SPKI algorithm OID. This model provides the strongest private key isolation: even the prover server's process memory never contains the key.
 
-**Source 2: File-based NPKI (legacy).** The prover server includes a filesystem scanner that discovers certificate/key pairs in platform-specific directories: `~/Library/Preferences/NPKI` (macOS), `~/.pki/NPKI` (Linux), and `%LOCALAPPDATA%\NPKI` (Windows). For each discovered pair (`signCert.der` + `signPri.key`), the scanner extracts metadata (subject, issuer, serial number, expiry) for display in the frontend's certificate selection UI.
-
-For file-based certificates, private keys are stored in PKCS#8 EncryptedPrivateKeyInfo format using PBES2 with PBKDF2-HMAC-SHA1 key derivation. Two encryption ciphers are supported:
-
-- **SEED-CBC** (OID 1.2.410.200004.1.4): The Korean national block cipher, widely used in legacy NPKI certificates.
-- **AES-256-CBC** (OID 2.16.840.1.101.3.4.1.42): Used in newer NPKI certificates.
-
-The decryption module parses the ASN.1 encryption parameters, derives the key via PBKDF2, decrypts using the appropriate cipher, and strips PKCS#7 padding to yield the raw private key. After signing the ownership and nullifier challenges, the decrypted key is immediately erased from memory. This file-based path exists for backward compatibility with existing NPKI installations; the keychain-based path is preferred for production deployments.
-
-**Unified interface.** Both sources produce the same output to the ZK circuit: `ownership_sig` and `nullifier_sig` bytes. The circuit is agnostic to whether the signatures were generated via the OS keychain or file-based decryption — it verifies only the cryptographic validity of the signatures against the certificate's public key.
+For each discovered identity, the scanner extracts metadata (subject, issuer, serial number, expiry) for display in the frontend's certificate selection UI. Users authenticate via the OS-level keychain prompt (e.g., macOS password dialog or Touch ID), after which the keychain generates `ownership_sig` and `nullifier_sig` without exposing the private key to any user-space process.
 
 ### 3.9 Automatic Identity Expiry
 
@@ -676,13 +657,24 @@ The ~300K gas cost for `register()` with Groth16 verification remains well withi
 
 #### 4.3.3 End-to-End Latency
 
-| Phase | Time |
-|-------|------|
-| NPKI key decryption (PBES2) | < 1 second |
-| SP1 execute (no proof, CPU) | ~15 seconds |
-| SP1 prove (CPU, single-level) | ~10 minutes |
-| SP1 prove (GPU, estimated) | ~1–2 minutes |
-| On-chain verification | 1 block confirmation |
+| Phase | Time | Notes |
+|-------|------|-------|
+| Keychain signing (OS keychain) | < 1 second | Two signatures (ownership + nullifier) |
+| SP1 execute (no proof, CPU) | ~15 seconds | Circuit validation only, no proof |
+| SP1 prove (CPU, Apple M1) | ~5 minutes | Measured on Apple M1, single-level P-256 |
+| SP1 prove (GPU, estimated) | ~1–2 minutes | GPU acceleration via CUDA |
+| On-chain verification | 1 block confirmation | Groth16 proof verification |
+
+**Practical impact of proving time.** The ~5 minute CPU proving time must be evaluated in the context of actual usage patterns. Identity registration is an infrequent operation: a user generates a proof once per certificate per registry, and certificates are typically valid for 1–3 years (Korean NPKI: 1 year, Estonian eID: up to 5 years). The amortized proving cost is therefore ~5 minutes per year — comparable to the time required to complete a traditional KYC onboarding process, which typically involves document upload, video verification, and manual review over 1–3 days.
+
+| Scenario | Frequency | Proving time |
+|----------|-----------|-------------|
+| Initial registration | Once per registry | ~5 minutes |
+| Certificate renewal | Once per 1–3 years | ~5 minutes |
+| Wallet migration (`reRegister`) | Rare (wallet loss) | ~5 minutes |
+| Verification check (`isVerified`) | Per transaction | 0 (on-chain view call) |
+
+For user experience, proof generation can be performed in the background while the user continues other tasks. The system does not require the user to remain active during proving — the process is non-interactive after the initial keychain signing step.
 
 ### 4.4 Testing
 
