@@ -31,10 +31,10 @@ export function Navbar() {
     if (!registryScope) return defaultNavLinks;
     return [
       { href: "/", label: "Home" },
-      { href: "/create", label: "Platform" },
-      { href: `/registry/${registryScope}/dashboard`, label: "Dashboard" },
-      { href: `/registry/${registryScope}/admin`, label: "Admin Console" },
-      { href: "/faq", label: "Knowledge Base" },
+      { href: "/dashboard", label: "Explore" },
+      { href: "/identity", label: "My Identity" },
+      { href: `/registry/${registryScope}/admin`, label: "Manage" },
+      { href: "/faq", label: "FAQ" },
     ];
   }, [registryScope]);
 
