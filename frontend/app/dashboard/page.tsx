@@ -25,6 +25,18 @@ import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
 import { truncateHex } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
+/*  Trust Badge                                                        */
+/* ------------------------------------------------------------------ */
+
+function getTrustBadge(verifiedCount: number): { emoji: string; label: string; color: string } {
+  if (verifiedCount >= 10) return { emoji: "💎", label: "Diamond", color: "bg-purple-500/20 text-purple-300" };
+  if (verifiedCount >= 5) return { emoji: "🥇", label: "Gold", color: "bg-yellow-500/20 text-yellow-300" };
+  if (verifiedCount >= 3) return { emoji: "🥈", label: "Silver", color: "bg-slate-400/20 text-slate-300" };
+  if (verifiedCount >= 1) return { emoji: "🥉", label: "Bronze", color: "bg-orange-500/20 text-orange-300" };
+  return { emoji: "🔒", label: "Unverified", color: "bg-surface-container text-on-surface-variant" };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -260,11 +272,12 @@ export default function DashboardPage() {
               <LayoutGrid className="w-6 h-6 text-secondary" />
             </div>
             <h1 className="text-3xl font-headline font-bold tracking-tight text-primary">
-              Service Directory
+              Explore Services
             </h1>
           </div>
-          <p className="text-on-surface-variant text-sm">
-            Browse all available verification services on the platform.
+          <p className="text-on-surface-variant text-sm max-w-2xl">
+            Grant your wallet the trust that services require. Each service defines its own trust level
+            — from basic identity verification to full regulatory compliance. Choose a service and prove your qualifications with zero privacy exposure.
           </p>
         </motion.header>
 
@@ -363,13 +376,55 @@ export default function DashboardPage() {
             <LayoutGrid className="w-6 h-6 text-secondary" />
           </div>
           <h1 className="text-3xl font-headline font-bold tracking-tight text-primary">
-            Service Directory
+            Explore Services
           </h1>
         </div>
-        <p className="text-on-surface-variant text-sm">
-          Browse verification services and check your status.
+        <p className="text-on-surface-variant text-sm max-w-2xl">
+          Grant your wallet the trust that services require. Each service defines its own trust level
+          — from basic identity verification to full regulatory compliance.
         </p>
       </motion.header>
+
+      {/* Trust Score Banner */}
+      {!loading && verifiedRegistries.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="glass-panel rounded-2xl p-6 mb-8"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-4xl">{getTrustBadge(verifiedRegistries.length).emoji}</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-headline font-bold text-on-surface">
+                    Trust Score
+                  </h2>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getTrustBadge(verifiedRegistries.length).color}`}>
+                    {getTrustBadge(verifiedRegistries.length).label}
+                  </span>
+                </div>
+                <p className="text-on-surface-variant text-sm">
+                  Verified on {verifiedRegistries.length} of {registries.length} services
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl font-headline font-bold text-tertiary">
+                {registries.length > 0 ? Math.round((verifiedRegistries.length / registries.length) * 100) : 0}%
+              </span>
+            </div>
+          </div>
+          {/* Progress bar */}
+          <div className="mt-3 h-2 bg-surface-container rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-tertiary to-secondary rounded-full transition-all duration-500"
+              style={{ width: `${registries.length > 0 ? (verifiedRegistries.length / registries.length) * 100 : 0}%` }}
+            />
+          </div>
+        </motion.div>
+      )}
 
       {/* Loading */}
       {loading && (
@@ -418,7 +473,7 @@ export default function DashboardPage() {
         <>
           {verifiedRegistries.length > 0 && (
             <RegistrySection
-              title="Verified"
+              title="✓ Trusted — Your Wallet is Verified"
               registries={verifiedRegistries}
               rpcUrl={rpcUrl}
               chainId={currentChainId}
@@ -532,7 +587,7 @@ function RegistrySection({
                 </div>
                 <div>
                   <span className="text-on-surface-variant text-xs">
-                    Disclosure
+                    Required Trust
                   </span>
                   <p className="text-on-surface font-mono text-xs font-bold">
                     {maskToLabels(reg.minDisclosureMask)}
