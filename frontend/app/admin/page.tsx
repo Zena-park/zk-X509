@@ -86,6 +86,96 @@ async function sha256(data: Uint8Array): Promise<Uint8Array> {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Extract SPKI (SubjectPublicKeyInfo) from X.509 DER certificate     */
+/*                                                                     */
+/*  The on-chain CA leaf = SHA-256(SPKI DER), NOT SHA-256(full cert).  */
+/*  This must match the ZK circuit's CA membership verification.       */
+/* ------------------------------------------------------------------ */
+
+/** Read a DER tag+length and return [valueOffset, valueLength, totalLength]. */
+function derReadTL(data: Uint8Array, offset: number): [number, number, number] {
+  if (offset + 1 >= data.length) throw new Error("DER: unexpected end");
+  let lenByte = data[offset + 1];
+  let valueOffset: number;
+  let valueLength: number;
+
+  if (lenByte < 0x80) {
+    // Short form
+    valueOffset = offset + 2;
+    valueLength = lenByte;
+  } else {
+    // Long form
+    const numLenBytes = lenByte & 0x7f;
+    if (offset + 2 + numLenBytes > data.length)
+      throw new Error("DER: length bytes exceed data");
+    valueOffset = offset + 2 + numLenBytes;
+    valueLength = 0;
+    for (let i = 0; i < numLenBytes; i++) {
+      valueLength = (valueLength << 8) | data[offset + 2 + i];
+    }
+  }
+
+  const totalLength = valueOffset - offset + valueLength;
+  if (valueOffset + valueLength > data.length)
+    throw new Error("DER: value exceeds data bounds");
+  return [valueOffset, valueLength, totalLength];
+}
+
+/** Skip one DER TLV element, return offset of the next element. */
+function derSkip(data: Uint8Array, offset: number): number {
+  const [valueOffset, valueLength] = derReadTL(data, offset);
+  return valueOffset + valueLength;
+}
+
+/**
+ * Extract SubjectPublicKeyInfo (SPKI) DER from a full X.509 DER certificate.
+ *
+ * X.509 structure:
+ *   SEQUENCE {
+ *     SEQUENCE (tbsCertificate) {
+ *       [0] version, serialNumber, signature, issuer, validity, subject,
+ *       subjectPublicKeyInfo ← this is what we extract
+ *       ...
+ *     }
+ *     ...
+ *   }
+ */
+function extractSpkiDer(certDer: Uint8Array): Uint8Array {
+  // Outer SEQUENCE
+  let [off] = derReadTL(certDer, 0);
+
+  // tbsCertificate SEQUENCE
+  const [tbsOff] = derReadTL(certDer, off);
+  let pos = tbsOff;
+
+  // [0] version (optional, context tag 0xA0)
+  if (certDer[pos] === 0xa0) {
+    pos = derSkip(certDer, pos);
+  }
+
+  // serialNumber
+  pos = derSkip(certDer, pos);
+  // signature AlgorithmIdentifier
+  pos = derSkip(certDer, pos);
+  // issuer
+  pos = derSkip(certDer, pos);
+  // validity
+  pos = derSkip(certDer, pos);
+  // subject
+  pos = derSkip(certDer, pos);
+
+  // subjectPublicKeyInfo — this is what we need
+  const [, , spkiTotalLen] = derReadTL(certDer, pos);
+  return certDer.slice(pos, pos + spkiTotalLen);
+}
+
+/** Compute the on-chain CA leaf hash: SHA-256(SPKI DER from certificate). */
+async function computeCaLeafHash(certDer: Uint8Array): Promise<Uint8Array> {
+  const spki = extractSpkiDer(certDer);
+  return sha256(spki);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Tx Status Badge                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -351,7 +441,8 @@ export default function AdminPage() {
       for (const file of Array.from(files)) {
         if (!file.name.endsWith(".der")) continue;
         const arrayBuffer = await file.arrayBuffer();
-        const hash = await sha256(new Uint8Array(arrayBuffer));
+        const certDer = new Uint8Array(arrayBuffer);
+        const hash = await computeCaLeafHash(certDer);
         const hashHex = ethers.hexlify(hash);
         newEntries.push({ name: file.name, hash, hashHex });
       }

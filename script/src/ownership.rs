@@ -19,10 +19,10 @@ use sha2::{Digest, Sha256};
 /// OID constants for key type detection.
 /// String format is fine here (host-side, not zkVM) — readability over cycle savings.
 /// The zkVM program (program/src/main.rs) uses raw OID bytes for zero-alloc comparison.
-const OID_RSA_ENCRYPTION: &str = "1.2.840.113549.1.1.1";
-const OID_EC_PUBLIC_KEY: &str = "1.2.840.10045.2.1";
-const OID_PRIME256V1: &str = "1.2.840.10045.3.1.7"; // P-256
-const OID_SECP384R1: &str = "1.3.132.0.34";         // P-384
+pub const OID_RSA_ENCRYPTION: &str = "1.2.840.113549.1.1.1";
+pub const OID_EC_PUBLIC_KEY: &str = "1.2.840.10045.2.1";
+pub const OID_PRIME256V1: &str = "1.2.840.10045.3.1.7"; // P-256
+pub const OID_SECP384R1: &str = "1.3.132.0.34";         // P-384
 
 use zk_x509_lib::NULLIFIER_DOMAIN;
 
@@ -52,6 +52,46 @@ fn parse_and_sign(cert_der: &[u8], key_der: &[u8], prehash: &[u8; 32]) -> Result
     sign_with_parsed_cert(&cert, key_der, prehash)
 }
 
+/// Compute the ownership challenge hash:
+///   SHA-256(serial ‖ registrant[20] ‖ wallet_index[u32 BE] ‖ timestamp[u64 BE] ‖ chain_id[u64 BE])
+///
+/// Shared between file-based signing and keychain signing.
+pub fn ownership_challenge_hash(
+    cert_der: &[u8],
+    registrant: &[u8; 20],
+    wallet_index: u32,
+    timestamp: u64,
+    chain_id: u64,
+) -> Result<[u8; 32], String> {
+    use x509_parser::prelude::FromDer;
+    let (_, cert) = x509_parser::certificate::X509Certificate::from_der(cert_der)
+        .map_err(|e| format!("Parse cert: {:?}", e))?;
+    let serial = cert.tbs_certificate.serial.to_bytes_be();
+
+    let mut hasher = Sha256::new();
+    hasher.update(&serial);
+    hasher.update(registrant);
+    hasher.update(&wallet_index.to_be_bytes());
+    hasher.update(&timestamp.to_be_bytes());
+    hasher.update(&chain_id.to_be_bytes());
+    Ok(hasher.finalize().into())
+}
+
+/// Compute the nullifier challenge hash:
+///   SHA-256(NULLIFIER_DOMAIN ‖ registry_address ‖ chain_id)
+///
+/// Shared between file-based signing and keychain signing.
+pub fn nullifier_challenge_hash(
+    registry_address: &[u8; 20],
+    chain_id: u64,
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(NULLIFIER_DOMAIN);
+    hasher.update(registry_address);
+    hasher.update(&chain_id.to_be_bytes());
+    hasher.finalize().into()
+}
+
 /// Sign the ownership challenge:
 ///   SHA-256(serial ‖ registrant[20] ‖ wallet_index[u32 BE] ‖ timestamp[u64 BE] ‖ chain_id[u64 BE])
 ///
@@ -64,20 +104,8 @@ pub fn sign_ownership(
     timestamp: u64,
     chain_id: u64,
 ) -> Result<Vec<u8>, String> {
-    use x509_parser::prelude::FromDer;
-    let (_, cert) = x509_parser::certificate::X509Certificate::from_der(cert_der)
-        .map_err(|e| format!("Parse cert: {:?}", e))?;
-    let serial = cert.tbs_certificate.serial.to_bytes_be();
-
-    let mut hasher = Sha256::new();
-    hasher.update(&serial);
-    hasher.update(registrant);
-    hasher.update(&wallet_index.to_be_bytes());
-    hasher.update(&timestamp.to_be_bytes());
-    hasher.update(&chain_id.to_be_bytes());
-    let challenge_hash: [u8; 32] = hasher.finalize().into();
-
-    sign_with_parsed_cert(&cert, key_der, &challenge_hash)
+    let challenge_hash = ownership_challenge_hash(cert_der, registrant, wallet_index, timestamp, chain_id)?;
+    parse_and_sign(cert_der, key_der, &challenge_hash)
 }
 
 /// Sign the nullifier domain: H(NULLIFIER_DOMAIN ‖ registry_address ‖ chain_id).
@@ -88,11 +116,7 @@ pub fn sign_nullifier(
     registry_address: &[u8; 20],
     chain_id: u64,
 ) -> Result<Vec<u8>, String> {
-    let mut domain_hasher = Sha256::new();
-    domain_hasher.update(NULLIFIER_DOMAIN);
-    domain_hasher.update(registry_address);
-    domain_hasher.update(&chain_id.to_be_bytes());
-    let message_hash: [u8; 32] = domain_hasher.finalize().into();
+    let message_hash = nullifier_challenge_hash(registry_address, chain_id);
     parse_and_sign(cert_der, key_der, &message_hash)
 }
 

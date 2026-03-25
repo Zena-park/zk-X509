@@ -137,6 +137,10 @@ cast call $REGISTRY_ADDR "caMerkleRoot()" --rpc-url http://localhost:8545
 **방법 A: Interactive CLI (권장 — 가이드 방식)**
 
 ```bash
+# macOS: 키체인 지원 + 깔끔한 출력 (권장)
+./script/run-interactive.sh
+
+# 또는 직접 실행 (빌드 경고 포함)
 cargo run --release --bin interactive
 ```
 
@@ -149,12 +153,14 @@ Step 1/5: Settings
   ✓ MAX_WALLETS_PER_CERT: 3 (from on-chain)    ← 자동 조회
 
 Step 2/5: Select Certificate
-  1. Test User (Test CA)
-  Select certificate [1-1]: 1
+  [File]     1. Test User (Test CA)                     ← 파일 기반 인증서
+  [Keychain] 2. 박영주 (yessignCA Class 3)               ← macOS 키체인 인증서
+  Select certificate [1-2]: 1
 
 Step 3/5: Credentials
-  Certificate password (empty if unencrypted):  ← Enter (테스트 키는 미암호화)
-  CA public key path [certs/ca_pub.der]:        ← Enter
+  Certificate password (empty if unencrypted):  ← 파일 인증서: 비밀번호 입력
+                                                   키체인 인증서: 자동 (macOS 다이얼로그)
+  ✓ Auto-matched CA: Test CA (on-chain verified) ← CA 공개키 자동 매칭
   Your wallet address (0x...): 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
   Wallet index (0-2) [0]:                       ← Enter
   Disclosure mask (0=hide all, 15=show all) [0]: ← Enter (기본: 전부 숨김)
@@ -169,8 +175,12 @@ Step 5/5: Copy to Dashboard
   → Dashboard에 붙여넣기
 ```
 
-> Interactive CLI는 NPKI 디렉토리(`~/Library/Preferences/NPKI/`, `certs/`)를 자동 스캔합니다.
-> 비밀번호는 화면에 표시되지 않으며, 메모리에서 즉시 삭제됩니다.
+> **인증서 소스:** 파일 기반 NPKI 디렉토리(`~/Library/Preferences/NPKI/`, `certs/`)와 macOS 키체인을 모두 스캔합니다.
+> - **파일 인증서:** 비밀번호를 입력하여 개인키를 복호화합니다.
+> - **키체인 인증서:** 개인키가 프로세스 메모리에 올라오지 않으며, macOS가 서명을 수행합니다.
+>
+> **CA 자동 매칭:** `data/ca-certs/` 디렉토리의 CA 인증서와 on-chain 등록 목록을 대조하여 자동 선택합니다.
+> CA가 on-chain에 미등록인 경우 경고를 표시하며, 관리자에게 등록을 요청해야 합니다.
 
 **방법 B: EVM CLI (한 줄 명령어)**
 

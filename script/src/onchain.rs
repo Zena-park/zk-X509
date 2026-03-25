@@ -49,7 +49,7 @@ pub fn build_ca_merkle_from_onchain(
     Ok(merkle::merkle_root_and_proof(&ca_leaves, my_index))
 }
 
-fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
+pub fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
     let data = eth_call(rpc_url, registry, SELECTOR_GET_CA_LEAVES)?;
     decode_bytes32_array(&data)
 }

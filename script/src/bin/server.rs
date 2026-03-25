@@ -97,8 +97,8 @@ fn main() {
     tracing::info!("Initializing SP1 ProverClient...");
     let client = ProverClient::from_env();
 
-    let certs = zk_x509_script::keychain::scan_npki_certs();
-    tracing::info!("Found {} NPKI certificates", certs.len());
+    let certs = zk_x509_script::keychain::scan_all_certs();
+    tracing::info!("Found {} certificates (file + keychain)", certs.len());
 
     let state = Arc::new(AppState {
         client,
@@ -173,7 +173,7 @@ async fn list_certs_handler(
 
 /// Re-scan NPKI directories and update cache.
 async fn refresh_certs_handler(state: Arc<AppState>) -> impl IntoResponse {
-    let certs = zk_x509_script::keychain::scan_npki_certs();
+    let certs = zk_x509_script::keychain::scan_all_certs();
     let count = certs.len();
     *state.certs.write().unwrap_or_else(|e| e.into_inner()) = certs;
     Json(serde_json::json!({ "refreshed": count }))
@@ -195,6 +195,15 @@ fn load_cert_and_key(
     let entry = certs.get(cert_index).ok_or_else(|| {
         (StatusCode::BAD_REQUEST, format!("Invalid cert_index: {}", cert_index))
     })?;
+
+    // Keychain-based signing is not yet supported via the HTTP API
+    #[cfg(target_os = "macos")]
+    if entry.source == zk_x509_script::keychain::CertSource::Keychain {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Keychain signing is not yet supported via the HTTP API. Use the interactive CLI instead.".to_string(),
+        ));
+    }
 
     let cert_der = std::fs::read(&entry.cert_path)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Read cert: {}", e)))?;
