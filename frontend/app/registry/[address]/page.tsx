@@ -15,9 +15,22 @@ import {
   Unlock,
   Database,
   Fingerprint,
+  Globe,
+  Megaphone,
+  BookOpen,
+  ExternalLink,
+  Tag,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, getRpcUrl } from "@/lib/contract";
 import { truncateHex } from "@/lib/utils";
+import {
+  getRegistryMetadata,
+  getAnnouncements,
+  getCaGuides,
+  type RegistryMetadata,
+  type Announcement,
+  type CaGuide,
+} from "@/lib/platform";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -53,6 +66,12 @@ export default function RegistryDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Platform backend data
+  const [metadata, setMetadata] = useState<RegistryMetadata | null>(null);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [caGuides, setCaGuides] = useState<Record<string, CaGuide>>({});
+  const [caLeaves, setCaLeaves] = useState<string[]>([]);
+
   useEffect(() => {
     if (!address || !ethers.isAddress(address)) {
       setError("Invalid registry address.");
@@ -80,6 +99,14 @@ export default function RegistryDetailPage() {
           // not available on this contract version
         }
 
+        // Fetch on-chain CA leaves
+        try {
+          const leaves: string[] = await contract.getCaLeaves();
+          setCaLeaves(leaves);
+        } catch {
+          // getCaLeaves may not be available
+        }
+
         setInfo({
           owner,
           maxWallets: Number(maxWallets),
@@ -87,6 +114,16 @@ export default function RegistryDetailPage() {
           caCount: Number(caCount),
           paused,
         });
+
+        // Load off-chain platform data (non-blocking)
+        const [meta, anncs, guides] = await Promise.all([
+          getRegistryMetadata(address),
+          getAnnouncements(address),
+          getCaGuides(address),
+        ]);
+        if (meta) setMetadata(meta);
+        setAnnouncements(anncs);
+        setCaGuides(guides);
       } catch (e) {
         console.error("Failed to load registry:", e);
         setError("Failed to load registry data. Check that the address is valid and the RPC is reachable.");
@@ -168,13 +205,35 @@ export default function RegistryDetailPage() {
           <div className={`p-2 rounded-xl ${info.paused ? "bg-red-500/10" : "bg-secondary/10"}`}>
             <ShieldCheck className={`w-6 h-6 ${info.paused ? "text-red-400" : "text-secondary"}`} />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-headline font-bold tracking-tight text-primary">
               Registry
             </h1>
             <p className="font-mono text-sm text-on-surface-variant">{address}</p>
           </div>
+          {metadata?.category && (
+            <span className="px-3 py-1 rounded-full text-[10px] font-label font-bold uppercase tracking-widest border bg-tertiary/10 text-tertiary border-tertiary/20">
+              {metadata.category}
+            </span>
+          )}
         </div>
+        {metadata?.description && (
+          <p className="text-on-surface-variant text-sm mt-3 leading-relaxed">
+            {metadata.description}
+          </p>
+        )}
+        {metadata?.website && (
+          <a
+            href={metadata.website}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-tertiary text-sm mt-2 hover:text-primary transition-colors"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            {metadata.website}
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
       </motion.header>
 
       {/* Info Cards */}
@@ -257,6 +316,103 @@ export default function RegistryDetailPage() {
           </div>
         </div>
       </motion.div>
+
+      {/* Announcements */}
+      {announcements.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="glass-panel rounded-2xl p-5 mb-8"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Megaphone className="w-4 h-4 text-tertiary" />
+            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+              Announcements
+            </p>
+          </div>
+          <div className="space-y-3">
+            {announcements.map((a) => (
+              <div
+                key={a.id}
+                className="bg-surface-container rounded-xl p-4 border border-white/5"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-headline font-bold text-primary">{a.title}</h4>
+                  <span className="text-[10px] font-mono text-on-surface-variant">
+                    {new Date(a.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="text-sm text-on-surface-variant leading-relaxed">{a.body}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* CA Guides */}
+      {caLeaves.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="glass-panel rounded-2xl p-5 mb-8"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <BookOpen className="w-4 h-4 text-tertiary" />
+            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+              Trusted CA Certificates
+            </p>
+          </div>
+          <div className="space-y-3">
+            {caLeaves.map((hash) => {
+              const guide = caGuides[hash];
+              return (
+                <div
+                  key={hash}
+                  className="bg-surface-container rounded-xl p-4 border border-white/5"
+                >
+                  {guide ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="text-sm font-headline font-bold text-primary">
+                          {guide.name}
+                        </h4>
+                        <Tag className="w-3 h-3 text-on-surface-variant" />
+                        <span className="text-[10px] font-mono text-on-surface-variant truncate">
+                          {hash.slice(0, 10)}...{hash.slice(-6)}
+                        </span>
+                      </div>
+                      {guide.description && (
+                        <p className="text-sm text-on-surface-variant mb-2">{guide.description}</p>
+                      )}
+                      {guide.instructions && (
+                        <p className="text-xs text-on-surface-variant/80 leading-relaxed mb-2">
+                          {guide.instructions}
+                        </p>
+                      )}
+                      {guide.issueUrl && (
+                        <a
+                          href={guide.issueUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-tertiary text-xs hover:text-primary transition-colors"
+                        >
+                          Get certificate <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-sm font-mono text-on-surface-variant truncate block">
+                      {hash}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* Action Buttons */}
       <motion.div

@@ -27,6 +27,7 @@ import {
 } from "@/lib/contract";
 import { truncateHex } from "@/lib/utils";
 import { useWallet } from "@/lib/wallet";
+import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -38,6 +39,7 @@ interface RegistryCard {
   maxWallets: number;
   minDisclosureMask: number;
   caCount: number;
+  metadata?: RegistryMetadata | null;
 }
 
 const DISCLOSURE_LABELS = ["C", "O", "OU", "CN"] as const;
@@ -85,9 +87,10 @@ function PlatformSection() {
         const cards: RegistryCard[] = [];
         for (const addr of addresses) {
           try {
-            const [infoResult, registry] = await Promise.all([
+            const [infoResult, registry, meta] = await Promise.all([
               factory.registryInfo(addr),
               new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, provider),
+              getRegistryMetadata(addr),
             ]);
             const caCount = await registry.getCaCount();
             cards.push({
@@ -96,6 +99,7 @@ function PlatformSection() {
               maxWallets: Number(infoResult.maxWallets ?? infoResult[2]),
               minDisclosureMask: Number(infoResult.minDisclosureMask ?? infoResult[3]),
               caCount: Number(caCount),
+              metadata: meta,
             });
           } catch (e) {
             console.error(`Failed to load registry ${addr}:`, e);
@@ -161,12 +165,27 @@ function PlatformSection() {
                 href={`/registry/${reg.address}`}
                 className="block bg-surface-container rounded-2xl p-6 border border-outline-variant/10 hover:border-outline-variant/30 transition-all group"
               >
-                <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start justify-between mb-2">
                   <h3 className="text-lg font-headline font-bold text-primary group-hover:text-tertiary transition-colors truncate">
                     {reg.name}
                   </h3>
-                  <ArrowRight className="w-4 h-4 text-on-surface-variant group-hover:text-tertiary transition-colors shrink-0 mt-1" />
+                  <div className="flex items-center gap-2 shrink-0 mt-1">
+                    {reg.metadata?.category && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-label font-bold uppercase tracking-wider bg-tertiary/10 text-tertiary border border-tertiary/20">
+                        {reg.metadata.category}
+                      </span>
+                    )}
+                    <ArrowRight className="w-4 h-4 text-on-surface-variant group-hover:text-tertiary transition-colors" />
+                  </div>
                 </div>
+
+                {reg.metadata?.description && (
+                  <p className="text-on-surface-variant text-xs mb-3 line-clamp-2 leading-relaxed">
+                    {reg.metadata.description.length > 100
+                      ? reg.metadata.description.slice(0, 100) + "..."
+                      : reg.metadata.description}
+                  </p>
+                )}
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">

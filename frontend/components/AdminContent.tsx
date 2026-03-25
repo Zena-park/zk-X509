@@ -15,11 +15,30 @@ import {
   FileText,
   X,
   ArrowRightLeft,
+  Megaphone,
+  BookOpen,
+  Globe,
+  Trash2,
+  Plus,
+  Save,
+  Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ethers } from "ethers";
 import { useWallet } from "@/lib/wallet";
 import { truncateHex } from "@/lib/utils";
+import {
+  getRegistryMetadata,
+  updateRegistryMetadata,
+  getAnnouncements,
+  postAnnouncement,
+  deleteAnnouncement,
+  getCaGuides,
+  updateCaGuide,
+  type RegistryMetadata,
+  type Announcement,
+  type CaGuide,
+} from "@/lib/platform";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -34,7 +53,7 @@ type TxStatus =
 
 const IDLE: TxStatus = { kind: "idle" };
 
-type AdminTab = "status" | "management" | "security";
+type AdminTab = "status" | "management" | "security" | "service";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -330,6 +349,29 @@ export default function AdminContent() {
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
   const [transferTx, setTransferTx] = useState<TxStatus>(IDLE);
+
+  // Service settings (platform backend)
+  const [svcMetadata, setSvcMetadata] = useState<Partial<RegistryMetadata>>({
+    description: "",
+    category: "other",
+    website: "",
+  });
+  const [svcMetaLoading, setSvcMetaLoading] = useState(false);
+  const [svcMetaSaving, setSvcMetaSaving] = useState(false);
+  const [svcMetaMsg, setSvcMetaMsg] = useState<string | null>(null);
+
+  const [svcAnnouncements, setSvcAnnouncements] = useState<Announcement[]>([]);
+  const [svcAnncLoading, setSvcAnncLoading] = useState(false);
+  const [svcAnncTitle, setSvcAnncTitle] = useState("");
+  const [svcAnncBody, setSvcAnncBody] = useState("");
+  const [svcAnncPosting, setSvcAnncPosting] = useState(false);
+
+  const [svcCaGuides, setSvcCaGuides] = useState<Record<string, CaGuide>>({});
+  const [svcGuidesLoading, setSvcGuidesLoading] = useState(false);
+  const [svcGuideEdits, setSvcGuideEdits] = useState<Record<string, CaGuide>>({});
+  const [svcGuideSaving, setSvcGuideSaving] = useState<Record<string, boolean>>({});
+  const [svcGuideMsg, setSvcGuideMsg] = useState<Record<string, string>>({});
+  const [svcBackendDown, setSvcBackendDown] = useState(false);
 
   // tx statuses
   const [crlRootTx, setCrlRootTx] = useState<TxStatus>(IDLE);
@@ -636,6 +678,105 @@ export default function AdminContent() {
     );
   };
 
+  /* ---------- load service settings when tab is active ---------- */
+  useEffect(() => {
+    if (activeTab !== "service" || !registryAddr) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setSvcMetaLoading(true);
+      setSvcAnncLoading(true);
+      setSvcGuidesLoading(true);
+
+      try {
+        const [meta, anncs, guides] = await Promise.all([
+          getRegistryMetadata(registryAddr),
+          getAnnouncements(registryAddr),
+          getCaGuides(registryAddr),
+        ]);
+        if (cancelled) return;
+        setSvcBackendDown(false);
+        if (meta) {
+          setSvcMetadata({
+            description: meta.description || "",
+            category: meta.category || "other",
+            website: meta.website || "",
+          });
+        }
+        setSvcAnnouncements(anncs);
+        setSvcCaGuides(guides);
+
+        // Initialize guide edits for all on-chain CAs
+        const edits: Record<string, CaGuide> = {};
+        for (const leaf of onChainCaLeaves) {
+          edits[leaf] = guides[leaf] || { name: "", description: "", issueUrl: "", instructions: "" };
+        }
+        setSvcGuideEdits(edits);
+      } catch {
+        if (!cancelled) setSvcBackendDown(true);
+      } finally {
+        if (!cancelled) {
+          setSvcMetaLoading(false);
+          setSvcAnncLoading(false);
+          setSvcGuidesLoading(false);
+        }
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [activeTab, registryAddr, onChainCaLeaves]);
+
+  /* ---------- service settings handlers ---------- */
+  const handleSaveMetadata = async () => {
+    if (!registryAddr) return;
+    setSvcMetaSaving(true);
+    setSvcMetaMsg(null);
+    const ok = await updateRegistryMetadata(registryAddr, svcMetadata);
+    setSvcMetaSaving(false);
+    setSvcMetaMsg(ok ? "Metadata saved" : "Failed to save. Backend unavailable?");
+  };
+
+  const handlePostAnnouncement = async () => {
+    if (!registryAddr || !svcAnncTitle.trim() || !svcAnncBody.trim()) return;
+    setSvcAnncPosting(true);
+    const result = await postAnnouncement(registryAddr, svcAnncTitle.trim(), svcAnncBody.trim());
+    if (result) {
+      setSvcAnnouncements((prev) => [result, ...prev]);
+      setSvcAnncTitle("");
+      setSvcAnncBody("");
+    }
+    setSvcAnncPosting(false);
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    if (!registryAddr) return;
+    const ok = await deleteAnnouncement(registryAddr, id);
+    if (ok) {
+      setSvcAnnouncements((prev) => prev.filter((a) => a.id !== id));
+    }
+  };
+
+  const handleSaveCaGuide = async (caHash: string) => {
+    if (!registryAddr) return;
+    const guide = svcGuideEdits[caHash];
+    if (!guide) return;
+    setSvcGuideSaving((prev) => ({ ...prev, [caHash]: true }));
+    setSvcGuideMsg((prev) => ({ ...prev, [caHash]: "" }));
+    const ok = await updateCaGuide(registryAddr, caHash, guide);
+    setSvcGuideSaving((prev) => ({ ...prev, [caHash]: false }));
+    setSvcGuideMsg((prev) => ({ ...prev, [caHash]: ok ? "Saved" : "Failed" }));
+    if (ok) {
+      setSvcCaGuides((prev) => ({ ...prev, [caHash]: guide }));
+    }
+  };
+
+  const updateGuideField = (caHash: string, field: keyof CaGuide, value: string) => {
+    setSvcGuideEdits((prev) => ({
+      ...prev,
+      [caHash]: { ...(prev[caHash] || { name: "", description: "", issueUrl: "", instructions: "" }), [field]: value },
+    }));
+  };
+
   /* ---------------------------------------------------------------- */
   /*  Not connected                                                    */
   /* ---------------------------------------------------------------- */
@@ -683,6 +824,7 @@ export default function AdminContent() {
     { key: "status", label: "Status" },
     { key: "management", label: "Management" },
     { key: "security", label: "Security" },
+    { key: "service", label: "Service Settings" },
   ];
 
   /* ---------------------------------------------------------------- */
@@ -1392,6 +1534,295 @@ export default function AdminContent() {
                   </button>
                   <TxBadge status={transferTx} />
                 </div>
+              </div>
+            </motion.div>
+          )}
+          {/* ==================== SERVICE SETTINGS TAB ==================== */}
+          {activeTab === "service" && (
+            <motion.div
+              key="service"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {svcBackendDown && (
+                <div className="flex items-center gap-3 p-4 rounded-xl border border-error/20 bg-error/5">
+                  <AlertTriangle className="text-error w-4 h-4 shrink-0" />
+                  <p className="text-sm text-error">
+                    Backend unavailable. Service settings cannot be loaded or saved.
+                  </p>
+                </div>
+              )}
+
+              {/* Metadata Editing */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <Globe className="text-primary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-primary">
+                    Registry Metadata
+                  </h2>
+                </div>
+
+                {svcMetaLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-5 h-5 text-tertiary animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-label text-on-surface-variant mb-1 block">
+                        Description
+                      </label>
+                      <textarea
+                        className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm outline-none text-primary placeholder:text-on-surface-variant/30 resize-y min-h-[80px]"
+                        placeholder="Describe this registry..."
+                        value={svcMetadata.description || ""}
+                        onChange={(e) => setSvcMetadata((p) => ({ ...p, description: e.target.value }))}
+                        disabled={disabled}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-label text-on-surface-variant mb-1 block">
+                          Category
+                        </label>
+                        <select
+                          className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-label outline-none text-on-surface-variant appearance-none cursor-pointer"
+                          value={svcMetadata.category || "other"}
+                          onChange={(e) => setSvcMetadata((p) => ({ ...p, category: e.target.value as RegistryMetadata["category"] }))}
+                          disabled={disabled}
+                        >
+                          <option value="dao">DAO</option>
+                          <option value="defi">DeFi</option>
+                          <option value="corporate">Corporate</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-label text-on-surface-variant mb-1 block">
+                          Website URL
+                        </label>
+                        <input
+                          className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
+                          placeholder="https://..."
+                          type="url"
+                          value={svcMetadata.website || ""}
+                          onChange={(e) => setSvcMetadata((p) => ({ ...p, website: e.target.value }))}
+                          disabled={disabled}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleSaveMetadata}
+                        disabled={disabled || svcMetaSaving}
+                        className="bg-primary text-background px-6 py-2 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-2"
+                      >
+                        {svcMetaSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        {svcMetaSaving ? "Saving..." : "Save Metadata"}
+                      </button>
+                      {svcMetaMsg && (
+                        <span className={`text-[10px] font-mono ${svcMetaMsg.includes("Failed") ? "text-error" : "text-secondary"}`}>
+                          {svcMetaMsg}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Announcements Management */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <Megaphone className="text-primary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-primary">
+                    Announcements
+                  </h2>
+                </div>
+
+                {/* Post new announcement */}
+                <div className="space-y-3 mb-6">
+                  <input
+                    className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm outline-none text-primary placeholder:text-on-surface-variant/30"
+                    placeholder="Announcement title"
+                    value={svcAnncTitle}
+                    onChange={(e) => setSvcAnncTitle(e.target.value)}
+                    disabled={disabled}
+                  />
+                  <textarea
+                    className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm outline-none text-primary placeholder:text-on-surface-variant/30 resize-y min-h-[60px]"
+                    placeholder="Announcement body..."
+                    value={svcAnncBody}
+                    onChange={(e) => setSvcAnncBody(e.target.value)}
+                    disabled={disabled}
+                  />
+                  <button
+                    onClick={handlePostAnnouncement}
+                    disabled={disabled || svcAnncPosting || !svcAnncTitle.trim() || !svcAnncBody.trim()}
+                    className="bg-tertiary text-background px-6 py-2 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-2"
+                  >
+                    {svcAnncPosting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                    {svcAnncPosting ? "Posting..." : "Post Announcement"}
+                  </button>
+                </div>
+
+                {/* Existing announcements */}
+                {svcAnncLoading ? (
+                  <div className="flex justify-center py-6">
+                    <Loader2 className="w-5 h-5 text-tertiary animate-spin" />
+                  </div>
+                ) : svcAnnouncements.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant/60 text-center py-4">
+                    No announcements yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {svcAnnouncements.map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-start gap-3 bg-surface-highest rounded-xl px-4 py-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="text-sm font-headline font-bold text-primary truncate">{a.title}</h4>
+                            <span className="text-[10px] font-mono text-on-surface-variant shrink-0">
+                              {new Date(a.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-xs text-on-surface-variant truncate">{a.body}</p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteAnnouncement(a.id)}
+                          disabled={disabled}
+                          className="text-on-surface-variant/50 hover:text-error transition-colors shrink-0 disabled:opacity-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* CA Guides Management */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <BookOpen className="text-primary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-primary">
+                    CA Guides
+                  </h2>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    {onChainCaLeaves.length}
+                  </span>
+                </div>
+
+                {svcGuidesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-5 h-5 text-tertiary animate-spin" />
+                  </div>
+                ) : onChainCaLeaves.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant/60 text-center py-4">
+                    No CAs registered on-chain. Add CAs in the Management tab first.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {onChainCaLeaves.map((leaf) => {
+                      const edit = svcGuideEdits[leaf] || { name: "", description: "", issueUrl: "", instructions: "" };
+                      const saving = svcGuideSaving[leaf] || false;
+                      const msg = svcGuideMsg[leaf] || "";
+                      const hasGuide = !!svcCaGuides[leaf];
+
+                      return (
+                        <div
+                          key={leaf}
+                          className="bg-surface-highest rounded-xl p-5 border border-outline-variant/10"
+                        >
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-[10px] font-mono text-on-surface-variant truncate">
+                              {truncateHex(leaf, 10, 8)}
+                            </span>
+                            <CopyButton text={leaf} />
+                            {hasGuide ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-label bg-secondary/10 text-secondary border border-secondary/20">
+                                Guide set
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-label bg-tertiary/10 text-tertiary border border-tertiary/20">
+                                No guide
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            <div>
+                              <label className="text-[10px] font-label text-on-surface-variant mb-0.5 block">Name</label>
+                              <input
+                                className="w-full bg-surface border-none rounded-lg px-3 py-2 text-sm outline-none text-primary placeholder:text-on-surface-variant/30"
+                                placeholder="CA Name (e.g. DigiCert)"
+                                value={edit.name}
+                                onChange={(e) => updateGuideField(leaf, "name", e.target.value)}
+                                disabled={disabled}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-label text-on-surface-variant mb-0.5 block">Issue URL</label>
+                              <input
+                                className="w-full bg-surface border-none rounded-lg px-3 py-2 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
+                                placeholder="https://ca-provider.com/issue"
+                                value={edit.issueUrl}
+                                onChange={(e) => updateGuideField(leaf, "issueUrl", e.target.value)}
+                                disabled={disabled}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mb-3">
+                            <label className="text-[10px] font-label text-on-surface-variant mb-0.5 block">Description</label>
+                            <input
+                              className="w-full bg-surface border-none rounded-lg px-3 py-2 text-sm outline-none text-primary placeholder:text-on-surface-variant/30"
+                              placeholder="Short description of this CA"
+                              value={edit.description}
+                              onChange={(e) => updateGuideField(leaf, "description", e.target.value)}
+                              disabled={disabled}
+                            />
+                          </div>
+
+                          <div className="mb-3">
+                            <label className="text-[10px] font-label text-on-surface-variant mb-0.5 block">Instructions</label>
+                            <textarea
+                              className="w-full bg-surface border-none rounded-lg px-3 py-2 text-sm outline-none text-primary placeholder:text-on-surface-variant/30 resize-y min-h-[50px]"
+                              placeholder="Step-by-step instructions to get a certificate from this CA..."
+                              value={edit.instructions}
+                              onChange={(e) => updateGuideField(leaf, "instructions", e.target.value)}
+                              disabled={disabled}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => handleSaveCaGuide(leaf)}
+                              disabled={disabled || saving}
+                              className="bg-primary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-1.5"
+                            >
+                              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                              {saving ? "Saving..." : "Save Guide"}
+                            </button>
+                            {msg && (
+                              <span className={`text-[10px] font-mono ${msg === "Failed" ? "text-error" : "text-secondary"}`}>
+                                {msg}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
