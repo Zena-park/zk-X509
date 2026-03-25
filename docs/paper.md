@@ -204,19 +204,28 @@ We define the registration protocol formally. Let $\mathcal{P}$ denote the prove
 **Protocol.**
 
 ```
-Step 1.  P → S:   (cert_index, password, addr, wallet_index?, max_wallets?, disclosure_mask?)
+Step 1.  P → S:   (cert_index, password?, addr, wallet_index?, max_wallets?, disclosure_mask?)
                    via HTTP POST to localhost
-                   cert_index identifies an NPKI certificate discovered
-                   by the server's filesystem scanner
+                   cert_index identifies a certificate discovered by the
+                   server's scanner (keychain or filesystem)
+                   password is required only for file-based NPKI certificates
                    wallet_index, max_wallets, disclosure_mask have sensible defaults
 
-Step 2.  S:        (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
-                   sk' ← PBES2_Decrypt(sk_enc, password)  // SEED-CBC or AES-256-CBC
-                   CRL ← FetchCRL(cert.issuer)             // from CA distribution point
-                   challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
-                   ownership_sig ← OS_Keychain.Sign(sk', challenge)  // private key stays in keychain
-                   nullifier_sig ← OS_Keychain.Sign(sk', H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))  // deterministic
-                   Erase(sk')  // private key never reaches SP1
+Step 2.  S:        // Load certificate and generate signatures
+                   If source = Keychain:                     // macOS Keychain path
+                     (cert, identity) ← Keychain.GetIdentity(cert_index)
+                     CRL ← FetchCRL(cert.issuer)
+                     challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
+                     ownership_sig ← identity.Sign(challenge)     // Security.framework; key never in memory
+                     nullifier_sig ← identity.Sign(H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))
+                   Else:                                     // File-based NPKI path
+                     (cert, sk_enc) ← ReadFromNPKIDirectory(cert_index)
+                     sk' ← PBES2_Decrypt(sk_enc, password)   // SEED-CBC or AES-256-CBC
+                     CRL ← FetchCRL(cert.issuer)
+                     challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
+                     ownership_sig ← Sign(sk', challenge)
+                     nullifier_sig ← Sign(sk', H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))
+                     Erase(sk')                               // private key never reaches SP1
 
 Step 3.  S → Z:   (cert, ownership_sig, nullifier_sig, chain, t, CRL, addr,
                     wallet_index, max_wallets, disclosure_mask,
@@ -478,16 +487,22 @@ zk-X509 solves this with `reRegister()`: a user generates a new proof with the s
 
 This design ensures that wallet migration is **self-sovereign**: users control their own identity lifecycle without depending on any centralized party.
 
-### 3.8 NPKI Integration
+### 3.8 Certificate Sources and Key Management
 
-**Certificate Discovery.** The prover server includes an NPKI filesystem scanner that automatically discovers certificate/key pairs in platform-specific directories: `~/Library/Preferences/NPKI` (macOS), `~/.pki/NPKI` (Linux), and `%LOCALAPPDATA%\NPKI` (Windows). For each discovered pair (`signCert.der` + `signPri.key`), the scanner extracts metadata (subject, issuer, serial number, expiry) for display in the frontend's certificate selection UI. This eliminates the need for manual file upload.
+The prover server supports two certificate sources, each with a distinct key management model:
 
-**Private Key Decryption.** Korean NPKI private keys are stored in PKCS#8 EncryptedPrivateKeyInfo format using PBES2 with PBKDF2-HMAC-SHA1 key derivation. Two encryption ciphers are supported:
+**Source 1: macOS Keychain (recommended).** On macOS, the prover server scans the login keychain via Security.framework for identities (certificate + private key pairs). The private key is managed entirely by the OS keychain and **never leaves the secure hardware boundary**. Signing is performed by calling `SecKey.createSignature()` through the Security.framework API — the prover server receives only the resulting signature bytes and never accesses the raw private key material. The signing algorithm (RSA PKCS#1 v1.5 or ECDSA) is auto-detected from the certificate's SPKI algorithm OID. This model provides the strongest private key isolation: even the prover server's process memory never contains the key.
 
-- **SEED-CBC** (OID 1.2.410.200004.1.4): The Korean national block cipher, widely used in legacy NPKI certificates. Supported via the `kisaseed` crate.
+**Source 2: File-based NPKI (legacy).** The prover server includes a filesystem scanner that discovers certificate/key pairs in platform-specific directories: `~/Library/Preferences/NPKI` (macOS), `~/.pki/NPKI` (Linux), and `%LOCALAPPDATA%\NPKI` (Windows). For each discovered pair (`signCert.der` + `signPri.key`), the scanner extracts metadata (subject, issuer, serial number, expiry) for display in the frontend's certificate selection UI.
+
+For file-based certificates, private keys are stored in PKCS#8 EncryptedPrivateKeyInfo format using PBES2 with PBKDF2-HMAC-SHA1 key derivation. Two encryption ciphers are supported:
+
+- **SEED-CBC** (OID 1.2.410.200004.1.4): The Korean national block cipher, widely used in legacy NPKI certificates.
 - **AES-256-CBC** (OID 2.16.840.1.101.3.4.1.42): Used in newer NPKI certificates.
 
-The decryption module: (1) parses the ASN.1 encryption parameters, (2) derives the key via PBKDF2, (3) decrypts using the appropriate cipher, and (4) strips PKCS#7 padding to yield the raw PKCS#1 DER private key. A generic `decrypt_cbc<C>()` function handles both ciphers uniformly.
+The decryption module parses the ASN.1 encryption parameters, derives the key via PBKDF2, decrypts using the appropriate cipher, and strips PKCS#7 padding to yield the raw private key. After signing the ownership and nullifier challenges, the decrypted key is immediately erased from memory. This file-based path exists for backward compatibility with existing NPKI installations; the keychain-based path is preferred for production deployments.
+
+**Unified interface.** Both sources produce the same output to the ZK circuit: `ownership_sig` and `nullifier_sig` bytes. The circuit is agnostic to whether the signatures were generated via the OS keychain or file-based decryption — it verifies only the cryptographic validity of the signatures against the certificate's public key.
 
 ### 3.9 Automatic Identity Expiry
 
