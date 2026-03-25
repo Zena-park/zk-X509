@@ -265,7 +265,7 @@ export default function IdentityPage() {
             <ShieldCheck className="w-6 h-6 text-secondary" />
           </div>
           <h1 className="text-3xl font-headline font-bold tracking-tight text-primary">
-            My Identity
+            My Trust
           </h1>
         </div>
         <p className="text-on-surface-variant text-sm">
