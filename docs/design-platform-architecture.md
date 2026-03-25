@@ -231,21 +231,163 @@ Service Owner                    Platform                     User
     │                               │──────────────────────────>│
 ```
 
+## Deployment: EIP-1167 Minimal Proxy (Clones)
+
+Full contract deployment costs ~2M gas per registry. For a platform where many
+services create registries, this is prohibitive. Use EIP-1167 Clones instead.
+
+| Method | Gas per Registry | Cost on L2 |
+|--------|-----------------|------------|
+| Full deploy (`new`) | ~2M | ~$5-10 |
+| EIP-1167 Clone | ~45K | ~$0.10 |
+
+### Implementation
+
+```solidity
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+
+contract RegistryFactory {
+    address public immutable implementation;
+
+    constructor(address _sp1Verifier, bytes32 _programVKey) {
+        // Deploy one implementation contract
+        implementation = address(new IdentityRegistry());
+        // ...
+    }
+
+    function createRegistry(...) external returns (address) {
+        address clone = Clones.clone(implementation);
+        IdentityRegistry(clone).initialize(
+            address(SP1_VERIFIER), PROGRAM_V_KEY,
+            maxWallets, minDisclosureMask, msg.sender
+        );
+        return clone;
+    }
+}
+```
+
+### IdentityRegistry Changes for Proxy
+
+- Remove `constructor`, add `initialize()` with `initializer` modifier
+- `immutable` variables → regular `storage` variables (set once in `initialize`)
+- Add OpenZeppelin `Initializable` base contract
+- Gas impact: ~2100 extra per `immutable` read → negligible
+
+## VKey Version Management
+
+The ZK program may be upgraded (bug fixes, new algorithms). The factory needs
+version management for `programVKey`.
+
+```solidity
+// Factory manages VKey versions
+bytes32 public currentProgramVKey;
+mapping(uint256 => bytes32) public vKeyVersions;
+uint256 public vKeyVersionCount;
+
+function updateProgramVKey(bytes32 newVKey) external onlyOwner {
+    vKeyVersions[vKeyVersionCount++] = newVKey;
+    currentProgramVKey = newVKey;
+}
+```
+
+- New registries use the latest VKey
+- Existing registries keep their deployment-time VKey (immutable per registry)
+- Factory owner can publish "recommended version" for migration guidance
+
+## Shared CA Repository
+
+Service owners shouldn't need to manually find and register government CA hashes.
+
+```solidity
+// Factory maintains a standard CA set
+bytes32[] public standardCaHashes;
+
+function addStandardCA(bytes32 caHash) external onlyOwner;
+function removeStandardCA(uint256 index) external onlyOwner;
+
+// Registry creation can auto-populate CAs
+function createRegistry(
+    ...,
+    bool useStandardCAs    // auto-register factory's standard CA set
+) external returns (address) {
+    // ... deploy clone ...
+    if (useStandardCAs) {
+        registry.addCAs(standardCaHashes);
+    }
+}
+```
+
+Benefits:
+- Platform admin curates trusted government CAs once
+- Service owners opt-in to standard set or add custom CAs
+- Reduces setup friction and CA hash errors
+
+## Registry Metadata & Discovery
+
+Each registry needs metadata for the platform directory.
+
+```solidity
+struct RegistryInfo {
+    address creator;
+    string name;
+    string metadataUri;         // IPFS/HTTP URL for logo, description
+    uint32 maxWallets;
+    uint8 minDisclosureMask;
+    uint256 createdAt;
+}
+```
+
+`metadataUri` points to a JSON file:
+```json
+{
+  "name": "DAO Voting Registry",
+  "description": "One person, one vote identity verification",
+  "logo": "ipfs://Qm.../logo.png",
+  "website": "https://mydao.org",
+  "contact": "admin@mydao.org"
+}
+```
+
+## Fee Model
+
+Registry creation fee for spam prevention and platform sustainability.
+
+```solidity
+uint256 public registryCreationFee;
+
+function createRegistry(...) external payable returns (address) {
+    if (msg.value < registryCreationFee) revert InsufficientFee();
+    // ... deploy ...
+}
+
+function withdrawFees() external onlyOwner {
+    payable(owner).transfer(address(this).balance);
+}
+```
+
+Fee options:
+- **0 (free)**: Maximum adoption, risk of spam
+- **Small fee (~0.01 ETH)**: Spam deterrent, covers gas
+- **No user fee**: `register()` remains free for end users
+
 ## Security Considerations
 
 - Each Registry is fully independent — compromise of one doesn't affect others
 - Factory owner has NO control over deployed registries (ownership transferred)
-- SP1Verifier and programVKey are shared — upgrading requires new factory deployment
-- Nullifiers are per-registry (different registries = different nullifiers = unlinkable)
+- SP1Verifier and programVKey are shared — upgrading requires new factory + VKey version
+- **Cross-Registry Unlinkability**: nullifier = `H(Sign(sk, H(domain ‖ registry_address ‖ chain_id)) ‖ wallet_index)`. Different `registry_address` → completely different nullifier. Same person, same cert, different registries = **unlinkable**
+- Disclosure mask enforced both in ZK circuit (zero hash for masked fields) and on-chain (non-zero check)
+- Proxy clones share bytecode but each has independent storage — no cross-contamination
 
-## Gas Estimates
+## Gas Estimates (with EIP-1167 Clones)
 
-| Operation | Gas |
-|-----------|-----|
-| Deploy Factory | ~500K (one-time) |
-| Create Registry | ~2M (per service) |
-| addCA | ~80K (per CA) |
-| register | ~300K (per user) |
+| Operation | Gas | Notes |
+|-----------|-----|-------|
+| Deploy Factory + Implementation | ~3M | One-time |
+| Create Registry (Clone) | ~100K | Per service (was ~2M) |
+| addCA | ~80K | Per CA |
+| addCAs (standard set, 18 CAs) | ~500K | One-time per registry |
+| register | ~300K | Per user |
 
 ## Frontend Platform Design
 
