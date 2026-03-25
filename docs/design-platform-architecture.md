@@ -247,9 +247,191 @@ Service Owner                    Platform                     User
 | addCA | ~80K (per CA) |
 | register | ~300K (per user) |
 
+## Frontend Platform Design
+
+The frontend transitions from a **single-registry app** to a **multi-registry platform**.
+
+### Page Structure
+
+```
+/                       → Platform Home (registry directory)
+/create                 → Create Registry wizard (NEW)
+/registry/[address]     → Registry detail page (NEW)
+/registry/[address]/admin    → Admin Console (existing, scoped)
+/registry/[address]/dashboard → User Dashboard (existing, scoped)
+/faq                    → FAQ (existing)
+```
+
+### 1. Platform Home (`/`) — NEW
+
+The landing page becomes a **registry directory** showing all deployed registries.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  ZK-X509 Platform                        [Create New +] │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌──────────────────┐  ┌──────────────────┐            │
+│  │ DAO Voting       │  │ DeFi KYC         │            │
+│  │                  │  │                  │            │
+│  │ Wallets: 1       │  │ Wallets: 3       │            │
+│  │ Disclosure: None │  │ Disclosure: Country│           │
+│  │ CAs: 5           │  │ CAs: 18          │            │
+│  │ Users: 142       │  │ Users: 1,203     │            │
+│  │ Chain: Sepolia   │  │ Chain: Mainnet   │            │
+│  │                  │  │                  │            │
+│  │ [Enter →]        │  │ [Enter →]        │            │
+│  └──────────────────┘  └──────────────────┘            │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Data source:** `RegistryFactory.getRegistries()` → for each registry, read on-chain:
+- `registry.owner()`
+- `registry.MAX_WALLETS_PER_CERT()`
+- `registry.MIN_DISCLOSURE_MASK()`
+- `registry.getCaCount()`
+- Registered user count (events or indexed)
+- `factory.registryInfo(address).name`
+
+### 2. Create Registry (`/create`) — NEW
+
+Step-by-step wizard for service owners to deploy a new registry.
+
+```
+Step 1: Service Configuration
+  ┌────────────────────────────────────┐
+  │ Service Name: [My DAO Voting     ]│
+  │                                    │
+  │ Max Wallets per Certificate:       │
+  │   (●) 1 — One person, one wallet  │
+  │   ( ) 3 — Multiple wallets        │
+  │   ( ) Custom: [___]               │
+  │                                    │
+  │ Required Disclosure:               │
+  │   [ ] Country                      │
+  │   [ ] Organization                 │
+  │   [ ] Organizational Unit          │
+  │   [ ] Common Name                  │
+  │                                    │
+  │ Estimated gas: ~2M (~0.004 ETH)   │
+  │                                    │
+  │          [Deploy Registry →]       │
+  └────────────────────────────────────┘
+
+Step 2: CA Registration
+  → Redirect to /registry/[new-address]/admin
+  → Upload CA certificates
+```
+
+**Contract call:** `factory.createRegistry(name, maxWallets, minDisclosureMask)`
+
+### 3. Registry Detail (`/registry/[address]`) — NEW
+
+Overview page for a specific registry. Entry point for users and admins.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ ← Back to Platform         DAO Voting Registry          │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Registry: 0xe7f1...0512                                │
+│  Owner: 0xAdmin...                                      │
+│  Chain: Sepolia (11155111)                               │
+│                                                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
+│  │ Wallets  │  │ Disclosure│  │ CAs     │              │
+│  │    1     │  │   None    │  │   5     │              │
+│  └──────────┘  └──────────┘  └──────────┘              │
+│                                                         │
+│  ┌─────────────────┐  ┌─────────────────┐              │
+│  │  User Dashboard  │  │  Admin Console  │              │
+│  │  Verify identity │  │  Manage CAs     │              │
+│  │  [Enter →]       │  │  [Enter →]      │              │
+│  └─────────────────┘  └─────────────────┘              │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 4. Admin Console (`/registry/[address]/admin`) — EXISTING, SCOPED
+
+The existing admin page, but scoped to a specific registry address.
+
+**Changes from current:**
+- Registry address comes from URL params instead of env/hardcoded
+- All contract calls target the specific registry
+- "Back to Registry" navigation
+
+### 5. User Dashboard (`/registry/[address]/dashboard`) — EXISTING, SCOPED
+
+The existing dashboard page, scoped to a specific registry.
+
+**Changes from current:**
+- Registry address comes from URL params
+- Proof generation uses the specific registry address
+- "Back to Registry" navigation
+
+### Frontend Implementation Plan
+
+#### Phase 1: Registry Selector (minimal)
+- Add registry address selector to existing pages
+- Dropdown or URL param: `?registry=0x...`
+- No new pages, just scoping existing functionality
+
+#### Phase 2: Platform Pages
+- `/` → Registry directory (read from factory)
+- `/create` → Create wizard
+- `/registry/[address]` → Detail page
+
+#### Phase 3: Enhanced UX
+- Registry search/filter
+- Usage statistics (registered users, recent activity)
+- Registry verification status badges
+
+### Component Architecture
+
+```
+app/
+  page.tsx                          → Platform Home (registry directory)
+  create/page.tsx                   → Create Registry wizard
+  registry/[address]/
+    page.tsx                        → Registry detail
+    admin/page.tsx                  → Admin Console (existing, scoped)
+    dashboard/page.tsx              → User Dashboard (existing, scoped)
+  faq/page.tsx                      → FAQ (existing)
+
+lib/
+  contract.ts                       → Add RegistryFactory ABI
+  useRegistry.ts                    → Hook: read registry config
+  useFactory.ts                     → Hook: read factory, create registry
+
+components/
+  Navbar.tsx                        → Add registry context indicator
+  RegistryCard.tsx                  → Registry card for directory
+  RegistrySelector.tsx              → Registry address input/selector
+```
+
+### Contract Integration
+
+```typescript
+// Factory ABI additions
+const FACTORY_ABI = [
+  "function createRegistry(string name, uint32 maxWallets, uint8 minDisclosureMask) returns (address)",
+  "function getRegistries() view returns (address[])",
+  "function getRegistryCount() view returns (uint256)",
+  "function registryInfo(address) view returns (address creator, string name, uint32 maxWallets, uint8 minDisclosureMask, uint256 createdAt)",
+  "function isRegistry(address) view returns (bool)",
+  "event RegistryCreated(address indexed registry, address indexed owner, string name, uint32 maxWallets, uint8 minDisclosureMask)",
+] as const;
+
+// Registry ABI additions
+// Add: MIN_DISCLOSURE_MASK(), setInitialOwner()
+```
+
 ## Open Questions
 
 1. Should factory charge a fee for registry creation?
-2. Should there be a registry directory with metadata (name, description, URL)?
-3. Should registries be upgradeable (proxy) or immutable (current)?
-4. Should the platform enforce a minimum set of CAs, or leave it fully to the service owner?
+2. Should registries be upgradeable (proxy) or immutable (current)?
+3. Should the platform enforce a minimum set of CAs, or leave it fully to the service owner?
+4. How to handle registry discovery across multiple chains?
+5. Should the platform show registry "trust score" based on CA count, user count, etc.?
