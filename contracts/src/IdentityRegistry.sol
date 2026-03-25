@@ -133,6 +133,7 @@ contract IdentityRegistry {
     error CaIndexOutOfBounds(uint256 index, uint256 length);
     error CaIndicesNotDescending(uint256 current, uint256 previous);
     error InsufficientDisclosure(uint8 proofMask, uint8 requiredMask);
+    error InitialOwnerAlreadySet();
 
     // ============ Modifiers ============
 
@@ -169,10 +170,11 @@ contract IdentityRegistry {
     }
 
     /// @notice Set the initial owner directly (for factory deployment).
-    ///         Can only be called once, by the current owner (factory), before any CA is added.
+    ///         Can only be called once by the deployer, before any CA is added.
     function setInitialOwner(address _owner) external onlyOwner {
         if (_owner == address(0)) revert ZeroAddress();
-        if (caLeaves.length > 0) revert OnlyOwner(); // Safety: only before any setup
+        if (_owner == owner) return; // No-op if already owner
+        if (caLeaves.length > 0) revert InitialOwnerAlreadySet();
         emit OwnershipTransferred(owner, _owner);
         owner = _owner;
         pendingOwner = address(0);
