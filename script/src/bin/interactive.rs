@@ -463,21 +463,19 @@ fn auto_match_ca(
     if let Some(idx) = zk_x509_script::ca::find_issuer_ca(user_cert_der, ca_certs, None) {
         let ca = &ca_certs[idx];
         println!();
-        println!("  ╔═══════════════════════════════════════════════════════════╗");
-        println!("  ║  ⚠ CA NOT REGISTERED ON-CHAIN                            ║");
-        println!("  ║                                                           ║");
-        println!("  ║  Matched CA: {}",  ca.subject);
-        println!("  ║                                                           ║");
-        println!("  ║  This CA is recognized locally but has not been           ║");
-        println!("  ║  registered on the on-chain registry by an admin.         ║");
-        println!("  ║                                                           ║");
-        println!("  ║  • Execute mode (test): OK                                ║");
-        println!("  ║  • Groth16 (production): WILL FAIL                        ║");
-        println!("  ║                                                           ║");
-        println!("  ║  Request CA registration:                                 ║");
-        println!("  ║    → Email: zena@tokamak.network                          ║");
-        println!("  ║    → GitHub: github.com/tokamak-network/zk-X509/issues    ║");
-        println!("  ╚═══════════════════════════════════════════════════════════╝");
+        println!("  ⚠ CA NOT REGISTERED ON-CHAIN");
+        println!("  ─────────────────────────────");
+        println!("  Matched CA: {}", ca.subject);
+        println!();
+        println!("  This CA is recognized locally but has not been");
+        println!("  registered on the on-chain registry by an admin.");
+        println!();
+        println!("  • Execute mode (test): OK");
+        println!("  • Groth16 (production): WILL FAIL");
+        println!();
+        println!("  Request CA registration:");
+        println!("    → Email: zena@tokamak.network");
+        println!("    → GitHub: github.com/tokamak-network/zk-X509/issues");
         println!();
         return Some(ca.spki_der.clone());
     }
