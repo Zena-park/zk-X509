@@ -440,9 +440,17 @@ export default function RegistryDetailPage() {
                             )}
                           </>
                         ) : (
-                          <span className="text-sm font-mono text-on-surface-variant truncate block">
-                            {hash}
-                          </span>
+                          <div>
+                            <p className="text-sm font-headline font-bold text-on-surface-variant mb-1">
+                              Unknown CA
+                            </p>
+                            <span className="text-[10px] font-mono text-on-surface-variant/60 truncate block">
+                              {hash}
+                            </span>
+                            <p className="text-xs text-on-surface-variant/50 mt-1">
+                              Contact the service admin to add CA details.
+                            </p>
+                          </div>
                         )}
                       </div>
                     );

@@ -234,6 +234,7 @@ export default function DashboardPage() {
         );
 
         if (!cancelled) {
+          cards.sort((a, b) => a.name.localeCompare(b.name));
           setRegistries(cards);
           setLoading(false);
         }
