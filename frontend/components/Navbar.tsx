@@ -9,6 +9,7 @@ import { useWallet } from "@/lib/wallet";
 const defaultNavLinks = [
   { href: "/", label: "Home" },
   { href: "/dashboard", label: "Explore" },
+  { href: "/identity", label: "My Identity" },
   { href: "/admin", label: "My Services" },
   { href: "/faq", label: "FAQ" },
 ];
