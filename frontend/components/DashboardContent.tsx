@@ -109,16 +109,7 @@ export default function DashboardContent() {
   /*  Render                                                           */
   /* ================================================================ */
   return (
-    <main className="max-w-6xl mx-auto pt-4 px-8 pb-12">
-      <motion.header
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
-      >
-        <p className="text-on-surface-variant text-sm">
-          Verify your identity for this service.
-        </p>
-      </motion.header>
+    <main className="max-w-6xl mx-auto pt-0 px-8 pb-12">
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         {/* ============================================================ */}
