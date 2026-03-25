@@ -77,6 +77,9 @@ contract IdentityRegistry {
     /// @notice Whether the contract is paused.
     bool public paused;
 
+    /// @notice Whether setInitialOwner has already been called.
+    bool private _initialOwnerSet;
+
     /// @notice Maximum allowed age of a proof (adjustable by owner).
     uint256 public maxProofAge = 1 hours;
 
@@ -133,7 +136,8 @@ contract IdentityRegistry {
     error CaIndexOutOfBounds(uint256 index, uint256 length);
     error CaIndicesNotDescending(uint256 current, uint256 previous);
     error InsufficientDisclosure(uint8 proofMask, uint8 requiredMask);
-    error InitialOwnerAlreadySet();
+    error RegistryAlreadyConfigured();
+    error InvalidDisclosureMask(uint8 mask);
 
     // ============ Modifiers ============
 
@@ -162,6 +166,7 @@ contract IdentityRegistry {
     /// @param _maxWallets Max wallets per certificate (1 for DAO/voting, N for DeFi).
     /// @param _minDisclosureMask Minimum disclosure bitmask required (0x00 = none required).
     constructor(address _sp1Verifier, bytes32 _programVKey, uint32 _maxWallets, uint8 _minDisclosureMask) {
+        if (_minDisclosureMask > 0x0F) revert InvalidDisclosureMask(_minDisclosureMask);
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
         PROGRAM_V_KEY = _programVKey;
         MAX_WALLETS_PER_CERT = _maxWallets;
@@ -173,8 +178,10 @@ contract IdentityRegistry {
     ///         Can only be called once by the deployer, before any CA is added.
     function setInitialOwner(address _owner) external onlyOwner {
         if (_owner == address(0)) revert ZeroAddress();
+        if (_initialOwnerSet) revert RegistryAlreadyConfigured();
+        if (caLeaves.length > 0) revert RegistryAlreadyConfigured();
+        _initialOwnerSet = true;
         if (_owner == owner) return; // No-op if already owner
-        if (caLeaves.length > 0) revert InitialOwnerAlreadySet();
         emit OwnershipTransferred(owner, _owner);
         owner = _owner;
         pendingOwner = address(0);

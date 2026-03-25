@@ -67,7 +67,7 @@ Each service needs its own Registry with its own admin, CA list, and policies. z
 
 ### Option A: Factory Pattern (Recommended)
 
-A `RegistryFactory` contract deploys new `IdentityRegistry` instances via `create2`.
+A `RegistryFactory` contract deploys new `IdentityRegistry` instances via `new`.
 
 ```solidity
 contract RegistryFactory {
@@ -80,23 +80,26 @@ contract RegistryFactory {
     event RegistryCreated(
         address indexed registry,
         address indexed owner,
+        string name,
         uint32 maxWallets,
         uint8 minDisclosureMask
     );
 
     function createRegistry(
+        string calldata name,
         uint32 maxWallets,
         uint8 minDisclosureMask
     ) external returns (address) {
         IdentityRegistry registry = new IdentityRegistry(
             address(verifier),
             programVKey,
-            maxWallets
+            maxWallets,
+            minDisclosureMask
         );
-        registry.transferOwnership(msg.sender);
+        registry.setInitialOwner(msg.sender);
         registries.push(address(registry));
         isRegistry[address(registry)] = true;
-        emit RegistryCreated(address(registry), msg.sender, maxWallets, minDisclosureMask);
+        emit RegistryCreated(address(registry), msg.sender, name, maxWallets, minDisclosureMask);
         return address(registry);
     }
 
@@ -162,13 +165,13 @@ Option A requires the **least changes** to the battle-tested IdentityRegistry an
 ### Changes Required
 
 #### 1. New Contract: `RegistryFactory.sol`
-- `createRegistry(maxWallets, minDisclosureMask)` → deploy + transfer ownership
+- `createRegistry(name, maxWallets, minDisclosureMask)` → deploy + setInitialOwner
 - Registry listing: `registries[]`, `isRegistry()`
 - Events for indexing/discovery
 
 #### 2. Modify: `IdentityRegistry.sol`
 - Add `MIN_DISCLOSURE_MASK` (immutable, constructor param)
-- Validate `disclosure_mask >= MIN_DISCLOSURE_MASK` in register/reRegister
+- Validate `(actualMask & MIN_DISCLOSURE_MASK) == MIN_DISCLOSURE_MASK` in register/reRegister
 - Minor: accept ownership in constructor or add `initialize()` for factory pattern
 
 #### 3. New: Platform Frontend
@@ -199,7 +202,8 @@ constructor(
 }
 
 // In _validateProof():
-// Add check: (pv.disclosureMask & MIN_DISCLOSURE_MASK) == MIN_DISCLOSURE_MASK
+// Add check: (actualMask & MIN_DISCLOSURE_MASK) == MIN_DISCLOSURE_MASK
+// where actualMask is computed from non-zero disclosure hashes
 ```
 
 ### Migration Path

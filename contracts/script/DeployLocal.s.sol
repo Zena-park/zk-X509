@@ -16,7 +16,11 @@ contract DeployLocalScript is Script {
         // Deploy IdentityRegistry
         bytes32 vkey = vm.envOr("PROGRAM_V_KEY", bytes32(0x0072633ccccee97a9e508e3c73306048284a98ee1f7c32bd6a0eed5a407522f5));
         uint32 maxWallets = uint32(vm.envOr("MAX_WALLETS_PER_CERT", uint256(1)));
-        uint8 minDisclosureMask = uint8(vm.envOr("MIN_DISCLOSURE_MASK", uint256(0)));
+        uint256 rawMask = vm.envOr("MIN_DISCLOSURE_MASK", uint256(0));
+        require(rawMask <= 0x0F, "MIN_DISCLOSURE_MASK must be <= 0x0F");
+        // casting to 'uint8' is safe because rawMask is validated <= 0x0F above
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint8 minDisclosureMask = uint8(rawMask);
         IdentityRegistry registry = new IdentityRegistry(address(verifier), vkey, maxWallets, minDisclosureMask);
         console.log("IdentityRegistry:", address(registry));
 

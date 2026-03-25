@@ -26,7 +26,11 @@ contract DeployScript is Script {
 
         // Deploy IdentityRegistry
         uint32 maxWallets = uint32(vm.envOr("MAX_WALLETS_PER_CERT", uint256(1)));
-        uint8 minDisclosureMask = uint8(vm.envOr("MIN_DISCLOSURE_MASK", uint256(0)));
+        uint256 rawMask = vm.envOr("MIN_DISCLOSURE_MASK", uint256(0));
+        require(rawMask <= 0x0F, "MIN_DISCLOSURE_MASK must be <= 0x0F");
+        // casting to 'uint8' is safe because rawMask is validated <= 0x0F above
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint8 minDisclosureMask = uint8(rawMask);
         IdentityRegistry registry = new IdentityRegistry(SP1_VERIFIER, PROGRAM_VKEY, maxWallets, minDisclosureMask);
         console.log("Max wallets per cert:", maxWallets);
         console.log("Min disclosure mask:", minDisclosureMask);

@@ -826,6 +826,99 @@ contract IdentityRegistryTest is Test {
         registry.setCaRootGracePeriod(12 hours);
     }
 
+    // ============ MIN_DISCLOSURE_MASK Tests ============
+
+    function _pvWithDisclosure(
+        bytes32 nullifier, bytes32 caRoot, address sender,
+        bytes32 countryHash, bytes32 orgHash, bytes32 orgUnitHash, bytes32 cnHash,
+        address target
+    ) internal view returns (bytes memory) {
+        return abi.encode(nullifier, caRoot, uint64(block.timestamp), sender, uint32(0),
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), target, bytes32(0),
+            countryHash, orgHash, orgUnitHash, cnHash);
+    }
+
+    function test_DisclosureMask_RevertWhenRequiredHashZero() public {
+        // Deploy registry requiring country disclosure (bit 0 = 0x01)
+        IdentityRegistry discReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01);
+        discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
+
+        // Public values with countryHash = 0 (not disclosed)
+        bytes memory pv = _pvWithDisclosure(
+            NULLIFIER, CA_MERKLE_ROOT, alice,
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
+            address(discReg)
+        );
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.InsufficientDisclosure.selector, uint8(0x00), uint8(0x01))
+        );
+        discReg.register(hex"1234", pv);
+    }
+
+    function test_DisclosureMask_SucceedsWhenHashProvided() public {
+        // Deploy registry requiring country disclosure (bit 0 = 0x01)
+        IdentityRegistry discReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01);
+        discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
+
+        // Public values with countryHash set (disclosed)
+        bytes memory pv = _pvWithDisclosure(
+            NULLIFIER, CA_MERKLE_ROOT, alice,
+            bytes32(uint256(0x1234)), bytes32(0), bytes32(0), bytes32(0),
+            address(discReg)
+        );
+
+        vm.prank(alice);
+        discReg.register(hex"1234", pv);
+        assertTrue(discReg.isVerified(alice));
+    }
+
+    function test_DisclosureMask_MultipleFieldsRequired() public {
+        // Deploy registry requiring country + org disclosure (0x03)
+        IdentityRegistry discReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x03);
+        discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
+
+        // Only country provided, org missing → should revert
+        bytes memory pv = _pvWithDisclosure(
+            NULLIFIER, CA_MERKLE_ROOT, alice,
+            bytes32(uint256(0x1234)), bytes32(0), bytes32(0), bytes32(0),
+            address(discReg)
+        );
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.InsufficientDisclosure.selector, uint8(0x01), uint8(0x03))
+        );
+        discReg.register(hex"1234", pv);
+
+        // Both country + org provided → should succeed
+        bytes32 nullifier2 = bytes32(uint256(0xBEEF));
+        bytes memory pv2 = _pvWithDisclosure(
+            nullifier2, CA_MERKLE_ROOT, alice,
+            bytes32(uint256(0x1234)), bytes32(uint256(0x5678)), bytes32(0), bytes32(0),
+            address(discReg)
+        );
+
+        vm.prank(alice);
+        discReg.register(hex"1234", pv2);
+        assertTrue(discReg.isVerified(alice));
+    }
+
+    function test_DisclosureMask_ZeroMaskAcceptsAnything() public {
+        // Default registry has mask=0, should accept all-zero hashes
+        vm.prank(alice);
+        registry.register(hex"1234", _pv(NULLIFIER, CA_MERKLE_ROOT, alice));
+        assertTrue(registry.isVerified(alice));
+    }
+
+    function test_RevertConstructorInvalidDisclosureMask() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.InvalidDisclosureMask.selector, uint8(0x10))
+        );
+        new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x10);
+    }
+
     function test_GracePeriod_SameRootDoesNotResetGrace() public {
         bytes32 oldRoot = CA_MERKLE_ROOT;
         bytes32 newRoot = bytes32(uint256(0xBEEF));

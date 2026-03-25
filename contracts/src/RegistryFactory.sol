@@ -11,6 +11,7 @@ import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
 ///      and ZK program verification key across all registries.
 contract RegistryFactory {
     /// @notice Factory owner (can update settings).
+    /// @dev Reserved for future platform functions: setFeeConfig, setRegistryCreationFee, etc.
     address public owner;
 
     /// @notice The shared SP1 verifier contract.
@@ -129,9 +130,8 @@ contract RegistryFactory {
     function getRegistriesPaginated(uint256 offset, uint256 limit) external view returns (address[] memory) {
         uint256 total = registries.length;
         if (offset >= total) return new address[](0);
-        uint256 end = offset + limit;
-        if (end > total) end = total;
-        uint256 count = end - offset;
+        uint256 remaining = total - offset;
+        uint256 count = remaining < limit ? remaining : limit;
         address[] memory result = new address[](count);
         for (uint256 i = 0; i < count; i++) {
             result[i] = registries[offset + i];

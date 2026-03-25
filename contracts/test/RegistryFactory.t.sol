@@ -99,6 +99,7 @@ contract RegistryFactoryTest is Test {
 
         // Factory is NOT the owner — should revert
         bytes32 caHash = bytes32(uint256(0xCAFE));
+        vm.prank(address(factory));
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
         registry.addCA(caHash);
     }
