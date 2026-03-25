@@ -658,7 +658,7 @@ function RegistrySection({
 
                 {/* Action button */}
                 <Link
-                  href={`/registry/${reg.address}/dashboard`}
+                  href={`/registry/${reg.address}`}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary/10 text-primary font-headline font-bold text-xs rounded-full hover:bg-primary hover:text-surface transition-all group/btn shrink-0"
                 >
                   {reg.verified ? "View Details" : "Register"}
