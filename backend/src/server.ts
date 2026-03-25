@@ -3,10 +3,11 @@ import cors from "cors";
 import registriesRouter from "./routes/registries";
 
 const app = express();
-const PORT = 4000;
+const PORT = Number(process.env.PORT) || 4000;
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
 
 // Middleware
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 
 // Request logging

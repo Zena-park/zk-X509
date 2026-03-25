@@ -351,16 +351,9 @@ export const IDENTITY_REGISTRY_ABI = [
   },
 ] as const;
 
-/// Registry address from environment variable, or fallback per network.
-export function getRegistryAddress(chainId: string): string {
-  const envAddr = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
-  if (envAddr) return envAddr;
-
-  const fallback: Record<string, string> = {
-    "11155111": "0x0000000000000000000000000000000000000000",
-    "31337": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
-  };
-  return fallback[chainId] || "";
+/// Registry address from environment variable (NEXT_PUBLIC_REGISTRY_ADDRESS).
+export function getRegistryAddress(_chainId: string): string {
+  return process.env.NEXT_PUBLIC_REGISTRY_ADDRESS || "";
 }
 
 // ============================================================
@@ -463,15 +456,9 @@ export const REGISTRY_FACTORY_ABI = [
   },
 ] as const;
 
-/// Factory address from environment variable, or fallback per network.
-export function getFactoryAddress(chainId: string): string {
-  const envAddr = process.env.NEXT_PUBLIC_FACTORY_ADDRESS;
-  if (envAddr) return envAddr;
-
-  const fallback: Record<string, string> = {
-    "31337": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-  };
-  return fallback[chainId] || "";
+/// Factory address from environment variable (NEXT_PUBLIC_FACTORY_ADDRESS).
+export function getFactoryAddress(_chainId: string): string {
+  return process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "";
 }
 
 /// RPC URL from environment variable, or fallback.

@@ -28,7 +28,7 @@ export interface CaGuide {
 
 export async function getRegistryMetadata(address: string): Promise<RegistryMetadata | null> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address}`);
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}`);
     if (res.status === 404) return null;
     if (!res.ok) return null;
     return await res.json();
@@ -42,7 +42,7 @@ export async function updateRegistryMetadata(
   data: Partial<RegistryMetadata>,
 ): Promise<boolean> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address}`, {
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -57,7 +57,7 @@ export async function updateRegistryMetadata(
 
 export async function getAnnouncements(address: string): Promise<Announcement[]> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address}/announcements`);
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements`);
     if (!res.ok) return [];
     return await res.json();
   } catch {
@@ -71,7 +71,7 @@ export async function postAnnouncement(
   body: string,
 ): Promise<Announcement | null> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address}/announcements`, {
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title, body }),
@@ -85,7 +85,7 @@ export async function postAnnouncement(
 
 export async function deleteAnnouncement(address: string, id: string): Promise<boolean> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address}/announcements/${id}`, {
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements/${id}`, {
       method: "DELETE",
     });
     return res.ok;
@@ -98,7 +98,7 @@ export async function deleteAnnouncement(address: string, id: string): Promise<b
 
 export async function getCaGuides(address: string): Promise<Record<string, CaGuide>> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address}/ca-guides`);
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides`);
     if (!res.ok) return {};
     return await res.json();
   } catch {
@@ -112,7 +112,7 @@ export async function updateCaGuide(
   guide: CaGuide,
 ): Promise<boolean> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address}/ca-guides/${caHash}`, {
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${caHash}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(guide),
@@ -125,7 +125,7 @@ export async function updateCaGuide(
 
 export async function deleteCaGuide(address: string, caHash: string): Promise<boolean> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address}/ca-guides/${caHash}`, {
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${caHash}`, {
       method: "DELETE",
     });
     return res.ok;

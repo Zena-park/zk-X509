@@ -92,6 +92,9 @@ contract IdentityRegistry is Initializable {
     ///         0x00 = no disclosure required, 0x01 = country required, etc.
     uint8 public MIN_DISCLOSURE_MASK;
 
+    /// @dev Reserved storage gap for future upgradeable state variables.
+    uint256[50] private __gap;
+
     // ============ Events ============
 
     event UserRegistered(address indexed user, bytes32 nullifier);
@@ -176,6 +179,9 @@ contract IdentityRegistry is Initializable {
         uint8 _minDisclosureMask,
         address _owner
     ) external initializer {
+        if (_sp1Verifier == address(0)) revert ZeroAddress();
+        if (_programVKey == bytes32(0)) revert ZeroMerkleRoot();
+        if (_owner == address(0)) revert ZeroAddress();
         if (_minDisclosureMask > 0x0F) revert InvalidDisclosureMask(_minDisclosureMask);
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
         PROGRAM_V_KEY = _programVKey;

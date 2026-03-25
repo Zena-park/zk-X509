@@ -1,3 +1,4 @@
+// TODO: Add owner authentication (wallet signature) before production use
 import { Router } from "express";
 import * as fs from "fs";
 import * as path from "path";
@@ -60,7 +61,7 @@ function makeDefaultEntry(): RegistryEntry {
 // GET /api/registries/:address
 router.get("/:address", (req, res) => {
   const db = readDB();
-  const addr = req.params.address as string;
+  const addr = (req.params.address as string).toLowerCase();
   const entry = db[addr];
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
@@ -72,7 +73,7 @@ router.get("/:address", (req, res) => {
 // PUT /api/registries/:address — update metadata (auto-create if not exists)
 router.put("/:address", (req, res) => {
   const db = readDB();
-  const addr = req.params.address as string;
+  const addr = (req.params.address as string).toLowerCase();
 
   if (!db[addr]) {
     db[addr] = makeDefaultEntry();
@@ -92,7 +93,7 @@ router.put("/:address", (req, res) => {
 // GET /api/registries/:address/announcements
 router.get("/:address/announcements", (req, res) => {
   const db = readDB();
-  const addr = req.params.address as string;
+  const addr = (req.params.address as string).toLowerCase();
   const entry = db[addr];
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
@@ -104,7 +105,7 @@ router.get("/:address/announcements", (req, res) => {
 // POST /api/registries/:address/announcements
 router.post("/:address/announcements", (req, res) => {
   const db = readDB();
-  const addr = req.params.address as string;
+  const addr = (req.params.address as string).toLowerCase();
   if (!db[addr]) {
     res.status(404).json({ error: "Registry not found" });
     return;
@@ -131,7 +132,7 @@ router.post("/:address/announcements", (req, res) => {
 // DELETE /api/registries/:address/announcements/:id
 router.delete("/:address/announcements/:id", (req, res) => {
   const db = readDB();
-  const addr = req.params.address as string;
+  const addr = (req.params.address as string).toLowerCase();
   const annId = req.params.id as string;
   if (!db[addr]) {
     res.status(404).json({ error: "Registry not found" });
@@ -152,7 +153,7 @@ router.delete("/:address/announcements/:id", (req, res) => {
 // GET /api/registries/:address/ca-guides
 router.get("/:address/ca-guides", (req, res) => {
   const db = readDB();
-  const addr = req.params.address as string;
+  const addr = (req.params.address as string).toLowerCase();
   const entry = db[addr];
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
@@ -164,7 +165,7 @@ router.get("/:address/ca-guides", (req, res) => {
 // PUT /api/registries/:address/ca-guides/:caHash
 router.put("/:address/ca-guides/:caHash", (req, res) => {
   const db = readDB();
-  const addr = req.params.address as string;
+  const addr = (req.params.address as string).toLowerCase();
   const caHash = req.params.caHash as string;
   if (!db[addr]) {
     res.status(404).json({ error: "Registry not found" });
@@ -191,7 +192,7 @@ router.put("/:address/ca-guides/:caHash", (req, res) => {
 // DELETE /api/registries/:address/ca-guides/:caHash
 router.delete("/:address/ca-guides/:caHash", (req, res) => {
   const db = readDB();
-  const addr = req.params.address as string;
+  const addr = (req.params.address as string).toLowerCase();
   const caHash = req.params.caHash as string;
   if (!db[addr]) {
     res.status(404).json({ error: "Registry not found" });

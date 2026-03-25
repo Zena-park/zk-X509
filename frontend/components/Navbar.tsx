@@ -16,7 +16,7 @@ const defaultNavLinks = [
 
 /** Extract registry address from a /registry/[address]/... path, or null */
 function extractRegistryScope(pathname: string): string | null {
-  const match = pathname.match(/^\/registry\/(0x[a-fA-F0-9]+)/);
+  const match = pathname.match(/^\/registry\/(0x[a-fA-F0-9]{40})/);
   return match ? match[1] : null;
 }
 
