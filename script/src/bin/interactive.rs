@@ -200,9 +200,16 @@ fn main() {
                 .find(|(e, _)| e.serial_hex == entry.serial_hex);
             match matched {
                 Some((kc_entry, kc_id)) => {
-                    let cert = kc_entry.cert_der.clone().unwrap_or_else(|| {
-                        kc_id.identity.certificate().unwrap().to_der()
-                    });
+                    let cert = match kc_entry.cert_der.clone() {
+                        Some(der) => der,
+                        None => match kc_id.identity.certificate() {
+                            Ok(c) => c.to_der(),
+                            Err(e) => {
+                                println!("  ✗ Failed to read certificate from Keychain: {}", e);
+                                return;
+                            }
+                        },
+                    };
                     println!("  ✓ Using macOS Keychain (no password needed)");
                     println!("  ✓ Private key stays in Secure Enclave / Keychain");
                     keychain_identity = Some(kc_id.clone());

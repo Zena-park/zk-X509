@@ -150,12 +150,16 @@ mod tests {
 
     #[test]
     fn test_leaf_hash_deterministic() {
-        let certs = scan_ca_certs();
+        let mut certs = scan_ca_certs();
         if certs.is_empty() {
             return;
         }
         // Re-scan and verify hashes are identical
-        let certs2 = scan_ca_certs();
+        let mut certs2 = scan_ca_certs();
+        // Sort by path to ensure deterministic ordering (read_dir order is not guaranteed)
+        certs.sort_by(|a, b| a.path.cmp(&b.path));
+        certs2.sort_by(|a, b| a.path.cmp(&b.path));
+        assert_eq!(certs.len(), certs2.len(), "Scan count should be stable");
         for (a, b) in certs.iter().zip(certs2.iter()) {
             assert_eq!(a.leaf_hash, b.leaf_hash, "Leaf hash should be deterministic");
         }

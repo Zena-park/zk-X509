@@ -196,6 +196,15 @@ fn load_cert_and_key(
         (StatusCode::BAD_REQUEST, format!("Invalid cert_index: {}", cert_index))
     })?;
 
+    // Keychain-based signing is not yet supported via the HTTP API
+    #[cfg(target_os = "macos")]
+    if entry.source == zk_x509_script::keychain::CertSource::Keychain {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Keychain signing is not yet supported via the HTTP API. Use the interactive CLI instead.".to_string(),
+        ));
+    }
+
     let cert_der = std::fs::read(&entry.cert_path)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Read cert: {}", e)))?;
     let key_raw = std::fs::read(&entry.key_path)

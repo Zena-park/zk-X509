@@ -94,7 +94,7 @@ async function sha256(data: Uint8Array): Promise<Uint8Array> {
 
 /** Read a DER tag+length and return [valueOffset, valueLength, totalLength]. */
 function derReadTL(data: Uint8Array, offset: number): [number, number, number] {
-  if (offset >= data.length) throw new Error("DER: unexpected end");
+  if (offset + 1 >= data.length) throw new Error("DER: unexpected end");
   let lenByte = data[offset + 1];
   let valueOffset: number;
   let valueLength: number;
@@ -106,6 +106,8 @@ function derReadTL(data: Uint8Array, offset: number): [number, number, number] {
   } else {
     // Long form
     const numLenBytes = lenByte & 0x7f;
+    if (offset + 2 + numLenBytes > data.length)
+      throw new Error("DER: length bytes exceed data");
     valueOffset = offset + 2 + numLenBytes;
     valueLength = 0;
     for (let i = 0; i < numLenBytes; i++) {
@@ -114,6 +116,8 @@ function derReadTL(data: Uint8Array, offset: number): [number, number, number] {
   }
 
   const totalLength = valueOffset - offset + valueLength;
+  if (valueOffset + valueLength > data.length)
+    throw new Error("DER: value exceeds data bounds");
   return [valueOffset, valueLength, totalLength];
 }
 
@@ -161,7 +165,7 @@ function extractSpkiDer(certDer: Uint8Array): Uint8Array {
   pos = derSkip(certDer, pos);
 
   // subjectPublicKeyInfo — this is what we need
-  const [spkiValueOff, spkiValueLen, spkiTotalLen] = derReadTL(certDer, pos);
+  const [, , spkiTotalLen] = derReadTL(certDer, pos);
   return certDer.slice(pos, pos + spkiTotalLen);
 }
 

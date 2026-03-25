@@ -321,7 +321,7 @@ pub mod macos_keychain {
                 .unwrap_or_default();
             match curve_oid.as_str() {
                 OID_PRIME256V1 => Ok(Algorithm::ECDSASignatureDigestX962SHA256),
-                OID_SECP384R1 => Ok(Algorithm::ECDSASignatureDigestX962SHA384),
+                OID_SECP384R1 => Ok(Algorithm::ECDSASignatureDigestX962SHA256),
                 _ => Err(format!("Unsupported EC curve: {}", curve_oid)),
             }
         } else if alg_oid == OID_RSA_ENCRYPTION {

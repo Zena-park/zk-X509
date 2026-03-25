@@ -91,11 +91,9 @@ CA certificates are publicly available at:
 - **Gist**: https://gist.github.com/Zena-park/19d7507e8547b61b1466c286b241fcbb
 - **Local**: `data/ca-certs/` (DER format, git tracked)
 
-The gist contains PEM-encoded certificates. The local directory contains
-DER-encoded certificates. Both are equivalent; the CLI reads from
-`data/ca-certs/` locally and falls back to gist download if not present.
-
-When the repo goes public, `data/ca-certs/` will be the primary source.
+The gist contains PEM-encoded certificates for reference. The local directory
+contains DER-encoded certificates. The CLI reads from `data/ca-certs/` locally
+only — no automatic gist download is implemented.
 
 ## Scope
 

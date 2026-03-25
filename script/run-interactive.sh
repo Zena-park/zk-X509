@@ -2,13 +2,13 @@
 # Build, codesign (macOS), and run the interactive CLI.
 # Usage: ./script/run-interactive.sh
 
-set -e
+set -eo pipefail
 
 BINARY="target/release/interactive"
 
-# Build (suppress build.rs info messages, keep errors)
+# Build (suppress warnings from output but preserve cargo's exit status)
 echo "Building interactive CLI..."
-cargo build --release --bin interactive 2>&1 | grep -v "^warning:" || true
+cargo build --release --bin interactive 2>&1 | { grep -v "^warning:" || true; }
 
 # macOS: codesign for Keychain access
 # Tries Developer ID first (trusted by macOS), falls back to ad-hoc
