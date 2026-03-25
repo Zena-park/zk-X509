@@ -42,7 +42,7 @@ contract IdentityRegistryTest is Test {
 
     function setUp() public {
         mockVerifier = new MockSP1Verifier();
-        registry = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1);
+        registry = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0);
         registry.updateCaMerkleRoot(CA_MERKLE_ROOT);
     }
 
@@ -109,7 +109,7 @@ contract IdentityRegistryTest is Test {
     function test_RevertProofTooOld() public {
         vm.warp(1700000000);
         uint64 oldTimestamp = uint64(block.timestamp - 2 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(registry), bytes32(0));
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -121,7 +121,7 @@ contract IdentityRegistryTest is Test {
 
     function test_RevertProofInFuture() public {
         uint64 futureTimestamp = uint64(block.timestamp + 1 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, futureTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(registry), bytes32(0));
+        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, futureTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -297,7 +297,7 @@ contract IdentityRegistryTest is Test {
 
     function test_MultiWallet_TwoSlots() public {
         // Deploy a multi-wallet registry (MAX_WALLETS_PER_CERT = 3)
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Alice registers wallet index 0
@@ -318,7 +318,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_RevertIndexOutOfRange() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 2);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 2, 0);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Index 2 is out of range for max=2 (valid: 0, 1)
@@ -330,7 +330,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_SameAddressTwoSlots_Reverts() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Alice registers slot 0
@@ -348,7 +348,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_SameNullifierTwice_Reverts() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xC000));
@@ -364,7 +364,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_ReRegister() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xD000));
@@ -379,7 +379,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_RevokeOneSlot_OtherUnaffected() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xE000));
@@ -399,7 +399,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_BoundaryIndices() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3);
+        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Index 0 (first)
@@ -416,7 +416,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_MaxZero_AllReverts() public {
-        IdentityRegistry zeroReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 0);
+        IdentityRegistry zeroReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 0, 0);
         zeroReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Any index reverts (0 >= 0)
@@ -433,7 +433,7 @@ contract IdentityRegistryTest is Test {
         vm.warp(1700000000);
         // Cert expires in 1 year
         uint64 notAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0));
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -444,7 +444,7 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_NotVerifiedAfterExpiry() public {
         vm.warp(1700000000);
         uint64 notAfter = uint64(block.timestamp + 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0));
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -458,7 +458,7 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_CanReRegisterAfterExpiry() public {
         vm.warp(1700000000);
         uint64 notAfter = uint64(block.timestamp + 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0));
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -470,7 +470,7 @@ contract IdentityRegistryTest is Test {
         // Alice can register with a new cert (different nullifier)
         bytes32 nullifier2 = bytes32(uint256(0xFEED));
         uint64 newNotAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
-        bytes memory pv2 = abi.encode(nullifier2, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), newNotAfter, uint64(block.chainid), address(registry), bytes32(0));
+        bytes memory pv2 = abi.encode(nullifier2, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), newNotAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         registry.register(hex"1234", pv2);
@@ -481,7 +481,7 @@ contract IdentityRegistryTest is Test {
         vm.warp(1700000000);
         // Certificate expired 1 hour ago
         uint64 expiredNotAfter = uint64(block.timestamp - 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), expiredNotAfter, uint64(block.chainid), address(registry), bytes32(0));
+        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), expiredNotAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         vm.expectRevert(
@@ -688,7 +688,7 @@ contract IdentityRegistryTest is Test {
         bytes32 batchRoot = registry.caMerkleRoot();
 
         // Compare: deploy fresh and add one-by-one
-        IdentityRegistry fresh = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1);
+        IdentityRegistry fresh = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0);
         fresh.addCA(ca1);
         fresh.addCA(ca2);
         fresh.addCA(ca3);

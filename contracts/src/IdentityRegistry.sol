@@ -14,7 +14,10 @@ struct PublicValues {
     uint64 chainId;
     address registryAddress;
     bytes32 crlMerkleRoot;
-    // remaining fields (disclosure hashes etc.) are ignored by the contract
+    bytes32 countryHash;
+    bytes32 orgHash;
+    bytes32 orgUnitHash;
+    bytes32 commonNameHash;
 }
 
 /// @title IdentityRegistry
@@ -83,6 +86,11 @@ contract IdentityRegistry {
     /// @notice Max wallets per certificate (1 = strict 1:1, N = multi-wallet).
     uint32 public immutable MAX_WALLETS_PER_CERT;
 
+    /// @notice Minimum disclosure mask required for registration.
+    ///         Bits: 0=Country, 1=Org, 2=OrgUnit, 3=CN.
+    ///         0x00 = no disclosure required, 0x01 = country required, etc.
+    uint8 public immutable MIN_DISCLOSURE_MASK;
+
     // ============ Events ============
 
     event UserRegistered(address indexed user, bytes32 nullifier);
@@ -124,6 +132,7 @@ contract IdentityRegistry {
     error DuplicateCaHash(bytes32 caHash);
     error CaIndexOutOfBounds(uint256 index, uint256 length);
     error CaIndicesNotDescending(uint256 current, uint256 previous);
+    error InsufficientDisclosure(uint8 proofMask, uint8 requiredMask);
 
     // ============ Modifiers ============
 
@@ -150,10 +159,12 @@ contract IdentityRegistry {
     /// @param _sp1Verifier Address of the SP1 verifier contract.
     /// @param _programVKey The verification key for the ZK X.509 SP1 program.
     /// @param _maxWallets Max wallets per certificate (1 for DAO/voting, N for DeFi).
-    constructor(address _sp1Verifier, bytes32 _programVKey, uint32 _maxWallets) {
+    /// @param _minDisclosureMask Minimum disclosure bitmask required (0x00 = none required).
+    constructor(address _sp1Verifier, bytes32 _programVKey, uint32 _maxWallets, uint8 _minDisclosureMask) {
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
         PROGRAM_V_KEY = _programVKey;
         MAX_WALLETS_PER_CERT = _maxWallets;
+        MIN_DISCLOSURE_MASK = _minDisclosureMask;
         owner = msg.sender;
     }
 
@@ -182,6 +193,18 @@ contract IdentityRegistry {
 
         if (crlMerkleRoot != bytes32(0)) {
             if (pv.crlMerkleRoot != crlMerkleRoot) revert InvalidCrlMerkleRoot(pv.crlMerkleRoot, crlMerkleRoot);
+        }
+
+        // Check minimum disclosure mask: each required bit must have a non-zero hash
+        if (MIN_DISCLOSURE_MASK != 0) {
+            uint8 actualMask = 0;
+            if (pv.countryHash != bytes32(0)) actualMask |= 0x01;
+            if (pv.orgHash != bytes32(0)) actualMask |= 0x02;
+            if (pv.orgUnitHash != bytes32(0)) actualMask |= 0x04;
+            if (pv.commonNameHash != bytes32(0)) actualMask |= 0x08;
+            if ((actualMask & MIN_DISCLOSURE_MASK) != MIN_DISCLOSURE_MASK) {
+                revert InsufficientDisclosure(actualMask, MIN_DISCLOSURE_MASK);
+            }
         }
 
         nullifier = pv.nullifier;

@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {IdentityRegistry} from "./IdentityRegistry.sol";
+import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
+
+/// @title RegistryFactory
+/// @notice Factory for deploying independent IdentityRegistry instances.
+/// @dev Each deployed registry is fully independent with its own owner,
+///      CA list, and configuration. The factory shares the SP1 verifier
+///      and ZK program verification key across all registries.
+contract RegistryFactory {
+    /// @notice The shared SP1 verifier contract.
+    ISP1Verifier public immutable SP1_VERIFIER;
+
+    /// @notice The shared ZK program verification key.
+    bytes32 public immutable PROGRAM_V_KEY;
+
+    /// @notice All deployed registries (for enumeration).
+    address[] public registries;
+
+    /// @notice Quick lookup: is this address a registry deployed by this factory?
+    mapping(address => bool) public isRegistry;
+
+    /// @notice Metadata for each registry.
+    struct RegistryInfo {
+        address owner;
+        string name;
+        uint32 maxWallets;
+        uint8 minDisclosureMask;
+        uint256 createdAt;
+    }
+
+    /// @notice Registry address → metadata.
+    mapping(address => RegistryInfo) public registryInfo;
+
+    // ============ Events ============
+
+    event RegistryCreated(
+        address indexed registry,
+        address indexed owner,
+        string name,
+        uint32 maxWallets,
+        uint8 minDisclosureMask
+    );
+
+    // ============ Errors ============
+
+    error ZeroMaxWallets();
+    error InvalidDisclosureMask();
+
+    // ============ Constructor ============
+
+    /// @param _sp1Verifier Address of the shared SP1 verifier contract.
+    /// @param _programVKey The shared ZK program verification key.
+    constructor(address _sp1Verifier, bytes32 _programVKey) {
+        SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
+        PROGRAM_V_KEY = _programVKey;
+    }
+
+    // ============ External Functions ============
+
+    /// @notice Deploy a new IdentityRegistry with the given configuration.
+    /// @param name Human-readable name for the registry (e.g., "DAO Voting").
+    /// @param maxWallets Max wallets per certificate (1 = strict, N = multi-wallet).
+    /// @param minDisclosureMask Minimum disclosure bitmask (0x00 = none required).
+    /// @return registry The address of the newly deployed registry.
+    function createRegistry(
+        string calldata name,
+        uint32 maxWallets,
+        uint8 minDisclosureMask
+    ) external returns (address registry) {
+        if (maxWallets == 0) revert ZeroMaxWallets();
+        if (minDisclosureMask > 0x0F) revert InvalidDisclosureMask();
+
+        IdentityRegistry newRegistry = new IdentityRegistry(
+            address(SP1_VERIFIER),
+            PROGRAM_V_KEY,
+            maxWallets,
+            minDisclosureMask
+        );
+
+        // Transfer ownership to the caller
+        newRegistry.transferOwnership(msg.sender);
+
+        registry = address(newRegistry);
+        registries.push(registry);
+        isRegistry[registry] = true;
+        registryInfo[registry] = RegistryInfo({
+            owner: msg.sender,
+            name: name,
+            maxWallets: maxWallets,
+            minDisclosureMask: minDisclosureMask,
+            createdAt: block.timestamp
+        });
+
+        emit RegistryCreated(registry, msg.sender, name, maxWallets, minDisclosureMask);
+    }
+
+    // ============ View Functions ============
+
+    /// @notice Get the total number of deployed registries.
+    function getRegistryCount() external view returns (uint256) {
+        return registries.length;
+    }
+
+    /// @notice Get all deployed registry addresses.
+    function getRegistries() external view returns (address[] memory) {
+        return registries;
+    }
+}
