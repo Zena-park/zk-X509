@@ -96,14 +96,33 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-출력에서 `IdentityRegistry:` 주소를 저장:
+출력 예시:
+```
+SP1VerifierGroth16 (v6.0.0): 0x5FbDB2315678afecb367f032d93F642f64180aa3
+RegistryFactory: 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+Beacon: 0x9f1ac54BEF0DD2f6f3462EA0fa94fC62300d3a8e
+IdentityRegistry (proxy): 0xbf9fBFf01664500A33080Da5d437028b07DFcC55
+CA Merkle Root: not set (use updateCaMerkleRoot after deployment)
+```
+
+배포된 주소를 `frontend/.env.local`에 저장:
+```env
+NEXT_PUBLIC_RPC_URL=http://localhost:8545
+NEXT_PUBLIC_CHAIN_ID=31337
+NEXT_PUBLIC_REGISTRY_ADDRESS=0xbf9fBFf01664500A33080Da5d437028b07DFcC55
+NEXT_PUBLIC_FACTORY_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
+```
+
+CLI에서 사용할 주소:
 ```bash
-export REGISTRY_ADDR=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+export REGISTRY_ADDR=0xbf9fBFf01664500A33080Da5d437028b07DFcC55
 ```
 
 > `MAX_WALLETS_PER_CERT`: 인증서당 최대 지갑 수 (기본값 1, 배포 후 변경 불가).
 >
-> 실제 SP1VerifierGroth16이 배포됩니다. Production Groth16 proof가 필요합니다 (Docker 필요).
+> 컨트랙트는 Beacon Proxy 패턴으로 배포됩니다. RegistryFactory를 통해 추가 Registry를 생성할 수 있습니다.
 
 ### Step 3: 관리자 — CA 등록 (on-chain)
 

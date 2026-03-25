@@ -9,6 +9,8 @@ remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
 ]
 
+exclude_paths = ["lib/openzeppelin-contracts/fv/"]
+
 [lint]
 exclude_lints = ["screaming-snake-case-immutable", "unwrapped-modifier-logic", "mixed-case-variable"]
 
