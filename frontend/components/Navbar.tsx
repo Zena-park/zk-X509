@@ -8,10 +8,9 @@ import { useWallet } from "@/lib/wallet";
 
 const defaultNavLinks = [
   { href: "/", label: "Home" },
-  { href: "/create", label: "Platform" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/admin", label: "Admin Console" },
-  { href: "/faq", label: "Knowledge Base" },
+  { href: "/dashboard", label: "Explore" },
+  { href: "/admin", label: "My Services" },
+  { href: "/faq", label: "FAQ" },
 ];
 
 /** Extract registry address from a /registry/[address]/... path, or null */
