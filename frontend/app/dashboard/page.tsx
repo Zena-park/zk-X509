@@ -593,12 +593,12 @@ function RegistrySection({
                     {maskToLabels(reg.minDisclosureMask)}
                   </p>
                 </div>
-                <div>
-                  <span className="text-on-surface-variant text-xs">CAs</span>
-                  <p className="text-on-surface font-headline font-bold">
-                    {reg.caCount}
+                <Link href={`/registry/${reg.address}`} className="hover:text-tertiary transition-colors">
+                  <span className="text-on-surface-variant text-xs">Required CAs</span>
+                  <p className="text-on-surface font-headline font-bold underline decoration-dotted underline-offset-2">
+                    {reg.caCount} →
                   </p>
-                </div>
+                </Link>
               </div>
 
               {/* Connection info */}
@@ -647,7 +647,7 @@ function RegistrySection({
                   ) : (
                     <span className="inline-flex items-center gap-1.5 text-on-surface-variant text-xs font-headline">
                       <Shield className="w-4 h-4" />
-                      Not Verified
+                      Not Registered
                     </span>
                   )
                 ) : (
@@ -661,7 +661,7 @@ function RegistrySection({
                   href={`/registry/${reg.address}/dashboard`}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary/10 text-primary font-headline font-bold text-xs rounded-full hover:bg-primary hover:text-surface transition-all group/btn shrink-0"
                 >
-                  {reg.verified ? "View Details" : "Verify"}
+                  {reg.verified ? "View Details" : "Register"}
                   <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-0.5 transition-transform" />
                 </Link>
               </div>
