@@ -54,6 +54,9 @@ atty = "0.2"
 aria = "0.2.0-rc.1"
 ureq = { version = "3.3.0", features = ["json"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
 [dev-dependencies]
 tempfile = "3"
 
