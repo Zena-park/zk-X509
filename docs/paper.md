@@ -61,7 +61,7 @@ zk-X509 is designed to work with **any X.509 certificate from any CA worldwide**
 
 **Primary validation target: Korean NPKI.** Our implementation is validated against the Korean National Public Key Infrastructure (NPKI) as a concrete case study. Korean digital certificates (공인인증서) are issued by authorized CAs such as the Korea Financial Telecommunications and Clearings Institute (금융결제원), employing a 3-level certificate chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 and SHA-256 or SHA-1 signatures. Private keys use PBES2 encryption with PBKDF2-HMAC-SHA1 and SEED-CBC or AES-256-CBC ciphers.
 
-**Multi-national deployment.** The architecture supports simultaneous whitelisting of CAs from multiple jurisdictions. For example, a single `IdentityRegistry` deployment could accept certificates from Korean NPKI (~20M users), Estonian eID (~1.3M e-residents), German eID, and corporate PKI systems—each user proving identity under their national CA without any cross-border credential issuance. The `caMerkleRoot` in the public values attests that the certificate was issued by one of the whitelisted CAs without revealing which one, preserving jurisdictional privacy. Applications requiring jurisdiction-specific logic can request the user to additionally disclose `countryHash` via selective disclosure (Section 3.10).
+**Multi-national deployment.** The architecture supports simultaneous whitelisting of CAs from multiple jurisdictions. For example, a single `IdentityRegistry` deployment could accept certificates from Korean NPKI (~20M users), Estonian eID (~1.3M e-residents), German eID, and corporate PKI systems—each user proving identity under their national CA without any cross-border credential issuance. The `caMerkleRoot` in the public values attests that the certificate was issued by one of the whitelisted CAs without revealing which one, preserving jurisdictional privacy. Applications requiring jurisdiction-specific logic can request the user to additionally disclose `countryHash` via selective disclosure (Section 3.11).
 
 ### 1.5 Contributions
 
@@ -266,7 +266,7 @@ Step 4.  Z:        // Parse and validate user certificate
                    caRootHash ← H(pk_root)
                    notAfter ← cert_parsed.notAfter
 
-                   // Verify CA Merkle membership (Section 3.11)
+                   // Verify CA Merkle membership (Section 3.12)
                    Assert: MerkleVerify(caRootHash, ca_merkle_proof, ca_merkle_root)
 
                    // Selective disclosure (salted with private-key-derived salt)
@@ -335,7 +335,7 @@ struct PublicValuesStruct {
 }
 ```
 
-This struct is ABI-encoded using `alloy-sol-types` in Rust and ABI-decoded in Solidity, ensuring binary compatibility across the stack. The `caMerkleRoot` field replaces a direct `caRootHash` with the Merkle root of the whitelisted CA set, hiding which specific CA issued the certificate (Section 3.11). The `walletIndex` field enables configurable multi-wallet registration (Section 3.6). The `notAfter` field enables automatic identity expiry (Section 3.9). The `chainId` and `registryAddress` fields enable cross-chain replay prevention and cross-DApp unlinkability — each deployment produces different nullifiers. The `crlMerkleRoot` field commits the CRL Sorted Merkle Tree root, enabling on-chain validation of revocation checking (`bytes32(0)` disables CRL enforcement). The four disclosure hash fields enable selective attribute disclosure (Section 3.10) — each field is either the SHA-256 hash of the corresponding certificate attribute salted with a private-key-derived salt (when disclosed) or zero (when hidden), controlled by the user's `disclosure_mask`.
+This struct is ABI-encoded using `alloy-sol-types` in Rust and ABI-decoded in Solidity, ensuring binary compatibility across the stack. The `caMerkleRoot` field replaces a direct `caRootHash` with the Merkle root of the whitelisted CA set, hiding which specific CA issued the certificate (Section 3.12). The `walletIndex` field enables configurable multi-wallet registration (Section 3.6). The `notAfter` field enables automatic identity expiry (Section 3.9). The `chainId` and `registryAddress` fields enable cross-chain replay prevention and cross-DApp unlinkability — each deployment produces different nullifiers. The `crlMerkleRoot` field commits the CRL Sorted Merkle Tree root, enabling on-chain validation of revocation checking (`bytes32(0)` disables CRL enforcement). The four disclosure hash fields enable selective attribute disclosure (Section 3.11) — each field is either the SHA-256 hash of the corresponding certificate attribute salted with a private-key-derived salt (when disclosed) or zero (when hidden), controlled by the user's `disclosure_mask`.
 
 ### 3.4 ZK Guest Program
 
@@ -355,7 +355,7 @@ The program receives twelve inputs via SP1 stdin:
 | `wallet_index` | `u32` | Public (via output) | Wallet slot index (0-based) |
 | `max_wallets` | `u32` | Private | Max wallets per cert (enforced in circuit) |
 | `disclosure_mask` | `u8` | Private | Bitmask: which cert fields to reveal (bit 0=C, 1=O, 2=OU, 3=CN) |
-| `ca_merkle_proof` | `Vec<[u8; 32]>` | Private | Merkle proof for CA membership (Section 3.11) |
+| `ca_merkle_proof` | `Vec<[u8; 32]>` | Private | Merkle proof for CA membership (Section 3.12) |
 | `ca_merkle_root` | `[u8; 32]` | Public (via output) | Expected Merkle root of whitelisted CA set |
 
 The circuit asserts `wallet_index < max_wallets` before proceeding. All private inputs remain hidden within the ZK proof. The thirteen public values committed are: nullifier, caMerkleRoot, timestamp, registrant, walletIndex, notAfter, chainId, registryAddress, crlMerkleRoot, and four selective disclosure hashes (countryHash, orgHash, orgUnitHash, commonNameHash — zero when not disclosed).
@@ -833,7 +833,7 @@ Game Exp_A^transfer:
 
 $$\Pr[\text{Exp}_{\mathcal{A}}^{\text{transfer}} = 1] \leq \text{negl}(\lambda)$$
 
-**Scope.** This definition captures *involuntary* transfer only. If the certificate holder voluntarily shares their private key or pre-computed signatures, transfer becomes possible — this is a fundamental limitation shared by all credential systems (Section 7.5).
+**Scope.** This definition captures *involuntary* transfer only. If the certificate holder voluntarily shares their private key or pre-computed signatures, transfer becomes possible — this is a fundamental limitation shared by all credential systems (Section 5.5.5).
 
 ### 5.4 Security Proofs
 
@@ -873,7 +873,7 @@ $$\left| \Pr[b' = b] - \frac{1}{2} \right| \leq \text{Adv}_{\mathcal{A}}^{\text{
 
 This is strictly stronger than a public-key-based nullifier ($\mathcal{H}(\text{cert.pk} \| \text{wallet\_index})$), which would be computable by anyone possessing the certificate. $\square$
 
-**Caveat.** In the current implementation, `caMerkleRoot` replaces the direct `caRootHash`, so on-chain observers learn only that the certificate was issued by *one of* the whitelisted CAs — the specific CA is hidden by the Merkle membership proof (Section 3.11). This significantly enlarges the anonymity set in multi-national deployments. Furthermore, the signature-based nullifier ensures that even an adversary who independently obtains a user's certificate (which contains the public key) cannot compute the nullifier — the private key is required to produce the deterministic `nullifier_sig`.
+**Caveat.** In the current implementation, `caMerkleRoot` replaces the direct `caRootHash`, so on-chain observers learn only that the certificate was issued by *one of* the whitelisted CAs — the specific CA is hidden by the Merkle membership proof (Section 3.12). This significantly enlarges the anonymity set in multi-national deployments. Furthermore, the signature-based nullifier ensures that even an adversary who independently obtains a user's certificate (which contains the public key) cannot compute the nullifier — the private key is required to produce the deterministic `nullifier_sig`.
 
 **Theorem 7 (Cross-Service Unlinkability).** For any two IdentityRegistry contracts $C_1$ and $C_2$ deployed at different addresses, an adversary observing the on-chain nullifiers $\nu_1 \in C_1$ and $\nu_2 \in C_2$ cannot determine whether $\nu_1$ and $\nu_2$ were generated by the same user or by different users, except with negligible advantage.
 
@@ -1053,7 +1053,7 @@ This represents a strictly stronger security model than the typical approach of 
 | Certificate attributes (C, O, OU, CN) | User-controlled | Disclosed only if user sets disclosure_mask bit |
 | Identity expiry | Automatic | notAfter committed; verifiedUntil expires on-chain |
 | Private key | Never enters zkVM | Signature-based ownership; OS keychain isolation |
-| CA identity | Hidden | caMerkleRoot hides which CA; Merkle membership proof (Section 3.11) |
+| CA identity | Hidden | caMerkleRoot hides which CA; Merkle membership proof (Section 3.12) |
 | Wallet-to-certificate link | Unlinkable | Theorem 2 |
 | Proof-to-address binding | Enforced | Theorem 4 |
 | Double registration | Prevented | Theorem 3 |
