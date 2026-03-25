@@ -21,7 +21,8 @@ export function Navbar() {
   return (
     <nav className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl border-b border-outline-variant/20 flex justify-between items-center px-8 h-20 shadow-2xl shadow-tertiary/5">
       <div className="flex items-center gap-8">
-        <Link href="/" className="text-2xl font-bold tracking-tighter text-primary font-headline">
+        <Link href="/" className="flex items-center gap-2 text-2xl font-bold tracking-tighter text-primary font-headline">
+          <img src="/logo.png" alt="zk-X509" className="w-8 h-8" />
           ZK-X509
         </Link>
         <div className="hidden md:flex gap-6 items-center">
