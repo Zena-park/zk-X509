@@ -443,7 +443,7 @@ State Variables:
   paused            : bool                          — Emergency stop flag
   previousCaMerkleRoot : bytes32                    — Previous CA Merkle root (for grace period)
   caMerkleRootUpdatedAt : uint256                   — Timestamp of last CA root update
-  caRootGracePeriod : uint256                       — Grace period allowing old CA root (default 1 hour)
+  caRootGracePeriod : uint256                       — Grace period allowing old CA root (default 24 hours)
   minDisclosureMask : uint8 (immutable)             — Minimum required disclosure fields
 ```
 
@@ -453,7 +453,7 @@ The `maxWalletsPerCert` parameter is set at deployment, enabling configurable re
 
 1. **Registrant binding**: `registrant == msg.sender` — prevents front-running
 2. **Timestamp freshness**: `block.timestamp - proofTimestamp ≤ maxProofAge` (adjustable: 5 min to 24 hours, default 1 hour)
-3. **CA Merkle root match**: `caMerkleRoot == contract.caMerkleRoot`
+3. **CA Merkle root match**: `caMerkleRoot == contract.caMerkleRoot` or `caMerkleRoot == previousCaMerkleRoot` within `caRootGracePeriod` (default 24 hours) — allows proofs generated before a CA list update to remain valid during the grace window
 4. **Wallet index range**: `walletIndex < maxWalletsPerCert` — enforces multi-wallet limit
 5. **Certificate not expired**: `notAfter >= block.timestamp` — rejects already-expired certificates
 6. **Chain ID match**: `chainId == block.chainid` — prevents cross-chain replay
