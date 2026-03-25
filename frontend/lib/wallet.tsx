@@ -139,8 +139,21 @@ export function WalletProvider({ children, registryOverride }: { children: React
     };
   }, []);
 
+  // Auto-connect: restore previously connected wallet on page load
+  useEffect(() => {
+    if (!window.ethereum) return;
+    (async () => {
+      try {
+        const accounts = await window.ethereum!.request({ method: "eth_accounts" });
+        if (accounts?.length > 0) setAccount(accounts[0]);
+      } catch (e) {
+        console.error("Auto-connect failed:", e);
+      }
+    })();
+  }, []);
+
   async function connect() {
-    if (!window.ethereum) { alert("MetaMask를 설치해주세요."); return; }
+    if (!window.ethereum) { alert("Please install MetaMask."); return; }
     try {
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       if (accounts?.length > 0) setAccount(accounts[0]);

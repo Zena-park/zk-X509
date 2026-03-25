@@ -219,11 +219,11 @@ export default function LandingPage() {
             </div>
 
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-headline font-bold tracking-tighter text-primary leading-[1.05] mb-8 max-w-4xl mx-auto">
-              Empower Wallet Addresses with the{" "}
+              Bridging{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-tertiary to-secondary">
-                Exact Level of Trust
+                Institutional Trust
               </span>{" "}
-              Your Service Needs.
+              On-chain — Privately.
             </h1>
 
             <p className="text-base md:text-lg text-on-surface-variant max-w-2xl mx-auto leading-relaxed mb-12">
