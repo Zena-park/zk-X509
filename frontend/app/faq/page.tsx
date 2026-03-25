@@ -124,6 +124,16 @@ const faqItems = [
     answer:
       "Yes. Your certificate's private key never leaves your local machine and is never included in the ZK proof. The local prover uses your OS keychain to generate a one-time signature that proves key ownership. This signature is verified inside the ZK circuit, but the private key itself is never exposed — not even to the prover's process memory. After proof generation, only the ZK proof (which reveals nothing about the key) is sent on-chain.",
   },
+  {
+    question: "Does my certificate contain personal information like my name or ID number?",
+    answer:
+      "Yes — X.509 certificates contain personal information. Korean NPKI certificates, for example, include your real name and a unique identifier in the Common Name field (e.g., 'Hong Gildong(0003041200...)'), along with the issuing organization. However, zk-X509 ensures that none of this information ever reaches the blockchain. The certificate is processed entirely inside the ZK circuit — a sealed 'black box.' The blockchain only receives a nullifier (a random-looking hash) and the verification result. Your name, identifier, organization, and all other personal details remain completely hidden. With Selective Disclosure, you can optionally reveal specific attributes (e.g., 'Country: KR') while keeping everything else private.",
+  },
+  {
+    question: "Is Delegated Proving (cloud-based proof generation) safe even if my certificate is leaked?",
+    answer:
+      "Yes, it is safe by design. There are three layers of defense: (1) Certificate vs. Private Key separation — the certificate file (.der) contains only public information (name, public key, validity). Without the private key (which is password-encrypted), no one can generate the required signature. (2) Wallet-bound signatures — the ownership signature includes your specific wallet address, timestamp, and chain ID. Even if an attacker obtains your signature, they cannot redirect it to their own wallet — the ZK circuit will reject the mismatch. (3) Front-running protection — the smart contract verifies that the proof's embedded wallet address matches the transaction sender (msg.sender). An intercepted proof is useless to any other address. In Delegated Proving, you only send a one-time signature (not your private key) to the cloud prover. The prover generates the ZK proof but cannot forge your identity or register a different wallet.",
+  },
 ];
 
 export default function FAQPage() {
