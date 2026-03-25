@@ -67,29 +67,6 @@ export function Navbar() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Scoped registry indicator */}
-        {registryScope && (
-          <Link
-            href={`/registry/${registryScope}`}
-            className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-tertiary/10 border border-tertiary/20 rounded-full hover:bg-tertiary/20 transition-colors"
-          >
-            <span className="text-[10px] text-tertiary font-label font-bold uppercase tracking-widest">Scoped</span>
-            <span className="text-xs font-mono text-tertiary">
-              {registryScope.slice(0, 8)}...{registryScope.slice(-4)}
-            </span>
-          </Link>
-        )}
-
-        {/* Registry address (shown when not scoped) */}
-        {!registryScope && account && registryAddr && (
-          <div className="hidden lg:flex flex-col items-end mr-2">
-            <span className="text-[10px] text-on-surface-variant font-mono">Registry</span>
-            <span className="text-xs font-mono text-on-surface-variant">
-              {registryAddr.slice(0, 8)}...{registryAddr.slice(-4)}
-            </span>
-          </div>
-        )}
-
         {/* Network badge */}
         {account && chainName && (
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-container border border-outline-variant/20 rounded-full">
