@@ -37,7 +37,21 @@ pub fn scan_ca_certs() -> Vec<CaCertInfo> {
         scan_ca_dir(cwd_path, &mut entries);
     }
 
-    // Also try relative to cargo manifest (for tests)
+    // Try macOS .app bundle Resources directory
+    if entries.is_empty() {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(resources) = exe.parent()       // MacOS/
+                .and_then(|p| p.parent())                // Contents/
+                .map(|p| p.join("Resources/ca-certs"))
+            {
+                if resources.exists() {
+                    scan_ca_dir(&resources, &mut entries);
+                }
+            }
+        }
+    }
+
+    // Try relative to cargo manifest (for tests)
     if entries.is_empty() {
         if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
             let test_path = PathBuf::from(manifest).join("..").join(CA_CERT_DIR);
