@@ -1,3 +1,4 @@
+pub mod ca;
 pub mod keychain;
 pub mod merkle;
 pub mod npki;

@@ -207,14 +207,51 @@ fn main() {
         }
     };
 
-    // CA public key
-    let ca_path = prompt("  CA public key path [certs/ca_pub.der]: ");
-    let ca_path = if ca_path.is_empty() { "certs/ca_pub.der".to_string() } else { ca_path };
-    let ca_pub_key = match std::fs::read(&ca_path) {
-        Ok(d) => d,
-        Err(e) => { println!("  Failed to read CA: {}", e); return; }
+    // CA public key — auto-match from data/ca-certs/ directory
+    let ca_certs = zk_x509_script::ca::scan_ca_certs();
+    let ca_pub_key = if ca_certs.is_empty() {
+        println!("  ⚠ No CA certs in data/ca-certs/, manual input required");
+        let ca_path = prompt("  CA public key path [certs/ca_pub.der]: ");
+        let ca_path = if ca_path.is_empty() { "certs/ca_pub.der".to_string() } else { ca_path };
+        match std::fs::read(&ca_path) {
+            Ok(d) => { println!("  ✓ CA public key loaded"); d }
+            Err(e) => { println!("  Failed to read CA: {}", e); return; }
+        }
+    } else {
+        // Try on-chain filtering first
+        let on_chain_leaves = zk_x509_script::onchain::fetch_ca_leaves(&rpc_url, &registry_bytes).ok();
+        let leaves_ref = on_chain_leaves.as_deref();
+
+        match zk_x509_script::ca::find_issuer_ca(&cert_der, &ca_certs, leaves_ref) {
+            Some(idx) => {
+                let ca = &ca_certs[idx];
+                println!("  ✓ Auto-matched CA: {}", ca.subject);
+                if leaves_ref.is_some() {
+                    println!("    (on-chain verified)");
+                }
+                ca.spki_der.clone()
+            }
+            None => {
+                // Fallback: try without on-chain filter
+                match zk_x509_script::ca::find_issuer_ca(&cert_der, &ca_certs, None) {
+                    Some(idx) => {
+                        let ca = &ca_certs[idx];
+                        println!("  ✓ Auto-matched CA: {} (not yet on-chain)", ca.subject);
+                        ca.spki_der.clone()
+                    }
+                    None => {
+                        println!("  ⚠ Could not auto-match CA, manual input required");
+                        let ca_path = prompt("  CA public key path [certs/ca_pub.der]: ");
+                        let ca_path = if ca_path.is_empty() { "certs/ca_pub.der".to_string() } else { ca_path };
+                        match std::fs::read(&ca_path) {
+                            Ok(d) => { println!("  ✓ CA public key loaded"); d }
+                            Err(e) => { println!("  Failed to read CA: {}", e); return; }
+                        }
+                    }
+                }
+            }
+        }
     };
-    println!("  ✓ CA public key loaded");
 
     // Wallet address
     let registrant = prompt("  Your wallet address (0x...): ");
