@@ -55,6 +55,19 @@ fn main() {
     println!("  ╚══════════════════════════════════╝");
     println!();
 
+    // ── Pre-flight: Docker check ─────────────────────
+    if !is_docker_running() {
+        println!("  ✗ Docker is not running.");
+        println!("    Groth16 proof generation requires Docker Desktop.");
+        println!();
+        println!("    1. Start Docker Desktop");
+        println!("    2. Re-run: ./script/run-interactive.sh");
+        println!();
+        std::process::exit(1);
+    }
+    println!("  ✓ Docker detected");
+    println!();
+
     // ── Step 1: Settings ──────────────────────────────
     println!("  ── Step 1/5: Settings ──");
     println!();
@@ -366,7 +379,7 @@ fn main() {
             Err(e) => { println!("  ✗ Execution failed: {}", e); return; }
         }
     } else {
-        println!("  Generating Groth16 proof (this takes several minutes, Docker required)...");
+        println!("  Generating Groth16 proof (this takes several minutes)...");
         let pk = match client.setup(ZK_X509_ELF) {
             Ok(pk) => pk,
             Err(e) => { println!("  ✗ Prover setup failed: {}", e); return; }
@@ -415,6 +428,17 @@ fn main() {
     println!("  Done!");
 }
 
+/// Check if Docker is running (required for Groth16 proof generation).
+fn is_docker_running() -> bool {
+    std::process::Command::new("docker")
+        .arg("info")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Try to auto-match the CA that issued the user cert from the local CA directory.
 /// Prioritizes on-chain verified CAs, falls back to local-only match.
 fn auto_match_ca(
@@ -438,11 +462,23 @@ fn auto_match_ca(
     // Fallback: match without on-chain filter
     if let Some(idx) = zk_x509_script::ca::find_issuer_ca(user_cert_der, ca_certs, None) {
         let ca = &ca_certs[idx];
-        println!("  ⚠ Auto-matched CA: {} (NOT registered on-chain)", ca.subject);
-        println!("    Execute mode OK, but on-chain registration will fail.");
-        println!("    To request CA registration:");
-        println!("      → Email: zena@tokamak.network");
-        println!("      → GitHub: https://github.com/tokamak-network/zk-X509/issues");
+        println!();
+        println!("  ╔═══════════════════════════════════════════════════════════╗");
+        println!("  ║  ⚠ CA NOT REGISTERED ON-CHAIN                            ║");
+        println!("  ║                                                           ║");
+        println!("  ║  Matched CA: {}",  ca.subject);
+        println!("  ║                                                           ║");
+        println!("  ║  This CA is recognized locally but has not been           ║");
+        println!("  ║  registered on the on-chain registry by an admin.         ║");
+        println!("  ║                                                           ║");
+        println!("  ║  • Execute mode (test): OK                                ║");
+        println!("  ║  • Groth16 (production): WILL FAIL                        ║");
+        println!("  ║                                                           ║");
+        println!("  ║  Request CA registration:                                 ║");
+        println!("  ║    → Email: zena@tokamak.network                          ║");
+        println!("  ║    → GitHub: github.com/tokamak-network/zk-X509/issues    ║");
+        println!("  ╚═══════════════════════════════════════════════════════════╝");
+        println!();
         return Some(ca.spki_der.clone());
     }
 
