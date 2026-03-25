@@ -9,8 +9,8 @@ import { useWallet } from "@/lib/wallet";
 const defaultNavLinks = [
   { href: "/", label: "Home" },
   { href: "/dashboard", label: "Explore" },
-  { href: "/identity", label: "My Trust" },
-  { href: "/admin", label: "My Services" },
+  { href: "/identity", label: "Verified" },
+  { href: "/admin", label: "My Console" },
   { href: "/faq", label: "FAQ" },
 ];
 
@@ -32,7 +32,7 @@ export function Navbar() {
     return [
       { href: "/", label: "Home" },
       { href: "/dashboard", label: "Explore" },
-      { href: "/identity", label: "My Trust" },
+      { href: "/identity", label: "Verified" },
       { href: `/registry/${registryScope}/admin`, label: "Manage" },
       { href: "/faq", label: "FAQ" },
     ];
