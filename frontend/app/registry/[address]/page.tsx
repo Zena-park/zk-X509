@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { ethers } from "ethers";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
   ShieldCheck,
@@ -20,6 +20,7 @@ import {
   BookOpen,
   ExternalLink,
   Tag,
+  Info,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
 import { truncateHex } from "@/lib/utils";
@@ -31,6 +32,9 @@ import {
   type Announcement,
   type CaGuide,
 } from "@/lib/platform";
+import { useWallet } from "@/lib/wallet";
+import DashboardContent from "@/components/DashboardContent";
+import AdminContent from "@/components/AdminContent";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -44,6 +48,8 @@ interface RegistryInfo {
   caCount: number;
   paused: boolean;
 }
+
+type PageTab = "register" | "manage" | "info";
 
 const DISCLOSURE_LABELS = ["Country", "Organization", "Org Unit", "Common Name"] as const;
 
@@ -62,10 +68,12 @@ function decodeMask(mask: number): string[] {
 export default function RegistryDetailPage() {
   const params = useParams<{ address: string }>();
   const address = params.address;
+  const { isOwner } = useWallet();
 
   const [info, setInfo] = useState<RegistryInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PageTab>("register");
 
   // Platform backend data
   const [metadata, setMetadata] = useState<RegistryMetadata | null>(null);
@@ -192,11 +200,23 @@ export default function RegistryDetailPage() {
 
   const disclosureFields = decodeMask(info.minDisclosureMask);
 
+  /* ---------- Tab definitions ---------- */
+  const tabs: { key: PageTab; label: string; icon: React.ReactNode; ownerOnly?: boolean }[] = [
+    { key: "register", label: "Register", icon: <Users className="w-4 h-4" /> },
+    { key: "manage", label: "Manage", icon: <Settings className="w-4 h-4" />, ownerOnly: true },
+    { key: "info", label: "Info", icon: <Info className="w-4 h-4" /> },
+  ];
+
+  const visibleTabs = tabs.filter((t) => !t.ownerOnly || isOwner);
+
+  // If active tab is "manage" but user is not owner, fall back to "register"
+  const effectiveTab = activeTab === "manage" && !isOwner ? "register" : activeTab;
+
   /* ================================================================ */
   /*  Render                                                           */
   /* ================================================================ */
   return (
-    <main className="max-w-4xl mx-auto pt-24 px-8 pb-12">
+    <main className="max-w-6xl mx-auto pt-24 px-8 pb-12">
       {/* Back link */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -215,7 +235,7 @@ export default function RegistryDetailPage() {
       <motion.header
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="mb-6"
       >
         <div className="flex items-center gap-3 mb-2">
           <div className={`p-2 rounded-xl ${info.paused ? "bg-red-500/10" : "bg-secondary/10"}`}>
@@ -252,206 +272,213 @@ export default function RegistryDetailPage() {
         )}
       </motion.header>
 
-      {/* Info Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 }}
-          className="glass-panel rounded-2xl p-5"
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="w-4 h-4 text-tertiary" />
-            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Max Wallets</p>
-          </div>
-          <p className="text-2xl font-headline font-bold text-primary">{info.maxWallets}</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.15 }}
-          className="glass-panel rounded-2xl p-5"
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <Fingerprint className="w-4 h-4 text-tertiary" />
-            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Disclosure</p>
-          </div>
-          <p className="text-sm font-headline font-bold text-primary">
-            {disclosureFields.length > 0 ? disclosureFields.join(", ") : "None required"}
-          </p>
-          <p className="text-xs font-mono text-on-surface-variant mt-1">
-            mask: 0x{info.minDisclosureMask.toString(16).padStart(2, "0")}
-          </p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2 }}
-          className="glass-panel rounded-2xl p-5"
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <Database className="w-4 h-4 text-tertiary" />
-            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Trusted CAs</p>
-          </div>
-          <p className="text-2xl font-headline font-bold text-primary">{info.caCount}</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.25 }}
-          className="glass-panel rounded-2xl p-5"
-        >
-          <div className="flex items-center gap-2 mb-3">
-            {info.paused ? (
-              <Lock className="w-4 h-4 text-red-400" />
-            ) : (
-              <Unlock className="w-4 h-4 text-secondary" />
-            )}
-            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Status</p>
-          </div>
-          <p className={`text-lg font-headline font-bold ${info.paused ? "text-red-400" : "text-secondary"}`}>
-            {info.paused ? "Paused" : "Active"}
-          </p>
-        </motion.div>
-      </div>
-
-      {/* Owner */}
+      {/* Tab Bar */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="glass-panel rounded-2xl p-5 mb-8"
+        transition={{ delay: 0.1 }}
+        className="mb-6"
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Owner</p>
-            <p className="font-mono text-sm text-tertiary">{info.owner}</p>
-          </div>
+        <div className="flex bg-surface-container-low rounded-full p-1 border border-outline-variant/20 self-start w-fit">
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-6 py-2 font-headline text-sm rounded-full transition-all ${
+                effectiveTab === tab.key
+                  ? "bg-surface-container-highest text-primary shadow-sm"
+                  : "text-on-surface-variant hover:text-primary"
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
         </div>
       </motion.div>
 
-      {/* Announcements */}
-      {announcements.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="glass-panel rounded-2xl p-5 mb-8"
-        >
-          <div className="flex items-center gap-2 mb-4">
-            <Megaphone className="w-4 h-4 text-tertiary" />
-            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
-              Announcements
-            </p>
-          </div>
-          <div className="space-y-3">
-            {announcements.map((a) => (
-              <div
-                key={a.id}
-                className="bg-surface-container rounded-xl p-4 border border-white/5"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <h4 className="text-sm font-headline font-bold text-primary">{a.title}</h4>
-                  <span className="text-[10px] font-mono text-on-surface-variant">
-                    {new Date(a.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <p className="text-sm text-on-surface-variant leading-relaxed">{a.body}</p>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      )}
+      {/* Tab Content */}
+      <AnimatePresence mode="wait">
+        {/* ==================== REGISTER TAB ==================== */}
+        {effectiveTab === "register" && (
+          <motion.div
+            key="register"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2 }}
+          >
+            <DashboardContent />
+          </motion.div>
+        )}
 
-      {/* CA Guides */}
-      {caLeaves.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="glass-panel rounded-2xl p-5 mb-8"
-        >
-          <div className="flex items-center gap-2 mb-4">
-            <BookOpen className="w-4 h-4 text-tertiary" />
-            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
-              Trusted CA Certificates
-            </p>
-          </div>
-          <div className="space-y-3">
-            {caLeaves.map((hash) => {
-              const guide = caGuides[hash];
-              return (
-                <div
-                  key={hash}
-                  className="bg-surface-container rounded-xl p-4 border border-white/5"
-                >
-                  {guide ? (
-                    <>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-sm font-headline font-bold text-primary">
-                          {guide.name}
-                        </h4>
-                        <Tag className="w-3 h-3 text-on-surface-variant" />
-                        <span className="text-[10px] font-mono text-on-surface-variant truncate">
-                          {hash.slice(0, 10)}...{hash.slice(-6)}
+        {/* ==================== MANAGE TAB ==================== */}
+        {effectiveTab === "manage" && isOwner && (
+          <motion.div
+            key="manage"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2 }}
+          >
+            <AdminContent />
+          </motion.div>
+        )}
+
+        {/* ==================== INFO TAB ==================== */}
+        {effectiveTab === "info" && (
+          <motion.div
+            key="info"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2 }}
+          >
+            {/* Info Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <div className="glass-panel rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="w-4 h-4 text-tertiary" />
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Max Wallets</p>
+                </div>
+                <p className="text-2xl font-headline font-bold text-primary">{info.maxWallets}</p>
+              </div>
+
+              <div className="glass-panel rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Fingerprint className="w-4 h-4 text-tertiary" />
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Disclosure</p>
+                </div>
+                <p className="text-sm font-headline font-bold text-primary">
+                  {disclosureFields.length > 0 ? disclosureFields.join(", ") : "None required"}
+                </p>
+                <p className="text-xs font-mono text-on-surface-variant mt-1">
+                  mask: 0x{info.minDisclosureMask.toString(16).padStart(2, "0")}
+                </p>
+              </div>
+
+              <div className="glass-panel rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="w-4 h-4 text-tertiary" />
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Trusted CAs</p>
+                </div>
+                <p className="text-2xl font-headline font-bold text-primary">{info.caCount}</p>
+              </div>
+
+              <div className="glass-panel rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  {info.paused ? (
+                    <Lock className="w-4 h-4 text-red-400" />
+                  ) : (
+                    <Unlock className="w-4 h-4 text-secondary" />
+                  )}
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Status</p>
+                </div>
+                <p className={`text-lg font-headline font-bold ${info.paused ? "text-red-400" : "text-secondary"}`}>
+                  {info.paused ? "Paused" : "Active"}
+                </p>
+              </div>
+            </div>
+
+            {/* Owner */}
+            <div className="glass-panel rounded-2xl p-5 mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Owner</p>
+                  <p className="font-mono text-sm text-tertiary">{info.owner}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Announcements */}
+            {announcements.length > 0 && (
+              <div className="glass-panel rounded-2xl p-5 mb-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <Megaphone className="w-4 h-4 text-tertiary" />
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                    Announcements
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {announcements.map((a) => (
+                    <div
+                      key={a.id}
+                      className="bg-surface-container rounded-xl p-4 border border-white/5"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="text-sm font-headline font-bold text-primary">{a.title}</h4>
+                        <span className="text-[10px] font-mono text-on-surface-variant">
+                          {new Date(a.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                      {guide.description && (
-                        <p className="text-sm text-on-surface-variant mb-2">{guide.description}</p>
-                      )}
-                      {guide.instructions && (
-                        <p className="text-xs text-on-surface-variant/80 leading-relaxed mb-2">
-                          {guide.instructions}
-                        </p>
-                      )}
-                      {guide.issueUrl && (
-                        <a
-                          href={guide.issueUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-tertiary text-xs hover:text-primary transition-colors"
-                        >
-                          Get certificate <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-sm font-mono text-on-surface-variant truncate block">
-                      {hash}
-                    </span>
-                  )}
+                      <p className="text-sm text-on-surface-variant leading-relaxed">{a.body}</p>
+                    </div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
-        </motion.div>
-      )}
+              </div>
+            )}
 
-      {/* Action Buttons */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35 }}
-        className="flex flex-col sm:flex-row gap-4"
-      >
-        <Link
-          href={`/registry/${address}/dashboard`}
-          className="flex-1 flex items-center justify-center gap-3 px-8 py-5 bg-primary text-surface font-headline font-bold rounded-2xl hover:scale-[1.02] active:scale-95 transition-all"
-        >
-          <Users className="w-5 h-5" />
-          Register Identity
-        </Link>
-        <Link
-          href={`/registry/${address}/admin`}
-          className="flex-1 flex items-center justify-center gap-3 px-8 py-5 border border-outline-variant/30 text-on-surface font-headline font-bold rounded-2xl hover:bg-surface-container-highest transition-all"
-        >
-          <Settings className="w-5 h-5" />
-          Manage Service
-        </Link>
-      </motion.div>
+            {/* CA Guides */}
+            {caLeaves.length > 0 && (
+              <div className="glass-panel rounded-2xl p-5 mb-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <BookOpen className="w-4 h-4 text-tertiary" />
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                    Trusted CA Certificates
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {caLeaves.map((hash) => {
+                    const guide = caGuides[hash];
+                    return (
+                      <div
+                        key={hash}
+                        className="bg-surface-container rounded-xl p-4 border border-white/5"
+                      >
+                        {guide ? (
+                          <>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="text-sm font-headline font-bold text-primary">
+                                {guide.name}
+                              </h4>
+                              <Tag className="w-3 h-3 text-on-surface-variant" />
+                              <span className="text-[10px] font-mono text-on-surface-variant truncate">
+                                {hash.slice(0, 10)}...{hash.slice(-6)}
+                              </span>
+                            </div>
+                            {guide.description && (
+                              <p className="text-sm text-on-surface-variant mb-2">{guide.description}</p>
+                            )}
+                            {guide.instructions && (
+                              <p className="text-xs text-on-surface-variant/80 leading-relaxed mb-2">
+                                {guide.instructions}
+                              </p>
+                            )}
+                            {guide.issueUrl && (
+                              <a
+                                href={guide.issueUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-tertiary text-xs hover:text-primary transition-colors"
+                              >
+                                Get certificate <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-sm font-mono text-on-surface-variant truncate block">
+                            {hash}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
