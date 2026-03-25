@@ -217,60 +217,34 @@ export default function RegistryDetailPage() {
   /* ================================================================ */
   return (
     <main className="max-w-6xl mx-auto pt-24 px-8 pb-12">
-      {/* Back link */}
+      {/* Compact Header */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="mb-6"
+        className="mb-4"
       >
         <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors font-headline text-sm"
+          href="/dashboard"
+          className="inline-flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors font-headline text-sm mb-3"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Explore
         </Link>
-      </motion.div>
-
-      {/* Header */}
-      <motion.header
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
-      >
-        <div className="flex items-center gap-3 mb-2">
-          <div className={`p-2 rounded-xl ${info.paused ? "bg-red-500/10" : "bg-secondary/10"}`}>
-            <ShieldCheck className={`w-6 h-6 ${info.paused ? "text-red-400" : "text-secondary"}`} />
-          </div>
-          <div className="flex-1">
-            <h1 className="text-3xl font-headline font-bold tracking-tight text-primary">
-              {info.name || "Service"}
-            </h1>
-            <p className="font-mono text-sm text-on-surface-variant">{address}</p>
-          </div>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-headline font-bold tracking-tight text-primary">
+            {info.name || "Service"}
+          </h1>
           {metadata?.category && (
-            <span className="px-3 py-1 rounded-full text-[10px] font-label font-bold uppercase tracking-widest border bg-tertiary/10 text-tertiary border-tertiary/20">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-label font-bold uppercase tracking-widest bg-tertiary/10 text-tertiary">
               {metadata.category}
             </span>
           )}
+          {info.paused && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400">
+              PAUSED
+            </span>
+          )}
         </div>
-        {metadata?.description && (
-          <p className="text-on-surface-variant text-sm mt-3 leading-relaxed">
-            {metadata.description}
-          </p>
-        )}
-        {metadata?.website && (
-          <a
-            href={metadata.website}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-tertiary text-sm mt-2 hover:text-primary transition-colors"
-          >
-            <Globe className="w-3.5 h-3.5" />
-            {metadata.website}
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        )}
-      </motion.header>
+      </motion.div>
 
       {/* Tab Bar */}
       <motion.div

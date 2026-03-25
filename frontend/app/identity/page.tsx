@@ -24,6 +24,18 @@ import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
 import { truncateHex } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
+/*  Trust Badge                                                        */
+/* ------------------------------------------------------------------ */
+
+function getTrustBadge(count: number): { emoji: string; label: string; color: string } {
+  if (count >= 10) return { emoji: "💎", label: "Diamond", color: "bg-purple-500/20 text-purple-300" };
+  if (count >= 5) return { emoji: "🥇", label: "Gold", color: "bg-yellow-500/20 text-yellow-300" };
+  if (count >= 3) return { emoji: "🥈", label: "Silver", color: "bg-slate-400/20 text-slate-300" };
+  if (count >= 1) return { emoji: "🥉", label: "Bronze", color: "bg-orange-500/20 text-orange-300" };
+  return { emoji: "🔒", label: "Unverified", color: "bg-surface-container text-on-surface-variant" };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -257,13 +269,45 @@ export default function IdentityPage() {
           </h1>
         </div>
         <p className="text-on-surface-variant text-sm">
-          {loading
-            ? "Checking your verification status..."
-            : verified.length > 0
-              ? `You are verified on ${verified.length} service${verified.length !== 1 ? "s" : ""}.`
-              : "Your verification status across all services."}
+          Your on-chain trust profile.
         </p>
       </motion.header>
+
+      {/* Identity Card */}
+      {!loading && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="glass-panel rounded-2xl p-6 mb-8"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-4xl">{getTrustBadge(verified.length).emoji}</span>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getTrustBadge(verified.length).color}`}>
+                    {getTrustBadge(verified.length).label}
+                  </span>
+                </div>
+                <p className="font-mono text-sm text-tertiary">{truncateHex(account, 10, 8)}</p>
+              </div>
+            </div>
+            <div className="flex gap-6 text-center">
+              <div>
+                <p className="text-2xl font-headline font-bold text-primary">{verified.length}</p>
+                <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Verified</p>
+              </div>
+              <div>
+                <p className="text-2xl font-headline font-bold text-on-surface-variant">
+                  {verified.filter(r => r.verifiedUntil && r.verifiedUntil > new Date()).length}
+                </p>
+                <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Active</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Loading */}
       {loading && (
