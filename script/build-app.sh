@@ -24,7 +24,7 @@ echo
 echo "[1/5] Building release binary..."
 cd "$PROJECT_DIR"
 RUSTFLAGS="--remap-path-prefix=$HOME/.cargo/registry=/registry --remap-path-prefix=$PROJECT_DIR=/zk-x509" \
-  cargo build --release --bin interactive 2>&1 | { grep -v "^warning:" || true; }
+  cargo build --release --bin interactive 2>&1 | { grep -v "^warning: zk-x509-script" || true; }
 
 if [ ! -f "$BINARY" ]; then
     echo "  ✗ Build failed: $BINARY not found"
@@ -38,8 +38,10 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
-# Copy Info.plist
+# Copy Info.plist with version from Cargo.toml
+APP_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$SCRIPT_DIR/Cargo.toml" | head -1)
 cp "$SCRIPT_DIR/app-resources/Info.plist" "$APP_DIR/Contents/"
+sed -i '' "s/0\.1\.0/$APP_VERSION/g" "$APP_DIR/Contents/Info.plist"
 
 # Copy binary
 cp "$BINARY" "$APP_DIR/Contents/MacOS/interactive"
@@ -60,9 +62,10 @@ fi
 
 # Open Terminal.app with the interactive binary
 osascript <<APPLESCRIPT
+set binPath to quoted form of "$BINARY"
 tell application "Terminal"
     activate
-    set newTab to do script "clear && '$BINARY'; echo ''; echo 'Press Enter to close...'; read"
+    set newTab to do script "clear && " & binPath & "; echo ''; echo 'Press Enter to close...'; read"
     set custom title of newTab to "zk-X509 Proof Generator"
     set title displays custom title of newTab to true
 end tell
@@ -108,7 +111,7 @@ fi
 
 # ── Step 5: Verify ────────────────────────────────
 echo "[5/5] Verifying..."
-codesign -v "$APP_DIR" 2>&1 && echo "  ✓ Signature valid" || echo "  ⚠ Signature verification failed"
+codesign -v "$APP_DIR" >/dev/null 2>&1 && echo "  ✓ Signature valid" || echo "  ⚠ Signature verification failed"
 
 APP_SIZE=$(du -sh "$APP_DIR" | cut -f1)
 echo
