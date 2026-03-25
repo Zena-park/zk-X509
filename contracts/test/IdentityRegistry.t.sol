@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 import {IdentityRegistry} from "../src/IdentityRegistry.sol";
 import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /// @notice Mock SP1 verifier that always passes (for unit testing).
 contract MockSP1Verifier is ISP1Verifier {
@@ -40,9 +41,23 @@ contract IdentityRegistryTest is Test {
             bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
+    /// @dev Deploy an IdentityRegistry behind a minimal proxy and initialize it.
+    function _deployRegistry(address verifier, bytes32 vkey, uint32 maxWallets, uint8 mask, address _owner)
+        internal
+        returns (IdentityRegistry)
+    {
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (verifier, vkey, maxWallets, mask, _owner)
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        return IdentityRegistry(address(proxy));
+    }
+
     function setUp() public {
         mockVerifier = new MockSP1Verifier();
-        registry = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0);
+        registry = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0, address(this));
         registry.updateCaMerkleRoot(CA_MERKLE_ROOT);
     }
 
@@ -297,7 +312,7 @@ contract IdentityRegistryTest is Test {
 
     function test_MultiWallet_TwoSlots() public {
         // Deploy a multi-wallet registry (MAX_WALLETS_PER_CERT = 3)
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
+        IdentityRegistry multiReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0, address(this));
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Alice registers wallet index 0
@@ -318,7 +333,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_RevertIndexOutOfRange() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 2, 0);
+        IdentityRegistry multiReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 2, 0, address(this));
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Index 2 is out of range for max=2 (valid: 0, 1)
@@ -330,7 +345,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_SameAddressTwoSlots_Reverts() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
+        IdentityRegistry multiReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0, address(this));
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Alice registers slot 0
@@ -348,7 +363,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_SameNullifierTwice_Reverts() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
+        IdentityRegistry multiReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0, address(this));
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xC000));
@@ -364,7 +379,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_ReRegister() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
+        IdentityRegistry multiReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0, address(this));
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xD000));
@@ -379,7 +394,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_RevokeOneSlot_OtherUnaffected() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
+        IdentityRegistry multiReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0, address(this));
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         bytes32 null0 = bytes32(uint256(0xE000));
@@ -399,7 +414,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_BoundaryIndices() public {
-        IdentityRegistry multiReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0);
+        IdentityRegistry multiReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 3, 0, address(this));
         multiReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Index 0 (first)
@@ -416,7 +431,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_MultiWallet_MaxZero_AllReverts() public {
-        IdentityRegistry zeroReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 0, 0);
+        IdentityRegistry zeroReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 0, 0, address(this));
         zeroReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Any index reverts (0 >= 0)
@@ -688,7 +703,7 @@ contract IdentityRegistryTest is Test {
         bytes32 batchRoot = registry.caMerkleRoot();
 
         // Compare: deploy fresh and add one-by-one
-        IdentityRegistry fresh = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0);
+        IdentityRegistry fresh = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0, address(this));
         fresh.addCA(ca1);
         fresh.addCA(ca2);
         fresh.addCA(ca3);
@@ -840,7 +855,7 @@ contract IdentityRegistryTest is Test {
 
     function test_DisclosureMask_RevertWhenRequiredHashZero() public {
         // Deploy registry requiring country disclosure (bit 0 = 0x01)
-        IdentityRegistry discReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01);
+        IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
         discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Public values with countryHash = 0 (not disclosed)
@@ -859,7 +874,7 @@ contract IdentityRegistryTest is Test {
 
     function test_DisclosureMask_SucceedsWhenHashProvided() public {
         // Deploy registry requiring country disclosure (bit 0 = 0x01)
-        IdentityRegistry discReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01);
+        IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
         discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Public values with countryHash set (disclosed)
@@ -876,7 +891,7 @@ contract IdentityRegistryTest is Test {
 
     function test_DisclosureMask_MultipleFieldsRequired() public {
         // Deploy registry requiring country + org disclosure (0x03)
-        IdentityRegistry discReg = new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x03);
+        IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x03, address(this));
         discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
         // Only country provided, org missing → should revert
@@ -912,11 +927,16 @@ contract IdentityRegistryTest is Test {
         assertTrue(registry.isVerified(alice));
     }
 
-    function test_RevertConstructorInvalidDisclosureMask() public {
+    function test_RevertInitializeInvalidDisclosureMask() public {
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, address(this))
+        );
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.InvalidDisclosureMask.selector, uint8(0x10))
         );
-        new IdentityRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x10);
+        new ERC1967Proxy(address(impl), initData);
     }
 
     function test_GracePeriod_SameRootDoesNotResetGrace() public {

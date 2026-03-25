@@ -130,4 +130,43 @@ contract RegistryFactoryTest is Test {
         assertEq(IdentityRegistry(regA).getCaCount(), 1);
         assertEq(IdentityRegistry(regB).getCaCount(), 0);
     }
+
+    function test_BeaconExists() public view {
+        // Beacon should be deployed by the factory
+        assertTrue(address(factory.beacon()) != address(0));
+    }
+
+    function test_UpgradeImplementation() public {
+        // Deploy a new implementation
+        IdentityRegistry newImpl = new IdentityRegistry();
+
+        // Only factory owner can upgrade
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.OnlyOwner.selector);
+        factory.upgradeImplementation(address(newImpl));
+
+        // Factory owner (this contract) can upgrade
+        factory.upgradeImplementation(address(newImpl));
+    }
+
+    function test_UpgradedRegistryStillWorks() public {
+        // Create a registry and configure it
+        vm.prank(alice);
+        address reg = factory.createRegistry("Test", 1, 0);
+
+        IdentityRegistry registry = IdentityRegistry(reg);
+        bytes32 caHash = bytes32(uint256(0xCAFE));
+        vm.prank(alice);
+        registry.addCA(caHash);
+        assertEq(registry.getCaCount(), 1);
+
+        // Upgrade implementation
+        IdentityRegistry newImpl = new IdentityRegistry();
+        factory.upgradeImplementation(address(newImpl));
+
+        // State should be preserved after upgrade
+        assertEq(registry.getCaCount(), 1);
+        assertEq(registry.owner(), alice);
+        assertEq(registry.MAX_WALLETS_PER_CERT(), 1);
+    }
 }

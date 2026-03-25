@@ -64,7 +64,7 @@ function getChainName(id: string): string {
   }
 }
 
-export function WalletProvider({ children }: { children: ReactNode }) {
+export function WalletProvider({ children, registryOverride }: { children: ReactNode; registryOverride?: string }) {
   const [account, setAccount] = useState<string | null>(null);
   const [chainId, setChainId] = useState<string | null>(null);
   const [chainName, setChainName] = useState("");
@@ -90,7 +90,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setChainId(cid);
         setChainName(getChainName(cid));
 
-        const addr = getRegistryAddress(cid);
+        const addr = registryOverride || getRegistryAddress(cid);
         setRegistryAddr(addr);
         if (!addr || addr === ethers.ZeroAddress) return;
 
@@ -115,7 +115,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         console.error("Failed to load contract:", e);
       }
     })();
-  }, [account, refreshKey]);
+  }, [account, refreshKey, registryOverride]);
 
   // MetaMask events
   useEffect(() => {
@@ -139,8 +139,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Auto-connect: restore previously connected wallet on page load
+  useEffect(() => {
+    if (!window.ethereum) return;
+    (async () => {
+      try {
+        const accounts = await window.ethereum!.request({ method: "eth_accounts" });
+        if (accounts?.length > 0) setAccount(accounts[0]);
+      } catch (e) {
+        console.error("Auto-connect failed:", e);
+      }
+    })();
+  }, []);
+
   async function connect() {
-    if (!window.ethereum) { alert("MetaMask를 설치해주세요."); return; }
+    if (!window.ethereum) { alert("Please install MetaMask."); return; }
     try {
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       if (accounts?.length > 0) setAccount(accounts[0]);

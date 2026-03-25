@@ -40,7 +40,7 @@ None of these approaches simultaneously achieves **verifiability** (anyone can c
 
 The dominant paradigm in blockchain identity research—Decentralized Identifiers (DIDs)—attempts to build *new* trust systems from scratch. We argue for an orthogonal approach: *bridging existing trust* to the blockchain.
 
-A vast, government-grade trust infrastructure already exists: the X.509 Public Key Infrastructure. Over 4 billion X.509 certificates are active globally, issued by Certificate Authorities (CAs) for purposes ranging from TLS to national identity. In Korea alone, approximately 20 million NPKI certificates are actively used for banking, government services, and e-commerce—each carrying legal weight under the Electronic Signatures Act. These certificates embed RSA or ECDSA signatures from trusted CAs, providing a cryptographic chain of trust that can be verified computationally—and therefore inside a zero-knowledge circuit. The core insight of zk-X509 is that these existing credentials, already trusted by governments and institutions, can serve as blockchain identity anchors *today*, without waiting years for new DID ecosystems to mature.
+A vast, government-grade trust infrastructure already exists: the X.509 Public Key Infrastructure. Over 4 billion X.509 certificates are active globally, issued by Certificate Authorities (CAs) for purposes ranging from TLS to national identity. In Korea alone, approximately 20 million NPKI certificates are actively used for banking, government services, and e-commerce—each carrying legal weight under the Electronic Signatures Act [27]. These certificates embed RSA or ECDSA signatures from trusted CAs, providing a cryptographic chain of trust that can be verified computationally—and therefore inside a zero-knowledge circuit. The core insight of zk-X509 is that these existing credentials, already trusted by governments and institutions, can serve as blockchain identity anchors *today*, without waiting years for new DID ecosystems to mature.
 
 ### 1.3 Proposed Solution
 
@@ -53,7 +53,7 @@ zk-X509 resolves the transparency-privacy tension by verifying X.509 certificate
 5. **Registrant Binding.** The proof is cryptographically bound to the user's blockchain address, preventing proof theft via front-running.
 6. **Nullifier Generation.** A deterministic, privacy-preserving identifier is derived from the certificate for Sybil resistance.
 
-Thirteen values are revealed publicly: a **nullifier**, a **CA Merkle root** (proving membership in the whitelisted CA set without revealing which CA), a **timestamp**, the **registrant address**, a **wallet index**, the certificate's **expiry time** (`notAfter`), a **chain ID** (EIP-155), a **registry address** (cross-DApp unlinkability), a **CRL Merkle root**, and four optional **selective disclosure hashes** (country, organization, organizational unit, common name). These are committed as public outputs and verified on-chain by a Solidity smart contract.
+Thirteen values are revealed publicly: a **nullifier**, a **CA Merkle root** (proving membership in the whitelisted CA set without revealing which CA), a **timestamp**, the **registrant address**, a **wallet index**, the certificate's **expiry time** (`notAfter`), a **chain ID** (EIP-155 [28]), a **registry address** (cross-DApp unlinkability), a **CRL Merkle root**, and four optional **selective disclosure hashes** (country, organization, organizational unit, common name). These are committed as public outputs and verified on-chain by a Solidity smart contract.
 
 ### 1.4 Global Applicability and Primary Target
 
@@ -61,7 +61,7 @@ zk-X509 is designed to work with **any X.509 certificate from any CA worldwide**
 
 **Primary validation target: Korean NPKI.** Our implementation is validated against the Korean National Public Key Infrastructure (NPKI) as a concrete case study. Korean digital certificates (공인인증서) are issued by authorized CAs such as the Korea Financial Telecommunications and Clearings Institute (금융결제원), employing a 3-level certificate chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 and SHA-256 or SHA-1 signatures. Certificates and private keys are imported into the OS keychain, where the private key is managed by the secure hardware (macOS Secure Enclave or software keystore).
 
-**Multi-national deployment.** The architecture supports simultaneous whitelisting of CAs from multiple jurisdictions. For example, a single `IdentityRegistry` deployment could accept certificates from Korean NPKI (~20M users), Estonian eID (~1.3M e-residents), German eID, and corporate PKI systems—each user proving identity under their national CA without any cross-border credential issuance. The `caMerkleRoot` in the public values attests that the certificate was issued by one of the whitelisted CAs without revealing which one, preserving jurisdictional privacy. Applications requiring jurisdiction-specific logic can request the user to additionally disclose `countryHash` via selective disclosure (Section 3.11).
+**Multi-national deployment.** The architecture supports simultaneous whitelisting of CAs from multiple jurisdictions. For example, a single `IdentityRegistry` deployment could accept certificates from Korean NPKI (~20M users), Estonian eID (~1.3M e-residents), German eID — all operating under the eIDAS regulation [26] — and corporate PKI systems—each user proving identity under their national CA without any cross-border credential issuance. The `caMerkleRoot` in the public values attests that the certificate was issued by one of the whitelisted CAs without revealing which one, preserving jurisdictional privacy. Applications requiring jurisdiction-specific logic can request the user to additionally disclose `countryHash` via selective disclosure (Section 3.11).
 
 ### 1.5 Contributions
 
@@ -92,9 +92,11 @@ In practice, most PKI deployments use multi-level certificate chains. A user cer
 
 ### 2.2 Zero-Knowledge Proofs and zkVMs
 
-A zero-knowledge proof allows a prover to convince a verifier that a statement is true without revealing any information beyond the truth of the statement [5]. Formally, a ZK proof system $(P, V)$ for a language $L$ satisfies three properties: **completeness** (honest provers convince honest verifiers), **soundness** (no cheating prover can convince on false statements), and **zero-knowledge** (the verifier learns nothing beyond the statement's truth).
+A zero-knowledge proof allows a prover to convince a verifier that a statement is true without revealing any information beyond the truth of the statement [5]. The random oracle model [15] provides a standard framework for analyzing hash-based constructions in such proofs. Formally, a ZK proof system $(P, V)$ for a language $L$ satisfies three properties: **completeness** (honest provers convince honest verifiers), **soundness** (no cheating prover can convince on false statements), and **zero-knowledge** (the verifier learns nothing beyond the statement's truth).
 
-Modern zkVMs extend this to arbitrary computation: a prover executes a program inside a virtual machine and produces a succinct proof that the computation was performed correctly. **SP1** (Succinct Processor 1) is a RISC-V-based zkVM developed by Succinct Labs [6]. It compiles standard Rust to RISC-V instructions executed inside the zkVM, enabling complex operations such as ASN.1 parsing and RSA verification. SP1 provides precompiled accelerators for SHA-256 and RSA modular exponentiation, and supports on-chain verification via Groth16 [7] or PLONK proof systems.
+Modern zkVMs extend this to arbitrary computation: a prover executes a program inside a virtual machine and produces a succinct proof that the computation was performed correctly. The development of succinct non-interactive arguments of knowledge (SNARKs) [14] established the foundation for this approach, with subsequent systems such as Groth16 [7], PLONK [16], Bulletproofs [31], and STARKs [17] offering different trade-offs between proof size, verification time, and trusted setup requirements. Zerocash [32] demonstrated the practical application of SNARKs to privacy-preserving blockchain transactions.
+
+**SP1** (Succinct Processor 1) is a RISC-V-based zkVM developed by Succinct [6], alongside alternatives such as RISC Zero [29]. It compiles standard Rust to RISC-V instructions executed inside the zkVM, enabling complex operations such as ASN.1 parsing and RSA verification. SP1 provides precompiled accelerators for SHA-256 and RSA modular exponentiation, and supports on-chain verification via Groth16 [7] or PLONK [16] proof systems. Circuit-level DSLs such as Circom [30] offer an alternative approach but lack the general-purpose programmability of zkVMs.
 
 ### 2.3 RSA Verification in Zero-Knowledge
 
@@ -116,6 +118,10 @@ We survey existing approaches to privacy-preserving on-chain identity and positi
 
 **Soulbound Tokens (SBTs)** [10] propose non-transferable tokens as identity primitives. However, SBTs require a trusted issuer and provide no mechanism for privacy-preserving credential verification.
 
+**Anonymous credential systems.** The foundational work of Chaum [19] introduced the concept of privacy-preserving transactions, and Camenisch and Lysyanskaya [18] formalized anonymous credential schemes based on bilinear maps. These systems enable selective attribute disclosure but require purpose-built credential issuance — they cannot leverage existing X.509 certificates. zk-X509 achieves comparable privacy properties by applying ZK proofs to credentials that already exist at scale.
+
+**Proof of Personhood.** Ford [20] and Borge et al. [21] formalized the concept of proof of personhood as a prerequisite for digital democracy. zk-X509 instantiates this concept using existing government-issued certificates rather than novel pseudonym party protocols or biometric approaches.
+
 | System | Credential | Hardware | Trust Model | Existing Infra | CRL | Privacy |
 |--------|-----------|----------|-------------|---------------|-----|---------|
 | zkPassport [2] | Passport | NFC required | Government CA | Yes (passports) | N/A | Full ZK |
@@ -133,11 +139,11 @@ Decentralized Identifier (DID) frameworks [13] represent the dominant paradigm i
 
 **Infrastructure dependency.** DID systems require bootstrapping entirely new infrastructure: credential issuers, trust registries, verification schemas, and holder wallets. In contrast, zk-X509 leverages X.509 PKI—an infrastructure already deployed at global scale with over 4 billion active certificates. In Korea alone, approximately 20 million NPKI certificates are actively used, providing an immediate user base without any new issuance required.
 
-**Trust model.** DID trust is issuer-dependent: a verifier must decide *which* DID issuers to trust, creating a fragmented trust landscape. zk-X509 inherits the established CA trust model, where governments have already designated trusted CAs through legal frameworks (e.g., Korea's Electronic Signatures Act). This eliminates the "who trusts whom?" bootstrapping problem.
+**Trust model.** DID trust is issuer-dependent: a verifier must decide *which* DID issuers to trust, creating a fragmented trust landscape. zk-X509 inherits the established CA trust model, where governments have already designated trusted CAs through legal frameworks (e.g., Korea's Electronic Signatures Act [27]). This eliminates the "who trusts whom?" bootstrapping problem.
 
 **Revocation mechanism.** DID revocation depends on the issuer maintaining and publishing revocation registries—a centralized dependency within a supposedly decentralized system. zk-X509 performs trustless CRL verification inside the zkVM: the CRL's CA signature is cryptographically verified, ensuring revocation data cannot be forged or suppressed.
 
-**Regulatory compliance.** DID frameworks lack clear regulatory standing in most jurisdictions. X.509 certificates, particularly national PKI certificates, carry legal weight: Korean NPKI certificates are legally binding under the Electronic Signatures Act. This makes zk-X509 immediately applicable to compliance-sensitive domains (banking, government services) where DID acceptance remains unresolved.
+**Regulatory compliance.** DID frameworks lack clear regulatory standing in most jurisdictions. X.509 certificates, particularly national PKI certificates, carry legal weight: Korean NPKI certificates are legally binding under the Electronic Signatures Act [27]. This makes zk-X509 immediately applicable to compliance-sensitive domains (banking, government services) where DID acceptance remains unresolved.
 
 **Time to deployment.** DID ecosystems require 3–5 years for credential issuance, trust registry establishment, and ecosystem adoption. zk-X509 can be deployed within 3–6 months by whitelisting existing CA root hashes—no new credential issuance is needed.
 
@@ -402,7 +408,7 @@ This design ensures that a malicious host cannot supply a forged or tampered CRL
 
 $$\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{timestamp} \| \text{chain\_id}), \text{ownership\_sig})$$
 
-The ownership verifier supports both RSA (PKCS#1 v1.5 with SHA-256) and ECDSA (P-256, P-384 with RFC 6979 deterministic nonces). The key type is auto-detected from the certificate's SPKI algorithm OID: RSA keys use direct `rsa` crate verification, while ECDSA keys use the `p256`/`p384` crates with the curve determined from the SPKI `namedCurve` parameter.
+The ownership verifier supports both RSA (PKCS#1 v1.5 with SHA-256) and ECDSA (P-256, P-384 with RFC 6979 [22] deterministic nonces). The key type is auto-detected from the certificate's SPKI algorithm OID: RSA keys use direct `rsa` crate verification, while ECDSA keys use the `p256`/`p384` crates with the curve determined from the SPKI `namedCurve` parameter.
 
 This approach has three advantages: (1) the private key never exists in the prover server's process memory—only the OS keychain handles it at the hardware level, (2) the ownership proof is bound to the registrant address and wallet index, preventing signature replay across wallets, and (3) the timestamp binding prevents a compromised prover server from replaying a captured ownership signature in a later proof — the signature is only valid for the specific proof generation timestamp committed as a public value.
 
@@ -411,7 +417,7 @@ This approach has three advantages: (1) the private key never exists in the prov
 $$\text{nullifier\_sig} = \text{Sign}(\text{sk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address} \| \text{chain\_id}))$$
 $$\text{nullifier} = \mathcal{H}(\text{nullifier\_sig} \| \text{wallet\_index})$$
 
-The prover signs a fixed domain string with the certificate's private key. RSA PKCS#1 v1.5 and ECDSA with RFC 6979 deterministic nonces are both inherently deterministic — the same key always produces the same signature, ensuring nullifier consistency. The ZK circuit verifies the `nullifier_sig` against the certificate's public key before computing the nullifier.
+The prover signs a fixed domain string with the certificate's private key. RSA PKCS#1 v1.5 and ECDSA with RFC 6979 [22] deterministic nonces are both inherently deterministic — the same key always produces the same signature, ensuring nullifier consistency. The ZK circuit verifies the `nullifier_sig` against the certificate's public key before computing the nullifier.
 
 This signature-based design prevents a critical linkability attack present in public-key-based nullifiers. The certificate's public key is semi-public data — it is shared with banks, government portals, and CRL distribution points during normal certificate usage. If the nullifier were $\mathcal{H}(\text{cert.pk} \| \text{wallet\_index})$, any party possessing the certificate could compute all nullifiers and track the user's on-chain registrations. With the signature-based approach, only the private key holder can produce `nullifier_sig`, making the nullifier computationally unpredictable without the private key. The `wallet_index` ensures that each wallet slot produces a distinct nullifier, enabling configurable multi-wallet registration.
 
@@ -582,7 +588,7 @@ zk-X509 addresses this by replacing the direct `caRootHash` output with a **Merk
 
 For a deployment with $n$ whitelisted CAs, if CA $i$ has $N_i$ active certificate holders, the theoretical anonymity set is $A = \sum_{i=1}^{n} N_i$. However, the *effective* anonymity set against an adversary who can estimate the prior probability $p_i = N_i / A$ of a user belonging to CA $i$ is bounded by the min-entropy: $H_\infty = -\log_2(\max_i p_i)$. For the Korean-Estonian-German deployment: $p_{\text{Germany}} = 46/67.3 \approx 0.68$, giving $H_\infty \approx 0.56$ bits — meaning an adversary's best guess (German eID) is correct 68% of the time, even without selective disclosure. Adding more CAs with comparable population sizes improves the effective anonymity set. A deployment whitelisting 10+ CAs with populations above 5M each would achieve $H_\infty > 3$ bits, making jurisdiction guessing impractical.
 
-**Merkle tree construction.** A standard binary SHA-256 Merkle tree with sorted-pair hashing is used: $H(\min(a,b) \| \max(a,b))$. Sorted-pair hashing prevents second preimage attacks and eliminates the need for direction bits in the proof path. For $n$ whitelisted CAs, the proof consists of $\lceil \log_2 n \rceil$ hashes (e.g., 4 hashes for 16 CAs), adding negligible overhead to the ZK circuit (~$\log_2 n$ additional SHA-256 computations).
+**Merkle tree construction.** A standard binary SHA-256 Merkle tree [25] with sorted-pair hashing is used: $H(\min(a,b) \| \max(a,b))$. Sorted-pair hashing prevents second preimage attacks and eliminates the need for direction bits in the proof path. For $n$ whitelisted CAs, the proof consists of $\lceil \log_2 n \rceil$ hashes (e.g., 4 hashes for 16 CAs), adding negligible overhead to the ZK circuit (~$\log_2 n$ additional SHA-256 computations).
 
 **CA set updates.** The contract maintains an on-chain list of trusted CA hashes (`caLeaves[]`). When CAs are added or removed via `addCA()`/`addCAs()`/`removeCA()`, the contract automatically recomputes the Merkle root via `_recomputeCaMerkleRoot()` using the same sorted-pair SHA-256 algorithm as the zkVM. This ensures consistency between on-chain and off-chain computations. Off-chain users call `getCaLeaves()` to read the current CA set and compute their Merkle proofs. Proofs generated against the old root will be rejected — users must regenerate proofs with the updated tree.
 
@@ -716,7 +722,7 @@ The system includes three levels of testing:
 | 1.2.840.10045.4.3.2 | ecdsa-with-SHA256 (P-256) | Supported |
 | 1.2.840.10045.4.3.3 | ecdsa-with-SHA384 (P-384) | Supported |
 
-SHA-1 support is included specifically for backward compatibility with legacy Korean NPKI certificates that predate the SHA-256 migration. ECDSA support (P-256 and P-384) extends compatibility to modern certificate ecosystems that use elliptic curve cryptography, including newer government PKI deployments and corporate CAs. The signature algorithm OID determines the digest function, while the curve is independently detected from the signer's SPKI `namedCurve` OID, correctly handling the RFC 5758 separation of concerns.
+SHA-1 support is included specifically for backward compatibility with legacy Korean NPKI certificates that predate the SHA-256 migration. ECDSA support (P-256 and P-384) extends compatibility to modern certificate ecosystems that use elliptic curve cryptography, including newer government PKI deployments and corporate CAs. The signature algorithm OID determines the digest function, while the curve is independently detected from the signer's SPKI `namedCurve` OID [23], correctly handling the RFC 5758 separation of concerns.
 
 ---
 
@@ -745,7 +751,7 @@ We adopt the **Dolev-Yao** adversary model [11]. The adversary $\mathcal{A}$ has
 
 - **A1 (Local security):** $\mathcal{A}$ cannot compromise the user's local machine (i.e., cannot read files from the user's filesystem or inspect process memory).
 - **A2 (CA integrity):** The CA's private signing key has not been compromised.
-- **A3 (Cryptographic hardness):** RSA is secure under the factoring assumption; ECDSA is secure under the elliptic curve discrete logarithm assumption; SHA-256 is collision-resistant and preimage-resistant.
+- **A3 (Cryptographic hardness):** RSA is secure under the factoring assumption [12]; ECDSA is secure under the elliptic curve discrete logarithm assumption; SHA-256 is collision-resistant and preimage-resistant. Signature schemes satisfy EUF-CMA security [24].
 - **A4 (ZK soundness):** The SP1 proof system is computationally sound: no PPT adversary can generate a valid proof for a false statement with non-negligible probability.
 
 ### 5.3 Security Definitions
@@ -1215,4 +1221,42 @@ A key differentiator from DID-based approaches is immediacy: while DID framework
 
 [12] Rivest, R., Shamir, A., and Adleman, L. "A Method for Obtaining Digital Signatures and Public-Key Cryptosystems." Communications of the ACM, 21(2):120–126, 1978.
 
-[13] Sporny, M., Longley, D., and Chadwick, D. "Verifiable Credentials Data Model v2.0." W3C Recommendation, March 2024.
+[13] Sporny, M., Longley, D., and Chadwick, D. "Verifiable Credentials Data Model v2.0." W3C Recommendation, May 2025.
+
+[14] Ben-Sasson, E., Chiesa, A., Genkin, D., Tromer, E., and Virza, M. "SNARKs for C: Verifying Program Executions Succinctly and in Zero Knowledge." CRYPTO 2013, pp. 90–108.
+
+[15] Bellare, M. and Rogaway, P. "Random Oracles are Practical: A Paradigm for Designing Efficient Protocols." ACM CCS 1993, pp. 62–73.
+
+[16] Gabizon, A., Williamson, Z.J., and Ciobotaru, O. "PLONK: Permutations over Lagrange-bases for Oecumenical Noninteractive arguments of Knowledge." IACR ePrint 2019/953, 2019.
+
+[17] Ben-Sasson, E., Bentov, I., Horesh, Y., and Riabzev, M. "Scalable, Transparent, and Post-quantum Secure Computational Integrity." IACR ePrint 2018/046, 2018.
+
+[18] Camenisch, J. and Lysyanskaya, A. "Signature Schemes and Anonymous Credentials from Bilinear Maps." CRYPTO 2004, pp. 56–72.
+
+[19] Chaum, D. "Security Without Identification: Transaction Systems to Make Big Brother Obsolete." Communications of the ACM, 28(10):1030–1044, 1985.
+
+[20] Ford, B. "Identity and Personhood in Digital Democracy: Evaluating Inclusion, Equality, Security, and Privacy in Pseudonym Parties and Other Proofs of Personhood." arXiv:2011.02412, 2020.
+
+[21] Borge, M., Kokoris-Kogias, E., Jovanovic, P., Gasser, L., Gailly, N., and Ford, B. "Proof-of-Personhood: Redemocratizing Permissionless Cryptocurrencies." IEEE EuroS&PW, pp. 23–26, 2017.
+
+[22] Pornin, T. "Deterministic Usage of the Digital Signature Algorithm (DSA) and Elliptic Curve Digital Signature Algorithm (ECDSA)." RFC 6979, IETF, August 2013.
+
+[23] Turner, S., Brown, D., Yiu, K., Housley, R., and Polk, T. "Elliptic Curve Cryptography Subject Public Key Information." RFC 5480, IETF, March 2009.
+
+[24] Goldwasser, S., Micali, S., and Rivest, R. "A Digital Signature Scheme Secure Against Adaptive Chosen-Message Attacks." SIAM Journal on Computing, 17(2):281–308, 1988.
+
+[25] Merkle, R. "A Digital Signature Based on a Conventional Encryption Function." CRYPTO '87, pp. 369–378.
+
+[26] European Parliament and Council of the European Union. "Regulation (EU) No 910/2014 on Electronic Identification and Trust Services for Electronic Transactions in the Internal Market (eIDAS)." Official Journal of the European Union, 2014.
+
+[27] National Assembly of the Republic of Korea. "Electronic Signatures Act (전자서명법)." Act No. 17354, 2020.
+
+[28] Buterin, V. "EIP-155: Simple Replay Attack Protection." Ethereum Improvement Proposals, 2016.
+
+[29] RISC Zero. "RISC Zero zkVM: General Purpose Verifiable Computing." https://www.risczero.com/, 2023.
+
+[30] iden3. "Circom: A Circuit Compiler for Zero-Knowledge Proofs." https://docs.circom.io/, 2021.
+
+[31] Bünz, B., Bootle, J., Boneh, D., Poelstra, A., Wuille, P., and Maxwell, G. "Bulletproofs: Short Proofs for Confidential Transactions and More." IEEE S&P, pp. 315–334, 2018.
+
+[32] Ben-Sasson, E., Chiesa, A., Garman, C., Green, M., Miers, I., Tromer, E., and Virza, M. "Zerocash: Decentralized Anonymous Payments from Bitcoin." IEEE S&P, pp. 459–474, 2014.
