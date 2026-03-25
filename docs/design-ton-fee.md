@@ -27,13 +27,25 @@ Service Owner                     RegistryFactory
 
 ## Fee Structure
 
-| Action | Gas (ETH) | Platform Fee (TON) |
-|--------|-----------|-------------------|
-| Deploy Factory | Owner pays | — |
-| Create Registry | Creator pays | `registryCreationFee` TON |
-| addCA | Registry owner pays | — |
-| register (user) | User pays | Free |
-| reRegister (user) | User pays | Free |
+| Action | Gas | Platform Fee |
+|--------|-----|-------------|
+| Deploy Factory | Native token | — |
+| Create Registry | Native token | `registryCreationFee` (TON or native) |
+| addCA | Native token | — |
+| register (user) | Native token | Free |
+| reRegister (user) | Native token | Free |
+
+## Dual Fee Mode (L1 vs L2)
+
+| | L1 (Ethereum) | L2 (Tokamak) |
+|---|---|---|
+| Native token | ETH | TON |
+| Gas | ETH | TON |
+| Platform fee | **TON (ERC-20)** | **TON (native, via msg.value)** |
+
+Factory supports both modes via configurable fee token:
+- `feeToken == address(0)` → native token (msg.value)
+- `feeToken != address(0)` → ERC-20 (transferFrom)
 
 ## Target: Ethereum L1
 
@@ -51,21 +63,34 @@ Gas fees on L2 will be negligible, making the UX much smoother.
 ### RegistryFactory additions
 
 ```solidity
-IERC20 public immutable TON_TOKEN;
-uint256 public registryCreationFee;      // in TON (18 decimals), 0 = free
+address public feeToken;                 // address(0) = native, else ERC-20
+uint256 public registryCreationFee;      // 0 = free
 address public feeRecipient;
 
-function createRegistry(...) external returns (address) {
-    // Collect TON fee
-    if (registryCreationFee > 0) {
-        TON_TOKEN.transferFrom(msg.sender, feeRecipient, registryCreationFee);
-    }
+function createRegistry(...) external payable returns (address) {
+    _collectFee();
     // Deploy registry (unchanged)
     ...
 }
 
-function setRegistryCreationFee(uint256 newFee) external onlyOwner;
-function setFeeRecipient(address newRecipient) external onlyOwner;
+function _collectFee() internal {
+    if (registryCreationFee == 0) return;
+
+    if (feeToken == address(0)) {
+        // Native token (ETH on L1, TON on L2)
+        if (msg.value < registryCreationFee) revert InsufficientFee();
+        payable(feeRecipient).transfer(registryCreationFee);
+        // Refund excess
+        if (msg.value > registryCreationFee) {
+            payable(msg.sender).transfer(msg.value - registryCreationFee);
+        }
+    } else {
+        // ERC-20 token (TON on L1)
+        IERC20(feeToken).transferFrom(msg.sender, feeRecipient, registryCreationFee);
+    }
+}
+
+function setFeeConfig(address _feeToken, uint256 _fee, address _recipient) external onlyOwner;
 ```
 
 ### Constructor update
@@ -74,8 +99,8 @@ function setFeeRecipient(address newRecipient) external onlyOwner;
 constructor(
     address _sp1Verifier,
     bytes32 _programVKey,
-    address _tonToken,          // NEW
-    uint256 _creationFee,       // NEW (0 for free)
+    address _feeToken,          // NEW: address(0) = native, else ERC-20
+    uint256 _creationFee,       // NEW: 0 = free
     address _feeRecipient       // NEW
 )
 ```
