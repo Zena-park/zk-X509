@@ -6,6 +6,7 @@ via_ir = true
 remappings = [
     "forge-std/=lib/forge-std/src/",
     "sp1-contracts/=lib/sp1-contracts/contracts/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
 ]
 
 [lint]

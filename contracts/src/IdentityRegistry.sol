@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 /// @dev Struct for decoding ZK proof public values in a single abi.decode call.
 struct PublicValues {
@@ -24,14 +25,14 @@ struct PublicValues {
 /// @notice On-chain registry for ZK-verified X.509 certificate identities.
 /// @dev Users prove they hold a valid certificate (signed by a trusted CA)
 ///      without revealing any personal data. A nullifier prevents double registration.
-contract IdentityRegistry {
+contract IdentityRegistry is Initializable {
     // ============ State ============
 
     /// @notice The SP1 on-chain verifier contract.
-    ISP1Verifier public immutable SP1_VERIFIER;
+    ISP1Verifier public SP1_VERIFIER;
 
     /// @notice The verification key for the ZK X.509 program.
-    bytes32 public immutable PROGRAM_V_KEY;
+    bytes32 public PROGRAM_V_KEY;
 
     /// @notice Merkle root of allowed CA set (hides which specific CA issued the cert).
     ///         Auto-computed from caLeaves[] when using addCA/removeCA.
@@ -77,9 +78,6 @@ contract IdentityRegistry {
     /// @notice Whether the contract is paused.
     bool public paused;
 
-    /// @notice Whether setInitialOwner has already been called.
-    bool private _initialOwnerSet;
-
     /// @notice Maximum allowed age of a proof (adjustable by owner).
     uint256 public maxProofAge = 1 hours;
 
@@ -87,12 +85,12 @@ contract IdentityRegistry {
     uint256 public constant MAX_PROOF_AGE_LIMIT = 24 hours;
 
     /// @notice Max wallets per certificate (1 = strict 1:1, N = multi-wallet).
-    uint32 public immutable MAX_WALLETS_PER_CERT;
+    uint32 public MAX_WALLETS_PER_CERT;
 
     /// @notice Minimum disclosure mask required for registration.
     ///         Bits: 0=Country, 1=Org, 2=OrgUnit, 3=CN.
     ///         0x00 = no disclosure required, 0x01 = country required, etc.
-    uint8 public immutable MIN_DISCLOSURE_MASK;
+    uint8 public MIN_DISCLOSURE_MASK;
 
     // ============ Events ============
 
@@ -136,7 +134,6 @@ contract IdentityRegistry {
     error CaIndexOutOfBounds(uint256 index, uint256 length);
     error CaIndicesNotDescending(uint256 current, uint256 previous);
     error InsufficientDisclosure(uint8 proofMask, uint8 requiredMask);
-    error RegistryAlreadyConfigured();
     error InvalidDisclosureMask(uint8 mask);
 
     // ============ Modifiers ============
@@ -159,32 +156,32 @@ contract IdentityRegistry {
         if (paused) revert ContractPaused();
     }
 
-    // ============ Constructor ============
+    // ============ Constructor / Initializer ============
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice Initialize the registry (called once via proxy).
     /// @param _sp1Verifier Address of the SP1 verifier contract.
     /// @param _programVKey The verification key for the ZK X.509 SP1 program.
     /// @param _maxWallets Max wallets per certificate (1 for DAO/voting, N for DeFi).
     /// @param _minDisclosureMask Minimum disclosure bitmask required (0x00 = none required).
-    constructor(address _sp1Verifier, bytes32 _programVKey, uint32 _maxWallets, uint8 _minDisclosureMask) {
+    /// @param _owner The initial owner of this registry.
+    function initialize(
+        address _sp1Verifier,
+        bytes32 _programVKey,
+        uint32 _maxWallets,
+        uint8 _minDisclosureMask,
+        address _owner
+    ) external initializer {
         if (_minDisclosureMask > 0x0F) revert InvalidDisclosureMask(_minDisclosureMask);
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
         PROGRAM_V_KEY = _programVKey;
         MAX_WALLETS_PER_CERT = _maxWallets;
         MIN_DISCLOSURE_MASK = _minDisclosureMask;
-        owner = msg.sender;
-    }
-
-    /// @notice Set the initial owner directly (for factory deployment).
-    ///         Can only be called once by the deployer, before any CA is added.
-    function setInitialOwner(address _owner) external onlyOwner {
-        if (_owner == address(0)) revert ZeroAddress();
-        if (_initialOwnerSet) revert RegistryAlreadyConfigured();
-        if (caLeaves.length > 0) revert RegistryAlreadyConfigured();
-        _initialOwnerSet = true;
-        if (_owner == owner) return; // No-op if already owner
-        emit OwnershipTransferred(owner, _owner);
         owner = _owner;
-        pendingOwner = address(0);
     }
 
     // ============ Internal ============
