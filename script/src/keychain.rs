@@ -196,9 +196,21 @@ pub mod macos_keychain {
 
     /// Opaque handle to a macOS keychain identity.
     /// Allows signing without exposing the private key.
-    #[derive(Debug, Clone)]
+    /// Caches the signing algorithm to avoid re-parsing the certificate on each sign call.
+    #[derive(Clone)]
     pub struct KeychainIdentity {
         pub identity: SecIdentity,
+        /// Cached signing algorithm (detected from certificate on first use)
+        signing_algorithm: Option<security_framework::key::Algorithm>,
+    }
+
+    impl std::fmt::Debug for KeychainIdentity {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("KeychainIdentity")
+                .field("identity", &"<SecIdentity>")
+                .field("signing_algorithm", &self.signing_algorithm.as_ref().map(|_| "<cached>"))
+                .finish()
+        }
     }
 
     /// Scan the macOS login keychain for identities (certificate + key pairs).
@@ -220,7 +232,7 @@ pub mod macos_keychain {
             if let SearchResult::Ref(Reference::Identity(identity)) = result {
                 match identity_to_entry(identity) {
                     Ok(entry) => {
-                        let kc_id = KeychainIdentity { identity: identity.clone() };
+                        let kc_id = KeychainIdentity { identity: identity.clone(), signing_algorithm: None };
                         entries.push((entry, kc_id));
                     }
                     Err(e) => {
@@ -262,7 +274,7 @@ pub mod macos_keychain {
     /// Detects the key algorithm (RSA or ECDSA) from the certificate and uses
     /// the appropriate Security.framework algorithm.
     pub fn sign_with_identity(
-        identity: &KeychainIdentity,
+        identity: &mut KeychainIdentity,
         prehash: &[u8; 32],
     ) -> Result<Vec<u8>, String> {
         use security_framework::key::Algorithm;
@@ -270,8 +282,28 @@ pub mod macos_keychain {
         let private_key = identity.identity.private_key()
             .map_err(|e| format!("Get private key handle: {}", e))?;
 
-        // Detect algorithm from certificate's public key
-        let cert = identity.identity.certificate()
+        // Use cached algorithm or detect from certificate
+        let algorithm = match identity.signing_algorithm {
+            Some(ref alg) => alg.clone(),
+            None => {
+                let alg = detect_signing_algorithm(&identity.identity)?;
+                identity.signing_algorithm = Some(alg.clone());
+                alg
+            }
+        };
+
+        private_key.create_signature(algorithm, prehash)
+            .map_err(|e| format!("Keychain signing failed: {}", e))
+    }
+
+    /// Detect the signing algorithm from a keychain identity's certificate.
+    fn detect_signing_algorithm(
+        identity: &SecIdentity,
+    ) -> Result<security_framework::key::Algorithm, String> {
+        use security_framework::key::Algorithm;
+        use crate::ownership::{OID_EC_PUBLIC_KEY, OID_RSA_ENCRYPTION, OID_PRIME256V1, OID_SECP384R1};
+
+        let cert = identity.certificate()
             .map_err(|e| format!("Get certificate: {}", e))?;
         let der_bytes = cert.to_der();
 
@@ -279,29 +311,24 @@ pub mod macos_keychain {
         let (_, parsed) = x509_parser::certificate::X509Certificate::from_der(&der_bytes)
             .map_err(|e| format!("Parse cert: {:?}", e))?;
 
-        use crate::ownership::{OID_EC_PUBLIC_KEY, OID_RSA_ENCRYPTION, OID_PRIME256V1, OID_SECP384R1};
-
         let alg_oid = parsed.tbs_certificate.subject_pki.algorithm.algorithm.to_id_string();
 
-        let algorithm = if alg_oid == OID_EC_PUBLIC_KEY {
+        if alg_oid == OID_EC_PUBLIC_KEY {
             let curve_oid = parsed.tbs_certificate.subject_pki.algorithm
                 .parameters.as_ref()
                 .and_then(|p| p.as_oid().ok())
                 .map(|oid| oid.to_id_string())
                 .unwrap_or_default();
             match curve_oid.as_str() {
-                OID_PRIME256V1 => Algorithm::ECDSASignatureDigestX962SHA256,
-                OID_SECP384R1 => Algorithm::ECDSASignatureDigestX962SHA384,
-                _ => return Err(format!("Unsupported EC curve: {}", curve_oid)),
+                OID_PRIME256V1 => Ok(Algorithm::ECDSASignatureDigestX962SHA256),
+                OID_SECP384R1 => Ok(Algorithm::ECDSASignatureDigestX962SHA384),
+                _ => Err(format!("Unsupported EC curve: {}", curve_oid)),
             }
         } else if alg_oid == OID_RSA_ENCRYPTION {
-            Algorithm::RSASignatureDigestPKCS1v15SHA256
+            Ok(Algorithm::RSASignatureDigestPKCS1v15SHA256)
         } else {
-            return Err(format!("Unsupported key algorithm: {}", alg_oid));
-        };
-
-        private_key.create_signature(algorithm, prehash)
-            .map_err(|e| format!("Keychain signing failed: {}", e))
+            Err(format!("Unsupported key algorithm: {}", alg_oid))
+        }
     }
 }
 

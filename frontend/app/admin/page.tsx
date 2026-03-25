@@ -95,7 +95,6 @@ async function sha256(data: Uint8Array): Promise<Uint8Array> {
 /** Read a DER tag+length and return [valueOffset, valueLength, totalLength]. */
 function derReadTL(data: Uint8Array, offset: number): [number, number, number] {
   if (offset >= data.length) throw new Error("DER: unexpected end");
-  const tag = data[offset];
   let lenByte = data[offset + 1];
   let valueOffset: number;
   let valueLength: number;

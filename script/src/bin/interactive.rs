@@ -56,16 +56,12 @@ fn main() {
     println!();
 
     // ── Pre-flight: Docker check ─────────────────────
-    if !is_docker_running() {
-        println!("  ✗ Docker is not running.");
-        println!("    Groth16 proof generation requires Docker Desktop.");
-        println!();
-        println!("    1. Start Docker Desktop");
-        println!("    2. Re-run: ./script/run-interactive.sh");
-        println!();
-        std::process::exit(1);
+    let docker_available = is_docker_running();
+    if docker_available {
+        println!("  ✓ Docker detected");
+    } else {
+        println!("  ⚠ Docker not running (Groth16 unavailable, Execute mode OK)");
     }
-    println!("  ✓ Docker detected");
     println!();
 
     // ── Step 1: Settings ──────────────────────────────
@@ -169,7 +165,7 @@ fn main() {
 
     // Load certificate DER and prepare signing capability based on source
     #[cfg(target_os = "macos")]
-    let keychain_identity: Option<zk_x509_script::keychain::macos_keychain::KeychainIdentity>;
+    let mut keychain_identity: Option<zk_x509_script::keychain::macos_keychain::KeychainIdentity>;
 
     let (cert_der, key_der_opt) = match entry.source {
         CertSource::File => {
@@ -284,7 +280,7 @@ fn main() {
         #[cfg(target_os = "macos")]
         None => {
             // Keychain-based: sign via OS keychain (private key never in memory)
-            let kc_id = keychain_identity.as_ref().unwrap();
+            let kc_id = keychain_identity.as_mut().unwrap();
 
             let ownership_hash = match zk_x509_script::ownership::ownership_challenge_hash(
                 &cert_der, &registrant_bytes, wallet_index, timestamp, chain_id,
@@ -379,6 +375,15 @@ fn main() {
             Err(e) => { println!("  ✗ Execution failed: {}", e); return; }
         }
     } else {
+        if !docker_available {
+            println!("  ✗ Docker is not running.");
+            println!("    Groth16 proof generation requires Docker Desktop.");
+            println!();
+            println!("    1. Start Docker Desktop");
+            println!("    2. Re-run: ./script/run-interactive.sh");
+            println!();
+            std::process::exit(1);
+        }
         println!("  Generating Groth16 proof (this takes several minutes)...");
         let pk = match client.setup(ZK_X509_ELF) {
             Ok(pk) => pk,
