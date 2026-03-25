@@ -209,49 +209,18 @@ fn main() {
 
     // CA public key — auto-match from data/ca-certs/ directory
     let ca_certs = zk_x509_script::ca::scan_ca_certs();
-    let ca_pub_key = if ca_certs.is_empty() {
-        println!("  ⚠ No CA certs in data/ca-certs/, manual input required");
-        let ca_path = prompt("  CA public key path [certs/ca_pub.der]: ");
-        let ca_path = if ca_path.is_empty() { "certs/ca_pub.der".to_string() } else { ca_path };
-        match std::fs::read(&ca_path) {
-            Ok(d) => { println!("  ✓ CA public key loaded"); d }
-            Err(e) => { println!("  Failed to read CA: {}", e); return; }
-        }
-    } else {
-        // Try on-chain filtering first
-        let on_chain_leaves = zk_x509_script::onchain::fetch_ca_leaves(&rpc_url, &registry_bytes).ok();
-        let leaves_ref = on_chain_leaves.as_deref();
+    let on_chain_leaves = zk_x509_script::onchain::fetch_ca_leaves(&rpc_url, &registry_bytes).ok();
 
-        match zk_x509_script::ca::find_issuer_ca(&cert_der, &ca_certs, leaves_ref) {
-            Some(idx) => {
-                let ca = &ca_certs[idx];
-                println!("  ✓ Auto-matched CA: {}", ca.subject);
-                if leaves_ref.is_some() {
-                    println!("    (on-chain verified)");
-                }
-                ca.spki_der.clone()
+    let ca_pub_key = auto_match_ca(&cert_der, &ca_certs, on_chain_leaves.as_deref())
+        .unwrap_or_else(|| {
+            println!("  ⚠ Could not auto-match CA, manual input required");
+            let ca_path = prompt("  CA public key path [certs/ca_pub.der]: ");
+            let ca_path = if ca_path.is_empty() { "certs/ca_pub.der".to_string() } else { ca_path };
+            match std::fs::read(&ca_path) {
+                Ok(d) => { println!("  ✓ CA public key loaded"); d }
+                Err(e) => { println!("  Failed to read CA: {}", e); std::process::exit(1); }
             }
-            None => {
-                // Fallback: try without on-chain filter
-                match zk_x509_script::ca::find_issuer_ca(&cert_der, &ca_certs, None) {
-                    Some(idx) => {
-                        let ca = &ca_certs[idx];
-                        println!("  ✓ Auto-matched CA: {} (not yet on-chain)", ca.subject);
-                        ca.spki_der.clone()
-                    }
-                    None => {
-                        println!("  ⚠ Could not auto-match CA, manual input required");
-                        let ca_path = prompt("  CA public key path [certs/ca_pub.der]: ");
-                        let ca_path = if ca_path.is_empty() { "certs/ca_pub.der".to_string() } else { ca_path };
-                        match std::fs::read(&ca_path) {
-                            Ok(d) => { println!("  ✓ CA public key loaded"); d }
-                            Err(e) => { println!("  Failed to read CA: {}", e); return; }
-                        }
-                    }
-                }
-            }
-        }
-    };
+        });
 
     // Wallet address
     let registrant = prompt("  Your wallet address (0x...): ");
@@ -444,4 +413,38 @@ fn main() {
 
     println!();
     println!("  Done!");
+}
+
+/// Try to auto-match the CA that issued the user cert from the local CA directory.
+/// Prioritizes on-chain verified CAs, falls back to local-only match.
+fn auto_match_ca(
+    user_cert_der: &[u8],
+    ca_certs: &[zk_x509_script::ca::CaCertInfo],
+    on_chain_leaves: Option<&[[u8; 32]]>,
+) -> Option<Vec<u8>> {
+    if ca_certs.is_empty() {
+        return None;
+    }
+
+    // Try with on-chain filter first
+    if let Some(leaves) = on_chain_leaves {
+        if let Some(idx) = zk_x509_script::ca::find_issuer_ca(user_cert_der, ca_certs, Some(leaves)) {
+            let ca = &ca_certs[idx];
+            println!("  ✓ Auto-matched CA: {} (on-chain verified)", ca.subject);
+            return Some(ca.spki_der.clone());
+        }
+    }
+
+    // Fallback: match without on-chain filter
+    if let Some(idx) = zk_x509_script::ca::find_issuer_ca(user_cert_der, ca_certs, None) {
+        let ca = &ca_certs[idx];
+        println!("  ⚠ Auto-matched CA: {} (NOT registered on-chain)", ca.subject);
+        println!("    Execute mode OK, but on-chain registration will fail.");
+        println!("    To request CA registration:");
+        println!("      → Email: zena@tokamak.network");
+        println!("      → GitHub: https://github.com/tokamak-network/zk-X509/issues");
+        return Some(ca.spki_der.clone());
+    }
+
+    None
 }
