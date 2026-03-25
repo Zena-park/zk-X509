@@ -782,7 +782,7 @@ export default function AdminContent() {
   /* ---------------------------------------------------------------- */
   if (!account) {
     return (
-      <main className="max-w-6xl mx-auto pt-24 px-8 pb-12 flex items-center justify-center min-h-[60vh]">
+      <main className="max-w-6xl mx-auto pt-4 px-8 pb-12 flex items-center justify-center min-h-[60vh]">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -831,7 +831,7 @@ export default function AdminContent() {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
   return (
-    <main className="max-w-6xl mx-auto pt-24 px-8 min-h-screen">
+    <main className="max-w-6xl mx-auto pt-4 px-8 min-h-screen">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Alert Section — non-owner */}
         {!isOwner && (

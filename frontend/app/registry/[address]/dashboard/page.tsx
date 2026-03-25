@@ -37,7 +37,7 @@ export default function ScopedDashboardPage() {
 
   return (
     <>
-      <div className="max-w-6xl mx-auto pt-24 px-8 pb-2">
+      <div className="max-w-6xl mx-auto pt-20 px-8 pb-1">
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors font-headline text-sm"
