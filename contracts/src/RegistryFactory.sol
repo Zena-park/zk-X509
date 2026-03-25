@@ -22,9 +22,10 @@ contract RegistryFactory {
     /// @notice Quick lookup: is this address a registry deployed by this factory?
     mapping(address => bool) public isRegistry;
 
-    /// @notice Metadata for each registry.
+    /// @notice Metadata for each registry (immutable config snapshot at creation time).
+    /// @dev `owner` reflects the initial creator. For current owner, call registry.owner() directly.
     struct RegistryInfo {
-        address owner;
+        address creator;
         string name;
         uint32 maxWallets;
         uint8 minDisclosureMask;
@@ -80,14 +81,14 @@ contract RegistryFactory {
             minDisclosureMask
         );
 
-        // Transfer ownership to the caller
-        newRegistry.transferOwnership(msg.sender);
+        // Transfer ownership directly to the caller (no 2-step needed)
+        newRegistry.setInitialOwner(msg.sender);
 
         registry = address(newRegistry);
         registries.push(registry);
         isRegistry[registry] = true;
         registryInfo[registry] = RegistryInfo({
-            owner: msg.sender,
+            creator: msg.sender,
             name: name,
             maxWallets: maxWallets,
             minDisclosureMask: minDisclosureMask,

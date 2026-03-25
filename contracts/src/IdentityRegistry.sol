@@ -168,6 +168,16 @@ contract IdentityRegistry {
         owner = msg.sender;
     }
 
+    /// @notice Set the initial owner directly (for factory deployment).
+    ///         Can only be called once, by the current owner (factory), before any CA is added.
+    function setInitialOwner(address _owner) external onlyOwner {
+        if (_owner == address(0)) revert ZeroAddress();
+        if (caLeaves.length > 0) revert OnlyOwner(); // Safety: only before any setup
+        emit OwnershipTransferred(owner, _owner);
+        owner = _owner;
+        pendingOwner = address(0);
+    }
+
     // ============ Internal ============
 
     /// @dev Shared validation: decode, check registrant, timestamp, CA, walletIndex, and verify proof.
