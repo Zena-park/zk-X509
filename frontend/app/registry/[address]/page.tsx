@@ -21,7 +21,7 @@ import {
   ExternalLink,
   Tag,
 } from "lucide-react";
-import { IDENTITY_REGISTRY_ABI, getRpcUrl } from "@/lib/contract";
+import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
 import { truncateHex } from "@/lib/utils";
 import {
   getRegistryMetadata,
@@ -37,6 +37,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 interface RegistryInfo {
+  name: string;
   owner: string;
   maxWallets: number;
   minDisclosureMask: number;
@@ -91,6 +92,20 @@ export default function RegistryDetailPage() {
           contract.paused(),
         ]);
 
+        // Fetch service name from factory
+        let serviceName = "";
+        try {
+          const { chainId: cid } = await provider.getNetwork();
+          const factoryAddr = getFactoryAddress(cid.toString());
+          if (factoryAddr) {
+            const factory = new ethers.Contract(factoryAddr, REGISTRY_FACTORY_ABI, provider);
+            const fInfo = await factory.registryInfo(address);
+            serviceName = fInfo.name ?? fInfo[1] ?? "";
+          }
+        } catch {
+          // factory may not be available
+        }
+
         // Try to read MIN_DISCLOSURE_MASK (may not exist on older contracts)
         let minDisclosureMask = 0;
         try {
@@ -108,6 +123,7 @@ export default function RegistryDetailPage() {
         }
 
         setInfo({
+          name: serviceName,
           owner,
           maxWallets: Number(maxWallets),
           minDisclosureMask,
@@ -167,7 +183,7 @@ export default function RegistryDetailPage() {
             href="/"
             className="inline-flex items-center gap-2 text-tertiary hover:text-primary transition-colors font-headline text-sm"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to Platform
+            <ArrowLeft className="w-4 h-4" /> Back to Explore
           </Link>
         </motion.div>
       </main>
@@ -191,7 +207,7 @@ export default function RegistryDetailPage() {
           href="/"
           className="inline-flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors font-headline text-sm"
         >
-          <ArrowLeft className="w-4 h-4" /> Back to Platform
+          <ArrowLeft className="w-4 h-4" /> Back to Explore
         </Link>
       </motion.div>
 
@@ -207,7 +223,7 @@ export default function RegistryDetailPage() {
           </div>
           <div className="flex-1">
             <h1 className="text-3xl font-headline font-bold tracking-tight text-primary">
-              Registry
+              {info.name || "Service"}
             </h1>
             <p className="font-mono text-sm text-on-surface-variant">{address}</p>
           </div>
@@ -426,14 +442,14 @@ export default function RegistryDetailPage() {
           className="flex-1 flex items-center justify-center gap-3 px-8 py-5 bg-primary text-surface font-headline font-bold rounded-2xl hover:scale-[1.02] active:scale-95 transition-all"
         >
           <Users className="w-5 h-5" />
-          User Dashboard
+          Register Identity
         </Link>
         <Link
           href={`/registry/${address}/admin`}
           className="flex-1 flex items-center justify-center gap-3 px-8 py-5 border border-outline-variant/30 text-on-surface font-headline font-bold rounded-2xl hover:bg-surface-container-highest transition-all"
         >
           <Settings className="w-5 h-5" />
-          Admin Console
+          Manage Service
         </Link>
       </motion.div>
     </main>
