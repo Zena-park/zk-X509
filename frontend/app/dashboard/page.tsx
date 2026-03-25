@@ -161,7 +161,7 @@ export default function DashboardPage() {
             {verified && expiryDate ? (
               <p className="text-on-surface-variant text-sm">
                 Expires:{" "}
-                {expiryDate.toLocaleString("ko-KR", {
+                {expiryDate.toLocaleString("en-US", {
                   year: "numeric",
                   month: "long",
                   day: "numeric",

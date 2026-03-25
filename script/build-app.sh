@@ -23,7 +23,8 @@ echo
 # ── Step 1: Build release binary ──────────────────
 echo "[1/5] Building release binary..."
 cd "$PROJECT_DIR"
-cargo build --release --bin interactive 2>&1 | { grep -v "^warning:" || true; }
+RUSTFLAGS="--remap-path-prefix=$HOME/.cargo/registry=/registry --remap-path-prefix=$PROJECT_DIR=/zk-x509" \
+  cargo build --release --bin interactive 2>&1 | { grep -v "^warning:" || true; }
 
 if [ ! -f "$BINARY" ]; then
     echo "  ✗ Build failed: $BINARY not found"
@@ -61,11 +62,18 @@ fi
 osascript <<APPLESCRIPT
 tell application "Terminal"
     activate
-    do script "clear && '$BINARY'; echo ''; echo 'Press Enter to close...'; read"
+    set newTab to do script "clear && '$BINARY'; echo ''; echo 'Press Enter to close...'; read"
+    set custom title of newTab to "zk-X509 Proof Generator"
+    set title displays custom title of newTab to true
 end tell
 APPLESCRIPT
 LAUNCHER_EOF
 chmod +x "$APP_DIR/Contents/MacOS/launcher"
+
+# Copy app icon
+if [ -f "$SCRIPT_DIR/app-resources/AppIcon.icns" ]; then
+    cp "$SCRIPT_DIR/app-resources/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+fi
 
 echo "  ✓ App structure created"
 
