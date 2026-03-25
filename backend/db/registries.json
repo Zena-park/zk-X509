@@ -1,1 +1,25 @@
-{}
+{
+  "0x93b6BDa6a0813D808d75aA42e900664Ceb868bcF": {
+    "description": "E2E test DAO for voting",
+    "logoUrl": "",
+    "category": "dao",
+    "website": "https://test.dao",
+    "tags": [],
+    "announcements": [
+      {
+        "id": "923de11b-114f-4d28-840a-e5a162462263",
+        "title": "Welcome",
+        "body": "E2E test registry is live!",
+        "createdAt": "2026-03-25T11:22:04.584Z"
+      }
+    ],
+    "caGuides": {
+      "0x28a2f0e0de15a5182a9cb4ac14cc8e3146fa1adbf0912c7e3131b3cee53499ab": {
+        "name": "yessignCA Class 3",
+        "description": "Korean banking cert",
+        "issueUrl": "https://www.yessign.or.kr",
+        "instructions": "Visit your bank to get NPKI cert"
+      }
+    }
+  }
+}

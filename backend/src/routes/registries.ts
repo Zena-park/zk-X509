@@ -79,11 +79,16 @@ router.put("/:address", (req, res) => {
     db[addr] = makeDefaultEntry();
   }
 
-  const allowed = ["description", "logoUrl", "category", "website", "tags"];
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) {
-      (db[addr] as any)[key] = req.body[key];
-    }
+  const entry = db[addr];
+  const { description, logoUrl, category, website, tags } = req.body;
+  if (description !== undefined) entry.description = String(description);
+  if (logoUrl !== undefined) entry.logoUrl = String(logoUrl);
+  if (category !== undefined && ["dao", "defi", "corporate", "other"].includes(category)) {
+    entry.category = category;
+  }
+  if (website !== undefined) entry.website = String(website);
+  if (Array.isArray(tags)) {
+    entry.tags = tags.filter((tag: unknown): tag is string => typeof tag === "string");
   }
 
   writeDB(db);
