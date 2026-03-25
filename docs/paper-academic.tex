@@ -88,6 +88,16 @@
 \setlength{\emergencystretch}{3em} % prevent overfull lines
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+% Fix verbatim overflow: allow line breaks and use smaller font
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  literate={π}{$\pi$}1 {→}{$\rightarrow$}1 {←}{$\leftarrow$}1 {≤}{$\leq$}1 {≥}{$\geq$}1 {≠}{$\neq$}1 {∈}{$\in$}1 {∉}{$\notin$}1 {‖}{$\|$}1 {∅}{$\emptyset$}1
+}
 \usepackage{bookmark}
 \IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
 \urlstyle{same}
@@ -101,7 +111,7 @@
 Tokamak Network\\
 \texttt{zena@tokamak.network}}
 
-\date{March 2026\\{\small arXiv preprint --- v1}}
+\date{March 26, 2026\\{\small arXiv preprint --- v1}}
 
 \begin{document}
 
@@ -632,7 +642,7 @@ verification.
 The zk-X509 system comprises four components arranged in a layered
 architecture:
 
-\begin{verbatim}
+\begin{lstlisting}
 ┌──────────────────────────────────────────────────────────────┐
 │                     Frontend (Next.js)                        │
 │   Browser: NPKI cert selection, wallet connect, TX submission  │
@@ -656,7 +666,7 @@ architecture:
 │   IdentityRegistry: verify registrant → verify timestamp →   │
 │   check CA → check nullifier → verify proof → register       │
 └──────────────────────────────────────────────────────────────┘
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{Formal Protocol
 Specification}\label{formal-protocol-specification}
@@ -677,7 +687,7 @@ bytes) - \(t\): Current Unix timestamp - \(\mathcal{H}\): SHA-256
 
 \textbf{Protocol.}
 
-\begin{verbatim}
+\begin{lstlisting}
 Step 1.  P → S:   (cert_index, addr, wallet_index?, max_wallets?, disclosure_mask?)
                    via HTTP POST to localhost
                    cert_index identifies a certificate discovered by the
@@ -784,7 +794,7 @@ Step 8.  V:        // On-chain verification
                    nullifierOwner[nullifier] ← msg.sender
                    verifiedUntil[msg.sender] ← notAfter          // auto-expiry
                    Emit UserRegistered(msg.sender, nullifier)
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{Public Values
 Structure}\label{public-values-structure}
@@ -1095,7 +1105,7 @@ configurable multi-wallet registration.
 
 The \texttt{IdentityRegistry} contract manages on-chain state:
 
-\begin{verbatim}
+\begin{lstlisting}
 State Variables:
   sp1Verifier       : ISP1Verifier (immutable)     — On-chain proof verifier
   programVKey       : bytes32 (immutable)           — ZK program verification key
@@ -1115,7 +1125,7 @@ State Variables:
   caMerkleRootUpdatedAt : uint256                   — Timestamp of last CA root update
   caRootGracePeriod : uint256                       — Grace period allowing old CA root (default 24 hours)
   minDisclosureMask : uint8 (immutable)             — Minimum required disclosure fields
-\end{verbatim}
+\end{lstlisting}
 
 The \texttt{maxWalletsPerCert} parameter is set at deployment, enabling
 configurable registration policy per L2 deployment (see Section 3.6).
@@ -1608,7 +1618,7 @@ ECDSA Verification & p256, p384 (pure Rust) & 0.13 \\
 
 \subsection{Repository Structure}\label{repository-structure}
 
-\begin{verbatim}
+\begin{lstlisting}
 zk-X509/
 ├── lib/              # Shared types (PublicValuesStruct)
 ├── program/          # SP1 Guest program (zkVM)
@@ -1617,7 +1627,7 @@ zk-X509/
 ├── frontend/         # Next.js web UI
 ├── certs/            # Test certificate generator (OpenSSL scripts)
 └── docs/             # Documentation and this paper
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{Performance Evaluation}\label{performance-evaluation}
 
@@ -1978,7 +1988,7 @@ that simulates the system.
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{forge}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^forge:
   1. C deploys IdentityRegistry with verification key vkey
      and whitelists a set of CA root hashes {h_1, ..., h_n}
@@ -1987,7 +1997,7 @@ Game Exp_A^forge:
   3. A is NOT given: any valid certificate or private key
   4. A outputs: (π*, pubvals*)
   5. A wins if: V.register(π*, pubvals*) succeeds
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is unforgeable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -1999,7 +2009,7 @@ Game Exp_A^forge:
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{link}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^link:
   1. C generates two valid certificates (cert_0, sk_0) and (cert_1, sk_1)
      both signed by the same CA
@@ -2009,7 +2019,7 @@ Game Exp_A^link:
   5. A is NOT given: the certificates, private keys, or serial numbers
   6. A outputs: b'
   7. A wins if: b' = b
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is unlinkable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2021,14 +2031,14 @@ Resistance)}\label{definition-3-double-registration-resistance}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{double}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^double:
   1. C deploys IdentityRegistry and whitelists CA roots
   2. A is given: one valid certificate (cert, sk) and two addresses addr_1, addr_2
   3. A outputs: two registration transactions tx_1 = (π_1, pubvals_1) from addr_1
                 and tx_2 = (π_2, pubvals_2) from addr_2
   4. A wins if: both V.register(tx_1) and V.register(tx_2) succeed
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is double-registration resistant} if for all PPT
 adversaries \(\mathcal{A}\):
@@ -2040,14 +2050,14 @@ Immunity)}\label{definition-4-front-running-immunity}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{front}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^front:
   1. An honest user P generates a valid registration tx = (π, pubvals) for addr_P
   2. A observes tx in the mempool before it is mined
   3. A outputs: tx' = (π', pubvals') from addr_A ≠ addr_P
      where A may copy, modify, or replay any data from tx
   4. A wins if: V.register(tx') succeeds using any data derived from tx
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is front-running immune} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2059,7 +2069,7 @@ Hiding)}\label{definition-5-ca-membership-hiding}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{ca-anon}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^ca-anon:
   1. C whitelists two CAs: CA_0 and CA_1, constructing a Merkle tree
      with roots {h_0 = H(pk_0), h_1 = H(pk_1)} and Merkle root M
@@ -2071,7 +2081,7 @@ Game Exp_A^ca-anon:
   5. A is NOT given: cert_b, sk_b, or the Merkle proof path
   6. A outputs: b'
   7. A wins if: b' = b
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 satisfies CA-membership hiding} if for all PPT
 adversaries \(\mathcal{A}\):
@@ -2083,7 +2093,7 @@ adversaries \(\mathcal{A}\):
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{transfer}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^transfer:
   1. C deploys IdentityRegistry and whitelists CA roots
   2. An honest user P holds (cert, sk) and does NOT cooperate with A
@@ -2093,7 +2103,7 @@ Game Exp_A^transfer:
      registration (if any), and P's certificate (public data)
   4. A outputs: (π*, pubvals*) with a registrant address controlled by A
   5. A wins if: V.register(π*, pubvals*) succeeds using P's certificate
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is non-transferable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2998,6 +3008,11 @@ scratch'' philosophy represents a pragmatic and underexplored direction
 in the blockchain identity literature, complementary to rather than
 competing with DID-based systems.
 
+
+\section*{Availability}
+
+Source code will be made publicly available at:
+\url{https://github.com/tokamak-network/zk-X509}
 
 \bibliographystyle{plain}
 \bibliography{references}
