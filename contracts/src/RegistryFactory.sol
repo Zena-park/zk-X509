@@ -102,7 +102,7 @@ contract RegistryFactory {
     ) external returns (address registry) {
         if (maxWallets == 0) revert ZeroMaxWallets();
         if (minDisclosureMask > 0x0F) revert InvalidDisclosureMask();
-        if (maxProofAge == 0) revert ZeroMaxProofAge();
+        if (maxProofAge < 5 minutes || maxProofAge > 24 hours) revert ZeroMaxProofAge();
 
         // Encode the initialize call for the proxy
         bytes memory initData = abi.encodeCall(

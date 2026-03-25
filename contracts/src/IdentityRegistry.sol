@@ -181,7 +181,7 @@ contract IdentityRegistry is Initializable {
         if (_programVKey == bytes32(0)) revert ZeroMerkleRoot();
         if (_owner == address(0)) revert ZeroAddress();
         if (_minDisclosureMask > 0x0F) revert InvalidDisclosureMask(_minDisclosureMask);
-        if (_maxProofAge == 0) revert ProofAgeOutOfRange(_maxProofAge, 300, 86400);
+        if (_maxProofAge < 5 minutes || _maxProofAge > 24 hours) revert ProofAgeOutOfRange(_maxProofAge, 5 minutes, 24 hours);
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
         PROGRAM_V_KEY = _programVKey;
         MAX_WALLETS_PER_CERT = _maxWallets;

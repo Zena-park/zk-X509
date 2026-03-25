@@ -512,11 +512,7 @@ contract IdentityRegistryTest is Test {
     }
 
     function test_CustomMaxProofAge() public {
-        // Deploy with 5 minutes max proof age
-        IdentityRegistry shortAgeRegistry = _deployRegistry(
-            address(mockVerifier), PROGRAM_V_KEY, 1, 0, address(this)
-        );
-        // The _deployRegistry helper uses 3600, so deploy manually
+        // Deploy with 5 minutes max proof age (manually, since helper uses 3600)
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
