@@ -346,7 +346,9 @@ This struct is ABI-encoded using `alloy-sol-types` in Rust and ABI-decoded in So
 
 The guest program executes inside the SP1 zkVM and performs all sensitive computations. A critical design principle is that **the user's private key never enters the zkVM**. Instead, the prover server uses the OS keychain to sign a challenge, and only the resulting signature enters the circuit. This eliminates private key exposure from the proving process entirely.
 
-The program receives twelve inputs via SP1 stdin:
+The program receives inputs via SP1 stdin, organized into twelve primary inputs and eleven CRL Sorted Merkle Tree parameters:
+
+**Primary inputs (12):**
 
 | Input | Type | Visibility | Purpose |
 |-------|------|-----------|---------|
@@ -362,6 +364,22 @@ The program receives twelve inputs via SP1 stdin:
 | `disclosure_mask` | `u8` | Private | Bitmask: which cert fields to reveal (bit 0=C, 1=O, 2=OU, 3=CN) |
 | `ca_merkle_proof` | `Vec<[u8; 32]>` | Private | Merkle proof for CA membership (Section 3.12) |
 | `ca_merkle_root` | `[u8; 32]` | Public (via output) | Expected Merkle root of whitelisted CA set |
+
+**CRL Sorted Merkle Tree inputs (11):**
+
+| Input | Type | Visibility | Purpose |
+|-------|------|-----------|---------|
+| `registry_address` | `[u8; 20]` | Public (via output) | Target registry contract address |
+| `chain_id` | `u64` | Public (via output) | EIP-155 chain ID |
+| `crl_merkle_root` | `[u8; 32]` | Public (via output) | CRL Sorted Merkle Tree root (`[0; 32]` = disabled) |
+| `crl_left_leaf` | `[u8; 32]` | Private | Left neighbor leaf in sorted tree |
+| `crl_right_leaf` | `[u8; 32]` | Private | Right neighbor leaf in sorted tree |
+| `crl_left_proof` | `Vec<[u8; 32]>` | Private | Merkle proof for left neighbor |
+| `crl_left_dirs` | `Vec<bool>` | Private | Direction bits for left proof path |
+| `crl_right_proof` | `Vec<[u8; 32]>` | Private | Merkle proof for right neighbor |
+| `crl_right_dirs` | `Vec<bool>` | Private | Direction bits for right proof path |
+| `crl_left_index` | `u32` | Private | Index of left neighbor in sorted tree |
+| `crl_right_index` | `u32` | Private | Index of right neighbor in sorted tree |
 
 The circuit asserts `wallet_index < max_wallets` before proceeding. All private inputs remain hidden within the ZK proof. The thirteen public values committed are: nullifier, caMerkleRoot, timestamp, registrant, walletIndex, notAfter, chainId, registryAddress, crlMerkleRoot, and four selective disclosure hashes (countryHash, orgHash, orgUnitHash, commonNameHash — zero when not disclosed).
 
@@ -418,6 +436,10 @@ State Variables:
   pendingOwner      : address                       — For 2-step ownership transfer
   maxProofAge       : uint256                        — Max proof age (adjustable: 5 min–24 hours)
   paused            : bool                          — Emergency stop flag
+  previousCaMerkleRoot : bytes32                    — Previous CA Merkle root (for grace period)
+  caMerkleRootUpdatedAt : uint256                   — Timestamp of last CA root update
+  caRootGracePeriod : uint256                       — Grace period allowing old CA root (default 1 hour)
+  minDisclosureMask : uint8 (immutable)             — Minimum required disclosure fields
 ```
 
 The `maxWalletsPerCert` parameter is set at deployment, enabling configurable registration policy per L2 deployment (see Section 3.6). The `caLeaves` array stores the on-chain list of trusted CA hashes, readable by anyone for off-chain Merkle proof generation. The `caExists` mapping prevents duplicate CA additions. The `crlMerkleRoot` stores the CRL Sorted Merkle Tree root for on-chain CRL validation (`bytes32(0)` disables CRL checking). The `nullifierOwner` mapping tracks which address owns each nullifier, enabling `reRegister()`. The `verifiedUntil` mapping stores the certificate's `notAfter` timestamp instead of a boolean, enabling automatic identity expiry when the underlying certificate expires (see Section 3.9).
@@ -680,7 +702,7 @@ For user experience, proof generation can be performed in the background while t
 
 The system includes three levels of testing:
 
-1. **Smart contract unit tests** (Foundry): 17 test cases covering registration, re-registration, double-registration prevention, registrant mismatch, CA Merkle root validation, timestamp validation (future and stale proofs), chain ID mismatch, registry address mismatch, wallet index out-of-range, certificate expiry, nullifier revocation, CA management (add, batch add, remove, duplicate prevention), CRL Merkle root validation, pause/unpause, max proof age adjustment, and two-step ownership management.
+1. **Smart contract unit tests** (Foundry): 82 test cases across two test suites — IdentityRegistry (70 tests) covering registration, re-registration, double-registration prevention, registrant mismatch, CA Merkle root validation with grace period, timestamp validation (future and stale proofs), chain ID mismatch, registry address mismatch, wallet index out-of-range, certificate expiry, nullifier revocation, CA management (add, batch add, remove, duplicate prevention), CRL Sorted Merkle root validation, pause/unpause, max proof age adjustment, minimum disclosure mask enforcement, and two-step ownership management; and RegistryFactory (12 tests) covering registry creation, metadata tracking, beacon proxy deployment, and access control.
 2. **SP1 execute mode**: Runs the ZK program without proof generation for fast iteration (~15 seconds), validating circuit logic.
 3. **End-to-end integration**: Anvil local chain + contract deployment + prover server + frontend registration, verified with `cast` commands.
 
