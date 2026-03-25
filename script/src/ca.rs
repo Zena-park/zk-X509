@@ -3,6 +3,9 @@
 //! Scans `data/ca-certs/` for full X.509 CA certificates (DER),
 //! extracts SPKI (SubjectPublicKeyInfo) for on-chain matching,
 //! and auto-selects the CA that issued a given user certificate.
+//!
+//! When running inside a macOS `.app` bundle, falls back to
+//! `Contents/Resources/ca-certs/` relative to the executable.
 
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -26,8 +29,11 @@ pub struct CaCertInfo {
 const CA_CERT_DIR: &str = "data/ca-certs";
 
 /// Scan CA certificate directories for DER-encoded X.509 certificates.
-/// Searches relative to CWD and also relative to the cargo manifest dir
-/// (for when tests run from a different directory).
+///
+/// Search order:
+/// 1. `data/ca-certs/` relative to CWD (normal CLI usage).
+/// 2. `Contents/Resources/ca-certs/` in a macOS `.app` bundle (relative to the executable).
+/// 3. `data/ca-certs/` relative to `CARGO_MANIFEST_DIR` (for tests run from a different directory).
 pub fn scan_ca_certs() -> Vec<CaCertInfo> {
     let mut entries = Vec::new();
 
@@ -37,7 +43,21 @@ pub fn scan_ca_certs() -> Vec<CaCertInfo> {
         scan_ca_dir(cwd_path, &mut entries);
     }
 
-    // Also try relative to cargo manifest (for tests)
+    // Try macOS .app bundle Resources directory
+    if entries.is_empty() {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(resources) = exe.parent()       // MacOS/
+                .and_then(|p| p.parent())                // Contents/
+                .map(|p| p.join("Resources/ca-certs"))
+            {
+                if resources.exists() {
+                    scan_ca_dir(&resources, &mut entries);
+                }
+            }
+        }
+    }
+
+    // Try relative to cargo manifest (for tests)
     if entries.is_empty() {
         if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
             let test_path = PathBuf::from(manifest).join("..").join(CA_CERT_DIR);
