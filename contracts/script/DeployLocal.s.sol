@@ -28,7 +28,7 @@ contract DeployLocalScript is Script {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint8 minDisclosureMask = uint8(rawMask);
 
-        address registry = factory.createRegistry("Default", maxWallets, minDisclosureMask);
+        address registry = factory.createRegistry("Default", maxWallets, minDisclosureMask, 3600);
         console.log("IdentityRegistry (proxy):", registry);
 
         // Set CA Merkle root if provided

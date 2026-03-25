@@ -39,6 +39,7 @@ contract RegistryFactory {
         string name;
         uint32 maxWallets;
         uint8 minDisclosureMask;
+        uint256 maxProofAge;
         uint256 createdAt;
     }
 
@@ -90,19 +91,22 @@ contract RegistryFactory {
     /// @param name Human-readable name for the registry (e.g., "DAO Voting").
     /// @param maxWallets Max wallets per certificate (1 = strict, N = multi-wallet).
     /// @param minDisclosureMask Minimum disclosure bitmask (0x00 = none required).
+    /// @param maxProofAge Maximum proof age in seconds (e.g., 3600 = 1 hour). Cannot be changed after deployment.
     /// @return registry The address of the newly deployed registry proxy.
     function createRegistry(
         string calldata name,
         uint32 maxWallets,
-        uint8 minDisclosureMask
+        uint8 minDisclosureMask,
+        uint256 maxProofAge
     ) external returns (address registry) {
         if (maxWallets == 0) revert ZeroMaxWallets();
         if (minDisclosureMask > 0x0F) revert InvalidDisclosureMask();
+        if (maxProofAge == 0) revert ZeroMaxWallets(); // reuse error for simplicity
 
         // Encode the initialize call for the proxy
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(SP1_VERIFIER), PROGRAM_V_KEY, maxWallets, minDisclosureMask, msg.sender)
+            (address(SP1_VERIFIER), PROGRAM_V_KEY, maxWallets, minDisclosureMask, maxProofAge, msg.sender)
         );
 
         BeaconProxy proxy = new BeaconProxy(address(beacon), initData);
@@ -115,6 +119,7 @@ contract RegistryFactory {
             name: name,
             maxWallets: maxWallets,
             minDisclosureMask: minDisclosureMask,
+            maxProofAge: maxProofAge,
             createdAt: block.timestamp
         });
 

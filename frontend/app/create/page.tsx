@@ -86,7 +86,8 @@ export default function CreateRegistryPage() {
       }
 
       const factory = new ethers.Contract(factoryAddr, REGISTRY_FACTORY_ABI, signer);
-      const tx = await factory.createRegistry(name.trim(), maxWallets, minDisclosureMask);
+      const maxProofAge = 3600; // 1 hour — fixed at deployment
+      const tx = await factory.createRegistry(name.trim(), maxWallets, minDisclosureMask, maxProofAge);
 
       setTxStatus("confirming");
       setTxHash(tx.hash);

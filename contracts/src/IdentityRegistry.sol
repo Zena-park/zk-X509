@@ -78,11 +78,8 @@ contract IdentityRegistry is Initializable {
     /// @notice Whether the contract is paused.
     bool public paused;
 
-    /// @notice Maximum allowed age of a proof (adjustable by owner).
-    uint256 public maxProofAge = 1 hours;
-
-    uint256 public constant MIN_PROOF_AGE = 5 minutes;
-    uint256 public constant MAX_PROOF_AGE_LIMIT = 24 hours;
+    /// @notice Maximum allowed age of a proof (set at deployment, immutable).
+    uint256 public maxProofAge;
 
     /// @notice Max wallets per certificate (1 = strict 1:1, N = multi-wallet).
     uint32 public MAX_WALLETS_PER_CERT;
@@ -105,7 +102,6 @@ contract IdentityRegistry is Initializable {
     event CrlMerkleRootUpdated(bytes32 indexed newRoot);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
-    event MaxProofAgeUpdated(uint256 oldAge, uint256 newAge);
     event CaRootGracePeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
@@ -171,22 +167,26 @@ contract IdentityRegistry is Initializable {
     /// @param _programVKey The verification key for the ZK X.509 SP1 program.
     /// @param _maxWallets Max wallets per certificate (1 for DAO/voting, N for DeFi).
     /// @param _minDisclosureMask Minimum disclosure bitmask required (0x00 = none required).
+    /// @param _maxProofAge Maximum allowed age of a proof in seconds (e.g., 3600 = 1 hour).
     /// @param _owner The initial owner of this registry.
     function initialize(
         address _sp1Verifier,
         bytes32 _programVKey,
         uint32 _maxWallets,
         uint8 _minDisclosureMask,
+        uint256 _maxProofAge,
         address _owner
     ) external initializer {
         if (_sp1Verifier == address(0)) revert ZeroAddress();
         if (_programVKey == bytes32(0)) revert ZeroMerkleRoot();
         if (_owner == address(0)) revert ZeroAddress();
         if (_minDisclosureMask > 0x0F) revert InvalidDisclosureMask(_minDisclosureMask);
+        if (_maxProofAge == 0) revert ProofAgeOutOfRange(_maxProofAge, 300, 86400);
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
         PROGRAM_V_KEY = _programVKey;
         MAX_WALLETS_PER_CERT = _maxWallets;
         MIN_DISCLOSURE_MASK = _minDisclosureMask;
+        maxProofAge = _maxProofAge;
         owner = _owner;
     }
 
@@ -374,17 +374,6 @@ contract IdentityRegistry is Initializable {
         uint256 oldPeriod = caRootGracePeriod;
         caRootGracePeriod = newPeriod;
         emit CaRootGracePeriodUpdated(oldPeriod, newPeriod);
-    }
-
-    /// @notice Adjust the maximum proof age (bounded: 5 min to 24 hours).
-    /// @param newAge New max proof age in seconds.
-    function setMaxProofAge(uint256 newAge) external onlyOwner {
-        if (newAge < MIN_PROOF_AGE || newAge > MAX_PROOF_AGE_LIMIT) {
-            revert ProofAgeOutOfRange(newAge, MIN_PROOF_AGE, MAX_PROOF_AGE_LIMIT);
-        }
-        uint256 oldAge = maxProofAge;
-        maxProofAge = newAge;
-        emit MaxProofAgeUpdated(oldAge, newAge);
     }
 
     /// @notice Revoke an identity by nullifier. Permanently disables the nullifier

@@ -36,7 +36,7 @@ contract DeployScript is Script {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (SP1_VERIFIER, PROGRAM_VKEY, maxWallets, minDisclosureMask, msg.sender)
+            (SP1_VERIFIER, PROGRAM_VKEY, maxWallets, minDisclosureMask, 3600, msg.sender)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry registry = IdentityRegistry(address(proxy));

@@ -49,7 +49,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (verifier, vkey, maxWallets, mask, _owner)
+            (verifier, vkey, maxWallets, mask, 3600, _owner)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         return IdentityRegistry(address(proxy));
@@ -505,55 +505,50 @@ contract IdentityRegistryTest is Test {
         registry.register(hex"1234", pv);
     }
 
-    // ============ Dynamic proof age tests ============
+    // ============ Proof age tests (set at deployment) ============
 
-    function test_SetMaxProofAge() public {
-        registry.setMaxProofAge(10 minutes);
-        assertEq(registry.maxProofAge(), 10 minutes);
+    function test_MaxProofAgeSetAtDeployment() public view {
+        assertEq(registry.maxProofAge(), 3600); // 1 hour, set in _deployRegistry
     }
 
-    function test_OnlyOwnerCanSetProofAge() public {
-        vm.prank(alice);
-        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
-        registry.setMaxProofAge(10 minutes);
-    }
-
-    function test_RevertProofAgeOutOfRange_TooShort() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IdentityRegistry.ProofAgeOutOfRange.selector,
-                1 minutes, 5 minutes, 24 hours
-            )
+    function test_CustomMaxProofAge() public {
+        // Deploy with 5 minutes max proof age
+        IdentityRegistry shortAgeRegistry = _deployRegistry(
+            address(mockVerifier), PROGRAM_V_KEY, 1, 0, address(this)
         );
-        registry.setMaxProofAge(1 minutes);
-    }
-
-    function test_RevertProofAgeOutOfRange_TooLong() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IdentityRegistry.ProofAgeOutOfRange.selector,
-                48 hours, 5 minutes, 24 hours
-            )
+        // The _deployRegistry helper uses 3600, so deploy manually
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this))
         );
-        registry.setMaxProofAge(48 hours);
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        IdentityRegistry customReg = IdentityRegistry(address(proxy));
+        assertEq(customReg.maxProofAge(), 5 minutes);
     }
 
     function test_ShorterProofAge_RejectsOldProof() public {
-        vm.warp(1700000000);
-        // Set proof age to 5 minutes
-        registry.setMaxProofAge(5 minutes);
+        // Deploy with 5 minutes max proof age
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this))
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        IdentityRegistry shortAgeRegistry = IdentityRegistry(address(proxy));
 
-        // Proof generated 10 minutes ago
+        vm.warp(1700000000);
+        // Proof generated 10 minutes ago (exceeds 5 min maxProofAge)
         uint64 oldTimestamp = uint64(block.timestamp - 10 minutes);
         bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0),
-            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(registry), bytes32(0),
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(shortAgeRegistry), bytes32(0),
             bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.ProofTooOld.selector, oldTimestamp, block.timestamp)
         );
-        registry.register(hex"1234", pv);
+        shortAgeRegistry.register(hex"1234", pv);
     }
 
     // ============ CA List Management Tests ============
@@ -931,7 +926,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, address(this))
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, 3600, address(this))
         );
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.InvalidDisclosureMask.selector, uint8(0x10))

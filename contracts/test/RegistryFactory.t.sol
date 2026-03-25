@@ -25,7 +25,7 @@ contract RegistryFactoryTest is Test {
 
     function test_CreateRegistry() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("DAO Voting", 1, 0);
+        address reg = factory.createRegistry("Test", 1, 0, 3600);
 
         assertTrue(factory.isRegistry(reg));
         assertEq(factory.getRegistryCount(), 1);
@@ -38,7 +38,7 @@ contract RegistryFactoryTest is Test {
 
     function test_CreateRegistryWithDisclosure() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("DeFi KYC", 3, 0x01);
+        address reg = factory.createRegistry("DeFi KYC", 3, 0x01, 3600);
 
         IdentityRegistry registry = IdentityRegistry(reg);
         assertEq(registry.MAX_WALLETS_PER_CERT(), 3);
@@ -47,10 +47,10 @@ contract RegistryFactoryTest is Test {
 
     function test_CreateMultipleRegistries() public {
         vm.prank(alice);
-        factory.createRegistry("Registry A", 1, 0);
+        factory.createRegistry("Test", 1, 0, 3600);
 
         vm.prank(bob);
-        factory.createRegistry("Registry B", 3, 0x03);
+        factory.createRegistry("Registry B", 3, 0x03, 3600);
 
         assertEq(factory.getRegistryCount(), 2);
 
@@ -66,9 +66,9 @@ contract RegistryFactoryTest is Test {
 
     function test_RegistryInfo() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("My Service", 2, 0x01);
+        address reg = factory.createRegistry("My Service", 2, 0x01, 3600);
 
-        (address creator, string memory name, uint32 maxWallets, uint8 mask, uint256 createdAt) =
+        (address creator, string memory name, uint32 maxWallets, uint8 mask, uint256 proofAge, uint256 createdAt) =
             factory.registryInfo(reg);
 
         assertEq(creator, alice);
@@ -80,7 +80,7 @@ contract RegistryFactoryTest is Test {
 
     function test_OwnerCanManageCA() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("Test", 1, 0);
+        address reg = factory.createRegistry("Test", 1, 0, 3600);
 
         IdentityRegistry registry = IdentityRegistry(reg);
 
@@ -93,7 +93,7 @@ contract RegistryFactoryTest is Test {
 
     function test_FactoryCannotManageRegistry() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("Test", 1, 0);
+        address reg = factory.createRegistry("Test", 1, 0, 3600);
 
         IdentityRegistry registry = IdentityRegistry(reg);
 
@@ -106,20 +106,20 @@ contract RegistryFactoryTest is Test {
 
     function test_RevertZeroMaxWallets() public {
         vm.expectRevert(RegistryFactory.ZeroMaxWallets.selector);
-        factory.createRegistry("Bad", 0, 0);
+        factory.createRegistry("Test", 0, 0, 3600);
     }
 
     function test_RevertInvalidDisclosureMask() public {
         vm.expectRevert(RegistryFactory.InvalidDisclosureMask.selector);
-        factory.createRegistry("Bad", 1, 0x10);
+        factory.createRegistry("Bad", 1, 0x10, 3600);
     }
 
     function test_RegistriesAreIndependent() public {
         vm.prank(alice);
-        address regA = factory.createRegistry("A", 1, 0);
+        address regA = factory.createRegistry("Test", 1, 0, 3600);
 
         vm.prank(bob);
-        address regB = factory.createRegistry("B", 3, 0x01);
+        address regB = factory.createRegistry("B", 3, 0x01, 3600);
 
         // Add CA to registry A only
         bytes32 caHash = bytes32(uint256(0xCAFE));
@@ -152,7 +152,7 @@ contract RegistryFactoryTest is Test {
     function test_UpgradedRegistryStillWorks() public {
         // Create a registry and configure it
         vm.prank(alice);
-        address reg = factory.createRegistry("Test", 1, 0);
+        address reg = factory.createRegistry("Test", 1, 0, 3600);
 
         IdentityRegistry registry = IdentityRegistry(reg);
         bytes32 caHash = bytes32(uint256(0xCAFE));

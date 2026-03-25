@@ -367,6 +367,7 @@ export const REGISTRY_FACTORY_ABI = [
       { name: "name", type: "string" },
       { name: "maxWallets", type: "uint32" },
       { name: "minDisclosureMask", type: "uint8" },
+      { name: "maxProofAge", type: "uint256" },
     ],
     name: "createRegistry",
     outputs: [{ name: "", type: "address" }],
