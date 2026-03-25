@@ -340,9 +340,9 @@ This struct is ABI-encoded using `alloy-sol-types` in Rust and ABI-decoded in So
 
 The guest program executes inside the SP1 zkVM and performs all sensitive computations. A critical design principle is that **the user's private key never enters the zkVM**. Instead, the prover server uses the OS keychain to sign a challenge, and only the resulting signature enters the circuit. This eliminates private key exposure from the proving process entirely.
 
-The program receives inputs via SP1 stdin, organized into twelve primary inputs and eleven CRL Sorted Merkle Tree parameters:
+The program receives 23 inputs via SP1 stdin, organized into three groups:
 
-**Primary inputs (12):**
+**Certificate & ownership inputs (12):**
 
 | Input | Type | Visibility | Purpose |
 |-------|------|-----------|---------|
@@ -359,12 +359,17 @@ The program receives inputs via SP1 stdin, organized into twelve primary inputs 
 | `ca_merkle_proof` | `Vec<[u8; 32]>` | Private | Merkle proof for CA membership (Section 3.12) |
 | `ca_merkle_root` | `[u8; 32]` | Public (via output) | Expected Merkle root of whitelisted CA set |
 
-**CRL Sorted Merkle Tree inputs (11):**
+**Domain separation inputs (2):**
 
 | Input | Type | Visibility | Purpose |
 |-------|------|-----------|---------|
-| `registry_address` | `[u8; 20]` | Public (via output) | Target registry contract address |
-| `chain_id` | `u64` | Public (via output) | EIP-155 chain ID |
+| `registry_address` | `[u8; 20]` | Public (via output) | Target registry contract address (cross-DApp binding) |
+| `chain_id` | `u64` | Public (via output) | EIP-155 chain ID (cross-chain binding) |
+
+**CRL Sorted Merkle Tree inputs (9):**
+
+| Input | Type | Visibility | Purpose |
+|-------|------|-----------|---------|
 | `crl_merkle_root` | `[u8; 32]` | Public (via output) | CRL Sorted Merkle Tree root (`[0; 32]` = disabled) |
 | `crl_left_leaf` | `[u8; 32]` | Private | Left neighbor leaf in sorted tree |
 | `crl_right_leaf` | `[u8; 32]` | Private | Right neighbor leaf in sorted tree |
