@@ -10,7 +10,7 @@ const defaultNavLinks = [
   { href: "/", label: "Home" },
   { href: "/dashboard", label: "Explore" },
   { href: "/identity", label: "My Trust" },
-  { href: "/admin", label: "My Services" },
+  { href: "/admin", label: "My Console" },
   { href: "/faq", label: "FAQ" },
 ];
 
