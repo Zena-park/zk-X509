@@ -1,8 +1,8 @@
-/// Platform data client — reads service metadata and CA guides from
-/// the zk-x509-ca-registry Git repository (GitHub raw).
+/// Platform data client.
 ///
-/// Write operations (update guide, post announcement) require a Git PR
-/// to the ca-registry repo. The frontend provides links to guide admins.
+/// CA guides: read from zk-x509-ca-registry Git repository (GitHub raw).
+///            Write operations require a Git PR — frontend provides links.
+/// Announcements & registry metadata: still backend server (Firebase/local).
 
 const CA_REGISTRY_BASE =
   process.env.NEXT_PUBLIC_CA_REGISTRY_URL ||
@@ -76,9 +76,9 @@ export async function getCaGuides(
   return svc?.cas ?? {};
 }
 
-/// Get the ca-registry PR URL for admins to register/update their service.
-export function getCaRegistryPrUrl(): string {
-  return "https://github.com/tokamak-network/zk-x509-ca-registry";
+/// Get the ca-registry repo URL for admins to submit PRs.
+export function getCaRegistryRepoUrl(): string {
+  return "https://github.com/tokamak-network/zk-x509-ca-registry/pulls";
 }
 
 // ── Backend Server (announcements, metadata not in Git) ─────────

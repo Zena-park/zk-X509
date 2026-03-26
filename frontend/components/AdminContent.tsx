@@ -34,11 +34,13 @@ import {
   postAnnouncement,
   deleteAnnouncement,
   getCaGuides,
-  getCaRegistryPrUrl,
+  getCaRegistryRepoUrl,
   type RegistryMetadata,
   type Announcement,
   type CaGuide,
 } from "@/lib/platform";
+
+const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -710,7 +712,7 @@ export default function AdminContent() {
         // Initialize guide edits for all on-chain CAs
         const edits: Record<string, CaGuide> = {};
         for (const leaf of onChainCaLeaves) {
-          edits[leaf] = guides[leaf] || { name: "", description: "", issue_url: "", instructions: "" };
+          edits[leaf] = guides[leaf] || EMPTY_CA_GUIDE;
         }
         setSvcGuideEdits(edits);
       } catch {
@@ -725,7 +727,7 @@ export default function AdminContent() {
     };
     load();
     return () => { cancelled = true; };
-  }, [activeTab, registryAddr, onChainCaLeaves]);
+  }, [activeTab, registryAddr, chainId, onChainCaLeaves]);
 
   /* ---------- service settings handlers ---------- */
   const handleSaveMetadata = async () => {
@@ -760,13 +762,13 @@ export default function AdminContent() {
   const handleSaveCaGuide = async (_caHash: string) => {
     // CA guides are managed via the zk-x509-ca-registry Git repository.
     // Open the repo for the admin to submit a PR.
-    window.open(getCaRegistryPrUrl(), "_blank");
+    window.open(getCaRegistryRepoUrl(), "_blank");
   };
 
   const updateGuideField = (caHash: string, field: keyof CaGuide, value: string) => {
     setSvcGuideEdits((prev) => ({
       ...prev,
-      [caHash]: { ...(prev[caHash] || { name: "", description: "", issue_url: "", instructions: "" }), [field]: value },
+      [caHash]: { ...(prev[caHash] || EMPTY_CA_GUIDE), [field]: value },
     }));
   };
 
@@ -1725,7 +1727,7 @@ export default function AdminContent() {
                 ) : (
                   <div className="space-y-4">
                     {onChainCaLeaves.map((leaf) => {
-                      const edit = svcGuideEdits[leaf] || { name: "", description: "", issue_url: "", instructions: "" };
+                      const edit = svcGuideEdits[leaf] || EMPTY_CA_GUIDE;
                       const saving = svcGuideSaving[leaf] || false;
                       const msg = svcGuideMsg[leaf] || "";
                       const hasGuide = !!svcCaGuides[leaf];
