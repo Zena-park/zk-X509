@@ -34,11 +34,13 @@ import {
   postAnnouncement,
   deleteAnnouncement,
   getCaGuides,
-  updateCaGuide,
+  getCaRegistryRepoUrl,
   type RegistryMetadata,
   type Announcement,
   type CaGuide,
 } from "@/lib/platform";
+
+const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -313,6 +315,7 @@ export default function AdminContent() {
     writeContract,
     readContract,
     registryAddr,
+    chainId,
     chainName,
     refresh,
   } = useWallet();
@@ -692,7 +695,7 @@ export default function AdminContent() {
         const [meta, anncs, guides] = await Promise.all([
           getRegistryMetadata(registryAddr),
           getAnnouncements(registryAddr),
-          getCaGuides(registryAddr),
+          getCaGuides(chainId || "31337", registryAddr),
         ]);
         if (cancelled) return;
         setSvcBackendDown(false);
@@ -709,7 +712,7 @@ export default function AdminContent() {
         // Initialize guide edits for all on-chain CAs
         const edits: Record<string, CaGuide> = {};
         for (const leaf of onChainCaLeaves) {
-          edits[leaf] = guides[leaf] || { name: "", description: "", issueUrl: "", instructions: "" };
+          edits[leaf] = guides[leaf] || EMPTY_CA_GUIDE;
         }
         setSvcGuideEdits(edits);
       } catch {
@@ -724,7 +727,7 @@ export default function AdminContent() {
     };
     load();
     return () => { cancelled = true; };
-  }, [activeTab, registryAddr, onChainCaLeaves]);
+  }, [activeTab, registryAddr, chainId, onChainCaLeaves]);
 
   /* ---------- service settings handlers ---------- */
   const handleSaveMetadata = async () => {
@@ -756,24 +759,16 @@ export default function AdminContent() {
     }
   };
 
-  const handleSaveCaGuide = async (caHash: string) => {
-    if (!registryAddr) return;
-    const guide = svcGuideEdits[caHash];
-    if (!guide) return;
-    setSvcGuideSaving((prev) => ({ ...prev, [caHash]: true }));
-    setSvcGuideMsg((prev) => ({ ...prev, [caHash]: "" }));
-    const ok = await updateCaGuide(registryAddr, caHash, guide);
-    setSvcGuideSaving((prev) => ({ ...prev, [caHash]: false }));
-    setSvcGuideMsg((prev) => ({ ...prev, [caHash]: ok ? "Saved" : "Failed" }));
-    if (ok) {
-      setSvcCaGuides((prev) => ({ ...prev, [caHash]: guide }));
-    }
+  const handleSaveCaGuide = async (_caHash: string) => {
+    // CA guides are managed via the zk-x509-ca-registry Git repository.
+    // Open the repo for the admin to submit a PR.
+    window.open(getCaRegistryRepoUrl(), "_blank");
   };
 
   const updateGuideField = (caHash: string, field: keyof CaGuide, value: string) => {
     setSvcGuideEdits((prev) => ({
       ...prev,
-      [caHash]: { ...(prev[caHash] || { name: "", description: "", issueUrl: "", instructions: "" }), [field]: value },
+      [caHash]: { ...(prev[caHash] || EMPTY_CA_GUIDE), [field]: value },
     }));
   };
 
@@ -1732,7 +1727,7 @@ export default function AdminContent() {
                 ) : (
                   <div className="space-y-4">
                     {onChainCaLeaves.map((leaf) => {
-                      const edit = svcGuideEdits[leaf] || { name: "", description: "", issueUrl: "", instructions: "" };
+                      const edit = svcGuideEdits[leaf] || EMPTY_CA_GUIDE;
                       const saving = svcGuideSaving[leaf] || false;
                       const msg = svcGuideMsg[leaf] || "";
                       const hasGuide = !!svcCaGuides[leaf];
@@ -1774,8 +1769,8 @@ export default function AdminContent() {
                               <input
                                 className="w-full bg-surface border-none rounded-lg px-3 py-2 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
                                 placeholder="https://ca-provider.com/issue"
-                                value={edit.issueUrl}
-                                onChange={(e) => updateGuideField(leaf, "issueUrl", e.target.value)}
+                                value={edit.issue_url}
+                                onChange={(e) => updateGuideField(leaf, "issue_url", e.target.value)}
                                 disabled={disabled}
                               />
                             </div>
