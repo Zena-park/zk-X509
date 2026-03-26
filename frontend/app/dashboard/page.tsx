@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ethers } from "ethers";
 import Link from "next/link";
@@ -23,6 +23,7 @@ import {
 } from "@/lib/contract";
 import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
 import { truncateHex } from "@/lib/utils";
+import { useReadProvider } from "@/lib/useReadProvider";
 
 /* ------------------------------------------------------------------ */
 /*  Trust Badge                                                        */
@@ -136,7 +137,7 @@ export default function DashboardPage() {
   const [registries, setRegistries] = useState<RegistryCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const providerRef = useRef<ethers.JsonRpcProvider | null>(null);
+  const provider = useReadProvider();
 
   /* ---------- load all registries + verification status ---------- */
   useEffect(() => {
@@ -154,11 +155,6 @@ export default function DashboardPage() {
           setLoading(false);
           return;
         }
-
-        if (!providerRef.current) {
-          providerRef.current = new ethers.JsonRpcProvider(getRpcUrl());
-        }
-        const provider = providerRef.current;
 
         const factory = new ethers.Contract(
           factoryAddr,

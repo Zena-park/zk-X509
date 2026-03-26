@@ -24,9 +24,9 @@ const DEFAULT_REGISTRY: &str = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
 fn prompt(msg: &str) -> String {
     print!("{}", msg);
-    io::stdout().flush().unwrap();
+    io::stdout().flush().expect("Failed to flush stdout");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input).expect("Failed to read from stdin");
     input.trim().to_string()
 }
 
