@@ -75,6 +75,7 @@ contract RegistryFactoryTest is Test {
         assertEq(name, "My Service");
         assertEq(maxWallets, 2);
         assertEq(mask, 0x01);
+        assertEq(proofAge, 3600);
         assertGt(createdAt, 0);
         assertEq(vKeyVer, 0);
     }
@@ -202,6 +203,17 @@ contract RegistryFactoryTest is Test {
     }
 
     function test_UpdateVKeyRevertDuplicate() public {
+        // Current VKey rejected
+        vm.expectRevert(RegistryFactory.DuplicateVKey.selector);
+        factory.updateProgramVKey(PROGRAM_V_KEY);
+    }
+
+    function test_UpdateVKeyRevertHistoricalDuplicate() public {
+        // Update to v1
+        bytes32 v1 = bytes32(uint256(0x5678));
+        factory.updateProgramVKey(v1);
+
+        // Try to re-introduce v0 (deprecated) — should fail
         vm.expectRevert(RegistryFactory.DuplicateVKey.selector);
         factory.updateProgramVKey(PROGRAM_V_KEY);
     }

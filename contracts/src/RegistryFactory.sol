@@ -29,6 +29,9 @@ contract RegistryFactory {
     /// @notice Total number of VKey versions published.
     uint256 public vKeyVersionCount;
 
+    /// @notice Track all VKeys ever published (prevents re-introduction of deprecated keys).
+    mapping(bytes32 => bool) public usedVKeys;
+
     /// @notice The beacon that all registry proxies point to.
     UpgradeableBeacon public beacon;
 
@@ -75,6 +78,7 @@ contract RegistryFactory {
     error InvalidDisclosureMask();
     error OnlyOwner();
     error ZeroVKey();
+    error ZeroVerifier();
     error DuplicateVKey();
 
     // ============ Modifiers ============
@@ -89,11 +93,13 @@ contract RegistryFactory {
     /// @param _sp1Verifier Address of the shared SP1 verifier contract.
     /// @param _programVKey The initial ZK program verification key.
     constructor(address _sp1Verifier, bytes32 _programVKey) {
+        if (_sp1Verifier == address(0)) revert ZeroVerifier();
         if (_programVKey == bytes32(0)) revert ZeroVKey();
         owner = msg.sender;
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
         currentProgramVKey = _programVKey;
         vKeyVersions[0] = _programVKey;
+        usedVKeys[_programVKey] = true;
         vKeyVersionCount = 1;
 
         // Deploy implementation + beacon (factory is beacon admin)
@@ -132,6 +138,7 @@ contract RegistryFactory {
 
         registries.push(registry);
         isRegistry[registry] = true;
+        uint256 latestVersion = vKeyVersionCount - 1;
         registryInfo[registry] = RegistryInfo({
             creator: msg.sender,
             name: name,
@@ -139,10 +146,10 @@ contract RegistryFactory {
             minDisclosureMask: minDisclosureMask,
             maxProofAge: maxProofAge,
             createdAt: block.timestamp,
-            vKeyVersion: vKeyVersionCount - 1
+            vKeyVersion: latestVersion
         });
 
-        emit RegistryCreated(registry, msg.sender, name, maxWallets, minDisclosureMask, vKeyVersionCount - 1);
+        emit RegistryCreated(registry, msg.sender, name, maxWallets, minDisclosureMask, latestVersion);
     }
 
     /// @notice Update the ZK program verification key.
@@ -151,9 +158,10 @@ contract RegistryFactory {
     /// @param newVKey The new verification key.
     function updateProgramVKey(bytes32 newVKey) external onlyOwner {
         if (newVKey == bytes32(0)) revert ZeroVKey();
-        if (newVKey == currentProgramVKey) revert DuplicateVKey();
+        if (usedVKeys[newVKey]) revert DuplicateVKey();
         uint256 version = vKeyVersionCount++;
         vKeyVersions[version] = newVKey;
+        usedVKeys[newVKey] = true;
         currentProgramVKey = newVKey;
         emit ProgramVKeyUpdated(newVKey, version);
     }
