@@ -1,6 +1,6 @@
 # zk-X509: Privacy-Preserving On-Chain Identity from Legacy PKI via Zero-Knowledge Proofs
 
-**Authors:** Yeongju Bak (Tokamak Network), Iltaeck Joo (Hanyang University)
+**Authors:** Yeongju Bak (Tokamak Network)
 
 **Version:** 7.0 — March 2026
 

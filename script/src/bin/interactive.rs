@@ -171,9 +171,27 @@ fn main() {
         }
     };
 
-    // CA public key — auto-match from data/ca-certs/ directory
-    let ca_certs = zk_x509_script::ca::scan_ca_certs();
+    // CA public key — auto-match via remote repository, then local fallback
     let on_chain_leaves = zk_x509_script::onchain::fetch_ca_leaves(&rpc_url, &registry_bytes).ok();
+
+    // Try remote CA repository first (per-service, hash-verified)
+    let mut ca_certs = if let Some(ref leaves) = on_chain_leaves {
+        println!("  Fetching CA certificates from registry...");
+        let remote = zk_x509_script::ca_repo::fetch_verified_cas(
+            chain_id, &registry_bytes, leaves, None,
+        );
+        if !remote.is_empty() {
+            println!("  ✓ {} CA(s) fetched from remote repository", remote.len());
+        }
+        remote
+    } else {
+        Vec::new()
+    };
+
+    // Fallback to local data/ca-certs/ if remote returned nothing
+    if ca_certs.is_empty() {
+        ca_certs = zk_x509_script::ca::scan_ca_certs();
+    }
 
     let ca_pub_key = auto_match_ca(&cert_der, &ca_certs, on_chain_leaves.as_deref())
         .unwrap_or_else(|| {
