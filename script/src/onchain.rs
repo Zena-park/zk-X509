@@ -51,7 +51,9 @@ pub fn build_ca_merkle_from_onchain(
 
 /// Build CA Merkle tree: try on-chain first, fall back to single-CA local mode.
 ///
-/// This is the common pattern used by interactive, main, and evm binaries.
+/// On-chain errors are logged via `eprintln!` and the function falls back
+/// to a single-CA tree (no anonymity set). Callers that need strict on-chain
+/// verification should use `build_ca_merkle_from_onchain()` directly.
 pub fn build_ca_merkle(
     rpc_url: &str,
     registry: &[u8; 20],
@@ -59,7 +61,9 @@ pub fn build_ca_merkle(
 ) -> (Hash, Vec<Hash>) {
     match build_ca_merkle_from_onchain(rpc_url, registry, ca_pub_key) {
         Ok(result) => result,
-        Err(_) => {
+        Err(e) => {
+            eprintln!("  ⚠ On-chain CA Merkle failed: {}", e);
+            eprintln!("    Falling back to single-CA local mode (proof may not verify on-chain)");
             let (_leaf, root, proof) = crate::merkle::ca_merkle_tree(ca_pub_key, &[]);
             (root, proof)
         }
