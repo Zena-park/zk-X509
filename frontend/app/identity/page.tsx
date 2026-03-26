@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ethers } from "ethers";
 import Link from "next/link";
@@ -18,10 +18,10 @@ import {
   REGISTRY_FACTORY_ABI,
   IDENTITY_REGISTRY_ABI,
   getFactoryAddress,
-  getRpcUrl,
 } from "@/lib/contract";
 import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
 import { truncateHex } from "@/lib/utils";
+import { useReadProvider } from "@/lib/useReadProvider";
 
 /* ------------------------------------------------------------------ */
 /*  Trust Badge                                                        */
@@ -119,7 +119,7 @@ export default function IdentityPage() {
   const [verified, setVerified] = useState<VerifiedRegistry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const providerRef = useRef<ethers.JsonRpcProvider | null>(null);
+  const provider = useReadProvider();
 
   /* ---------- load all registries, filter to verified ---------- */
   useEffect(() => {
@@ -141,11 +141,6 @@ export default function IdentityPage() {
           setLoading(false);
           return;
         }
-
-        if (!providerRef.current) {
-          providerRef.current = new ethers.JsonRpcProvider(getRpcUrl());
-        }
-        const provider = providerRef.current;
 
         const factory = new ethers.Contract(
           factoryAddr,
@@ -220,7 +215,7 @@ export default function IdentityPage() {
     return () => {
       cancelled = true;
     };
-  }, [account, chainId]);
+  }, [account, chainId, provider]);
 
   /* ---------- not connected ---------- */
   if (!account) {
