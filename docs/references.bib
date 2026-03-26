@@ -8,8 +8,8 @@
 
 @misc{ref2,
   author       = {{zkPassport}},
-  title        = {{zkPassport}: Private Identity Verification},
-  howpublished = {\url{https://zkpassport.id/}},
+  title        = {{zkPassport}: Private Unforgeable Identity},
+  howpublished = {Technical Report, \url{https://zkpassport.id/}},
   year         = {2024}
 }
 
@@ -58,23 +58,23 @@
 }
 
 @misc{ref8,
-  author       = {{Semaphore}},
-  title        = {A Zero-Knowledge Protocol for Anonymous Signaling on {Ethereum}},
-  howpublished = {\url{https://semaphore.pse.dev/}},
-  year         = {2023}
+  author       = {Gurkan, Kobi and Koh, Wei Jie and WhiteHat, Barry},
+  title        = {Semaphore: Zero-Knowledge Signaling on {Ethereum}},
+  howpublished = {ZKProof Community Proposal, \url{https://semaphore.pse.dev/whitepaper-v1.pdf}},
+  year         = {2020}
 }
 
 @misc{ref9,
-  author       = {{ZK Email}},
-  title        = {{ZK Email}: Prove You Received an Email Without Revealing Its Contents},
-  howpublished = {\url{https://zk.email/}},
-  year         = {2024}
+  author       = {{zk-email Contributors}},
+  title        = {zk-email: Privacy-Preserving Email Verification via Zero-Knowledge Proofs},
+  howpublished = {Technical Documentation, \url{https://prove.email/}},
+  year         = {2023}
 }
 
-@article{ref10,
+@misc{ref10,
   author       = {Ohlhaver, Puja and Weyl, E. Glen and Buterin, Vitalik},
   title        = {Decentralized Society: Finding {Web3}'s Soul},
-  journal      = {SSRN},
+  howpublished = {SSRN Working Paper 4105763},
   year         = {2022},
   month        = may,
   note         = {\url{https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4105763}}
@@ -131,18 +131,18 @@
   year         = {1993}
 }
 
-@inproceedings{ref16,
+@misc{ref16,
   author       = {Gabizon, Ariel and Williamson, Zachary J. and Ciobotaru, Oana},
   title        = {{PLONK}: Permutations over Lagrange-bases for Oecumenical Noninteractive arguments of Knowledge},
-  booktitle    = {{IACR} ePrint 2019/953},
+  howpublished = {{IACR} ePrint 2019/953},
   year         = {2019},
   note         = {\url{https://eprint.iacr.org/2019/953}}
 }
 
-@inproceedings{ref17,
+@misc{ref17,
   author       = {Ben-Sasson, Eli and Bentov, Iddo and Horesh, Yinon and Riabzev, Michael},
   title        = {Scalable, Transparent, and Post-quantum Secure Computational Integrity},
-  booktitle    = {{IACR} ePrint 2018/046},
+  howpublished = {{IACR} ePrint 2018/046},
   year         = {2018},
   note         = {\url{https://eprint.iacr.org/2018/046}}
 }
@@ -172,10 +172,10 @@
 
 % === Proof of Personhood ===
 
-@inproceedings{ref20,
+@misc{ref20,
   author       = {Ford, Bryan},
   title        = {Identity and Personhood in Digital Democracy: Evaluating Inclusion, Equality, Security, and Privacy in Pseudonym Parties and Other Proofs of Personhood},
-  booktitle    = {arXiv:2011.02412},
+  howpublished = {arXiv:2011.02412},
   year         = {2020},
   note         = {\url{https://arxiv.org/abs/2011.02412}}
 }
@@ -186,7 +186,8 @@
   booktitle    = {IEEE European Symposium on Security and Privacy Workshops ({EuroS\&PW})},
   pages        = {23--26},
   publisher    = {IEEE},
-  year         = {2017}
+  year         = {2017},
+  doi          = {10.1109/EuroSPW.2017.46}
 }
 
 % === PKI, Signatures & Standards ===
@@ -259,17 +260,21 @@
 % === Alternative zkVMs ===
 
 @misc{ref29,
-  author       = {{RISC Zero}},
+  author       = {{RISC Zero Contributors}},
   title        = {{RISC Zero} zkVM: General Purpose Verifiable Computing},
-  howpublished = {\url{https://www.risczero.com/}},
+  howpublished = {Technical Documentation, \url{https://www.risczero.com/}},
   year         = {2023}
 }
 
-@misc{ref30,
-  author       = {{iden3}},
-  title        = {Circom: A Circuit Compiler for Zero-Knowledge Proofs},
-  howpublished = {\url{https://docs.circom.io/}},
-  year         = {2021}
+@article{ref30,
+  author       = {Belles-Munoz, Marta and Isabel, Miguel and Munoz-Tapia, Jose Luis and Rubio, Albert and Baylina, Jordi},
+  title        = {Circom: A Circuit Description Language for Building Zero-Knowledge Applications},
+  journal      = {IEEE Trans. Dependable Secure Comput.},
+  volume       = {20},
+  number       = {6},
+  pages        = {4733--4751},
+  year         = {2023},
+  doi          = {10.1109/TDSC.2022.3232813}
 }
 
 % === Blockchain Privacy ===
@@ -290,4 +295,15 @@
   pages        = {459--474},
   publisher    = {IEEE},
   year         = {2014}
+}
+
+% === Decentralized Identifiers ===
+
+@misc{ref33,
+  author       = {Sporny, Manu and Longley, Dave and Sabadello, Markus and Reed, Drummond and Steele, Orie and Allen, Christopher},
+  title        = {Decentralized Identifiers ({DIDs}) v1.0},
+  howpublished = {W3C Recommendation},
+  year         = {2022},
+  month        = jul,
+  note         = {\url{https://www.w3.org/TR/did-core/}}
 }
