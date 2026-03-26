@@ -4,6 +4,12 @@
 \documentclass[11pt, a4paper]{article}
 \usepackage{xcolor}
 \usepackage{amsmath,amssymb}
+\usepackage{needspace}
+\usepackage{tikz}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{mdframed}
+\usepackage{enumitem}
 \usepackage[margin=1in]{geometry}
 \setcounter{secnumdepth}{3}
 \usepackage{iftex}
@@ -22,6 +28,7 @@
 \else
   \usepackage{xeCJK}
   \setCJKmainfont{Noto Sans CJK KR}
+  \setCJKmonofont{Noto Sans CJK KR}
 \fi
 % Use upquote if available, for straight quotes in verbatim environments
 \IfFileExists{upquote.sty}{\usepackage{upquote}}{}
@@ -647,31 +654,42 @@ verification.
 The zk-X509 system comprises four components arranged in a layered
 architecture:
 
-\begin{lstlisting}
-┌──────────────────────────────────────────────────────────────┐
-│                     Frontend (Next.js)                        │
-│   Browser: NPKI cert selection, wallet connect, TX submission  │
-└───────────────────────┬──────────────────────────────────────┘
-                        │ CLI invocation (registrant address, wallet index)
-┌───────────────────────▼──────────────────────────────────────┐
-│                 Prover CLI (Rust, native application)          │
-│   Scan keychain → sign via OS API → prove → return             │
-└───────────────────────┬──────────────────────────────────────┘
-                        │ SP1 stdin (cert, chain, key, timestamp,
-                        │            crl_der, registrant)
-┌───────────────────────▼──────────────────────────────────────┐
-│               SP1 zkVM Guest Program (Rust)                   │
-│   1. Parse & validate chain  2. Check CRL  3. Verify key     │
-│   4. Compute nullifier + CA hash                              │
-│   Output: (nullifier, caMerkleRoot, timestamp, registrant)     │
-└───────────────────────┬──────────────────────────────────────┘
-                        │ ZK Proof + Public Values
-┌───────────────────────▼──────────────────────────────────────┐
-│              Ethereum Smart Contract (Solidity)               │
-│   IdentityRegistry: verify registrant → verify timestamp →   │
-│   check CA → check nullifier → verify proof → register       │
-└──────────────────────────────────────────────────────────────┘
-\end{lstlisting}
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  box/.style={rectangle, draw, thick, rounded corners=3pt,
+              text width=11.5cm, align=center, inner sep=8pt,
+              font=\small},
+  lbl/.style={font=\small\itshape, text width=6cm, align=left},
+  arr/.style={->, thick, >=stealth}
+]
+\node[box] (fe) at (0,8.4) {
+  \textbf{Frontend (Next.js)}\\[2pt]
+  Browser: NPKI cert selection, wallet connect, TX submission
+};
+\node[box] (pr) at (0,5.6) {
+  \textbf{Prover CLI (Rust, native application)}\\[2pt]
+  Scan keychain $\rightarrow$ sign via OS API $\rightarrow$ prove $\rightarrow$ return
+};
+\node[box] (zk) at (0,2.4) {
+  \textbf{SP1 zkVM Guest Program (Rust)}\\[2pt]
+  1.~Parse \& validate chain\quad 2.~Check CRL\quad 3.~Verify key\\
+  4.~Compute nullifier + CA hash\\
+  Output: (nullifier, caMerkleRoot, timestamp, registrant)
+};
+\node[box] (sc) at (0,0) {
+  \textbf{Ethereum Smart Contract (Solidity)}\\[2pt]
+  IdentityRegistry: verify registrant $\rightarrow$ verify timestamp $\rightarrow$\\
+  check CA $\rightarrow$ check nullifier $\rightarrow$ verify proof $\rightarrow$ register
+};
+
+\draw[arr] (fe) -- node[right, lbl]{CLI invocation\\(registrant address, wallet index)} (pr);
+\draw[arr] (pr) -- node[right, lbl]{SP1 stdin (cert, chain, key,\\timestamp, crl\_der, registrant)} (zk);
+\draw[arr] (zk) -- node[right, lbl]{ZK Proof + Public Values} (sc);
+\end{tikzpicture}
+\caption{zk-X509 system architecture overview.}
+\label{fig:architecture}
+\end{figure}
 
 \subsection{Formal Protocol
 Specification}\label{formal-protocol-specification}
@@ -692,114 +710,94 @@ bytes) - \(t\): Current Unix timestamp - \(\mathcal{H}\): SHA-256
 
 \textbf{Protocol.}
 
-\begin{lstlisting}
-Step 1.  P → S:   (cert_index, addr, wallet_index?, max_wallets?, disclosure_mask?)
-                   via local API call
-                   cert_index identifies a certificate discovered by the
-                   application's keychain scanner
-                   wallet_index, max_wallets, disclosure_mask have sensible defaults
+\begin{mdframed}[linewidth=0.5pt, innertopmargin=8pt, innerbottommargin=8pt]
+\small
+\textbf{Step 1.} $\mathcal{P} \rightarrow \mathcal{S}$:
+\texttt{(cert\_index, addr, wallet\_index?, max\_wallets?, disclosure\_mask?)} via local API call. \texttt{cert\_index} identifies a certificate discovered by the keychain scanner; optional parameters have sensible defaults.
 
-Step 2.  S:        (cert, identity) ← Keychain.GetIdentity(cert_index)
-                   CRL ← FetchCRL(cert.issuer)             // from CA distribution point
-                   challenge ← H(cert.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
-                   ownership_sig ← identity.Sign(challenge)  // Security.framework; key never in memory
-                   nullifier_sig ← identity.Sign(H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id))
-                   // Private key never leaves OS keychain — no Erase() needed
+\medskip
+\textbf{Step 2.} $\mathcal{S}$:
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item $(\text{cert}, \text{identity}) \leftarrow \text{Keychain.GetIdentity}(\text{cert\_index})$
+\item $\text{CRL} \leftarrow \text{FetchCRL}(\text{cert.issuer})$ \hfill\textit{// from CA distribution point}
+\item $\text{challenge} \leftarrow \mathcal{H}(\text{serial} \| \text{addr} \| \text{wallet\_index} \| t \| \text{chain\_id})$
+\item $\text{ownership\_sig} \leftarrow \text{identity.Sign}(\text{challenge})$ \hfill\textit{// Security.framework}
+\item $\text{nullifier\_sig} \leftarrow \text{identity.Sign}(\mathcal{H}(\text{``zk-X509-Nullifier-v2''}$\\
+  $\| \text{registry\_addr} \| \text{chain\_id}))$
+\end{enumerate}
+Private key never leaves OS keychain --- no \texttt{Erase()} needed.
 
-Step 3.  S → Z:   (cert, ownership_sig, nullifier_sig, chain, t, CRL, addr,
-                    wallet_index, max_wallets, disclosure_mask,
-                    ca_merkle_proof, ca_merkle_root)
-                   via SP1 stdin  // NOTE: no private key
+\medskip
+\textbf{Step 3.} $\mathcal{S} \rightarrow \mathcal{Z}$:
+$(\text{cert}, \text{ownership\_sig}, \text{nullifier\_sig}, \text{chain}, t, \text{CRL}, \text{addr},$\\
+$\text{wallet\_index}, \text{max\_wallets}, \text{disclosure\_mask}, \text{ca\_merkle\_proof}, \text{ca\_merkle\_root})$\\
+via SP1 stdin. \textbf{NOTE:} no private key.
 
-Step 4.  Z:        // Parse and validate user certificate
-                   cert_parsed ← ParseDER(cert)
-                   Assert: t ∈ [cert_parsed.notBefore, cert_parsed.notAfter]
+\medskip
+\textbf{Step 4.} $\mathcal{Z}$ (inside zkVM):
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item \textit{Parse and validate user certificate:}
+  $\text{cert\_parsed} \leftarrow \text{ParseDER}(\text{cert})$;
+  Assert $t \in [\text{notBefore}, \text{notAfter}]$
+\item \textit{Verify certificate chain:}
+  For $i = 0$ to $k{-}1$: parse $\text{inter}_i$, check temporal validity
+\item \textit{Verify signatures} (RSA or ECDSA, auto-detected from OID):\\
+  single-level: $\text{Sig.Verify}(\text{pk}_{\text{root}}, \text{cert.tbs}, \text{cert.sig})$;\\
+  multi-level: verify each link $\text{cert} \rightarrow \text{inter}_0 \rightarrow \cdots \rightarrow \text{pk}_{\text{root}}$
+\item \textit{Verify and check CRL} (if $\text{CRL} \neq \emptyset$):\\
+  parse CRL, match issuer, check freshness ($\text{thisUpdate} \leq t \leq \text{nextUpdate}$),\\
+  verify CA signature, assert serial $\notin$ revoked list
+\item \textit{Verify key ownership:}\\
+  $\text{challenge} \leftarrow \mathcal{H}(\text{serial} \| \text{addr} \| \text{wallet\_index} \| t \| \text{chain\_id})$;\\
+  $\text{Sig.Verify}(\text{cert.pk}, \text{challenge}, \text{ownership\_sig})$
+\item \textit{Verify wallet index:} Assert $\text{wallet\_index} < \text{max\_wallets}$
+\item \textit{Verify nullifier signature:}\\
+  $\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{``zk-X509-Nullifier-v2''}$\\
+  $\| \text{registry\_addr} \| \text{chain\_id}), \text{nullifier\_sig})$
+\item \textit{Compute outputs:}
+  $\text{nullifier} \leftarrow \mathcal{H}(\text{nullifier\_sig} \| \text{wallet\_index})$,
+  $\text{caRootHash} \leftarrow \mathcal{H}(\text{pk}_{\text{root}})$,
+  $\text{notAfter} \leftarrow \text{cert.notAfter}$
+\item \textit{Verify CA Merkle membership:}
+  $\text{MerkleVerify}(\text{caRootHash}, \pi_{\text{ca}}, \text{ca\_merkle\_root})$
+\item \textit{Selective disclosure} (salted with private-key-derived salt):\\
+  $\text{salt} \leftarrow \mathcal{H}(\text{``zk-X509-Disclosure-Salt-v1''} \| \text{nullifier\_sig})$;\\
+  for each masked bit: $\text{hash} \leftarrow \mathcal{H}(\text{field} \| \text{salt})$ or $\texttt{0x0}$
+\item \textit{Commit public values} (caMerkleRoot, NOT caRootHash)
+\end{enumerate}
 
-                   // Verify certificate chain
-                   For i = 0 to k-1:
-                     inter_i ← ParseDER(chain[i])
-                     Assert: t ∈ [inter_i.notBefore, inter_i.notAfter]
+\medskip
+\textbf{Step 5.} $\mathcal{Z} \rightarrow \mathcal{S}$:
+$(\pi, \text{pubvals})$ where $\pi$ is the ZK proof.
 
-                   // Verify signatures along the chain (RSA or ECDSA, auto-detected from OID)
-                   If k = 0:  (single-level)
-                     Assert: Sig.Verify(pk_root, cert_parsed.tbs, cert_parsed.sig)
-                   Else:      (multi-level)
-                     Assert: Sig.Verify(inter_0.pk, cert_parsed.tbs, cert_parsed.sig)
-                     For i = 0 to k-2:
-                       Assert: Sig.Verify(inter_{i+1}.pk, inter_i.tbs, inter_i.sig)
-                     Assert: Sig.Verify(pk_root, inter_{k-1}.tbs, inter_{k-1}.sig)
+\medskip
+\textbf{Step 6.} $\mathcal{S} \rightarrow \mathcal{P}$:
+$(\pi, \text{pubvals})$ returned to caller.
 
-                   // Verify and check CRL (trustless)
-                   If CRL ≠ ∅:
-                     crl_parsed ← ParseDER(CRL)
-                     Assert: crl_parsed.issuer = cert_parsed.issuer
-                     Assert: crl_parsed.thisUpdate ≤ t ≤ crl_parsed.nextUpdate
-                     issuer_pk ← FindIssuerKey(intermediates, pk_root, crl_parsed.issuer)
-                     Assert: Sig.Verify(issuer_pk, crl_parsed.tbs, crl_parsed.sig)
-                     Assert: cert_parsed.serial ∉ crl_parsed.revokedCertificates
+\medskip
+\textbf{Step 7.} $\mathcal{P} \rightarrow \mathcal{V}$:
+$\texttt{register}(\pi, \text{pubvals})$ via Ethereum transaction signed by addr.
 
-                   // Verify key ownership (signature-based, RSA or ECDSA)
-                   challenge ← H(cert_parsed.serial ‖ addr ‖ wallet_index ‖ t ‖ chain_id)
-                   Assert: Sig.Verify(cert_parsed.pk, challenge, ownership_sig)
-
-                   // Verify wallet index
-                   Assert: wallet_index < max_wallets
-
-                   // Verify nullifier signature (deterministic, registrant-independent)
-                   nullifier_domain ← H("zk-X509-Nullifier-v2" ‖ registry_address ‖ chain_id)
-                   Assert: Sig.Verify(cert_parsed.pk, nullifier_domain, nullifier_sig)
-
-                   // Compute public outputs
-                   nullifier ← H(nullifier_sig ‖ wallet_index)
-                   caRootHash ← H(pk_root)
-                   notAfter ← cert_parsed.notAfter
-
-                   // Verify CA Merkle membership (Section 3.12)
-                   Assert: MerkleVerify(caRootHash, ca_merkle_proof, ca_merkle_root)
-
-                   // Selective disclosure (salted with private-key-derived salt)
-                   disclosure_salt ← H("zk-X509-Disclosure-Salt-v1" ‖ nullifier_sig)
-                   countryHash  ← (mask & 0x01) ? H(cert.subject.C ‖ disclosure_salt)  : 0x0
-                   orgHash      ← (mask & 0x02) ? H(cert.subject.O ‖ disclosure_salt)  : 0x0
-                   orgUnitHash  ← (mask & 0x04) ? H(cert.subject.OU ‖ disclosure_salt) : 0x0
-                   commonNameHash ← (mask & 0x08) ? H(cert.subject.CN ‖ disclosure_salt) : 0x0
-
-                   // Commit public values (caMerkleRoot, NOT caRootHash)
-                   Commit(nullifier, ca_merkle_root, t, addr, wallet_index,
-                          notAfter, chain_id, registry_address, crl_merkle_root,
-                          countryHash, orgHash, orgUnitHash, commonNameHash)
-
-Step 5.  Z → S:   (π, pubvals)
-                   where π is the ZK proof, pubvals = ABI(nullifier, caMerkleRoot, t, addr, ...)
-
-Step 6.  S → P:   (π, pubvals) returned to caller
-
-Step 7.  P → V:   register(π, pubvals)
-                   via Ethereum transaction signed by addr
-
-Step 8.  V:        // On-chain verification
-                   (nullifier, caMerkleRoot, t_proof, registrant, walletIndex,
-                    notAfter, chainId, registryAddress, crlMerkleRoot,
-                    countryHash, orgHash, orgUnitHash, commonNameHash)
-                     ← ABI.Decode(pubvals)
-                   Assert: registrant = msg.sender              // front-running
-                   Assert: t_proof ≤ block.timestamp             // no future proofs
-                   Assert: block.timestamp - t_proof ≤ maxProofAge  // freshness (default 1h)
-                   Assert: caMerkleRoot = contract.caMerkleRoot     // CA Merkle root match
-                   Assert: walletIndex < maxWalletsPerCert       // wallet limit
-                   Assert: notAfter ≥ block.timestamp             // cert not expired
-                   Assert: chainId = block.chainid               // replay prevention
-                   Assert: registryAddress = address(this)       // cross-DApp binding
-                   If contract.crlMerkleRoot ≠ 0:
-                     Assert: crlMerkleRoot = contract.crlMerkleRoot  // CRL root match
-                   SP1Verifier.verify(vkey, pubvals, π)         // ZK proof
-                   Assert: revokedNullifiers[nullifier] = false  // not revoked
-                   Assert: nullifierOwner[nullifier] = 0x0       // no double-reg
-                   Assert: verifiedUntil[msg.sender] < block.timestamp  // expired or new
-                   nullifierOwner[nullifier] ← msg.sender
-                   verifiedUntil[msg.sender] ← notAfter          // auto-expiry
-                   Emit UserRegistered(msg.sender, nullifier)
-\end{lstlisting}
+\medskip
+\textbf{Step 8.} $\mathcal{V}$ (on-chain verification):
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item Decode public values via \texttt{ABI.Decode(pubvals)}
+\item Assert: $\text{registrant} = \texttt{msg.sender}$ \hfill\textit{// front-running}
+\item Assert: $t_{\text{proof}} \leq \texttt{block.timestamp}$ \hfill\textit{// no future proofs}
+\item Assert: $\texttt{block.timestamp} - t_{\text{proof}} \leq \texttt{maxProofAge}$ \hfill\textit{// freshness}
+\item Assert: $\text{caMerkleRoot} = \text{contract.caMerkleRoot}$ \hfill\textit{// CA root match}
+\item Assert: $\text{walletIndex} < \texttt{maxWalletsPerCert}$ \hfill\textit{// wallet limit}
+\item Assert: $\text{notAfter} \geq \texttt{block.timestamp}$ \hfill\textit{// cert not expired}
+\item Assert: $\text{chainId} = \texttt{block.chainid}$ \hfill\textit{// replay prevention}
+\item Assert: $\text{registryAddress} = \texttt{address(this)}$ \hfill\textit{// cross-DApp binding}
+\item If CRL enabled: assert $\text{crlMerkleRoot}$ match \hfill\textit{// CRL root}
+\item $\texttt{SP1Verifier.verify}(\text{vkey}, \text{pubvals}, \pi)$ \hfill\textit{// ZK proof}
+\item Assert: not revoked, not double-registered, expired or new
+\item $\text{nullifierOwner}[\text{nullifier}] \leftarrow \texttt{msg.sender}$;
+  $\text{verifiedUntil}[\texttt{msg.sender}] \leftarrow \text{notAfter}$
+\item Emit \texttt{UserRegistered(msg.sender, nullifier)}
+\end{enumerate}
+\end{mdframed}
 
 \subsection{Public Values
 Structure}\label{public-values-structure}
@@ -807,25 +805,31 @@ Structure}\label{public-values-structure}
 The shared data structure between the ZK circuit and the smart contract
 is:
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{struct PublicValuesStruct \{}
-\NormalTok{    bytes32 nullifier;       // H(Sign(sk, H("zk{-}X509{-}Nullifier{-}v2" ‖ registryAddress ‖ chainId)) ‖ walletIndex)}
-\NormalTok{    bytes32 caMerkleRoot;    // Merkle root of allowed CA set (hides which CA issued the cert)}
-\NormalTok{    uint64  timestamp;       // Unix timestamp at proof generation}
-\NormalTok{    address registrant;      // Wallet address bound to this proof}
-\NormalTok{    uint32  walletIndex;     // Wallet slot index (0..maxWalletsPerCert{-}1)}
-\NormalTok{    uint64  notAfter;        // Certificate expiry (unix timestamp)}
-\NormalTok{    uint64  chainId;         // EIP{-}155 chain ID}
-\NormalTok{    address registryAddress; // Target registry contract address}
-\NormalTok{    bytes32 crlMerkleRoot;   // CRL Sorted Merkle Tree root (bytes32(0) = disabled)}
-\NormalTok{    bytes32 countryHash;     // H(country ‖ salt) or 0x0 if not disclosed}
-\NormalTok{    bytes32 orgHash;         // H(organization ‖ salt) or 0x0 if not disclosed}
-\NormalTok{    bytes32 orgUnitHash;     // H(organizational unit ‖ salt) or 0x0 if not disclosed}
-\NormalTok{    bytes32 commonNameHash;  // H(common name ‖ salt) or 0x0 if not disclosed}
-\NormalTok{\}}
-\end{Highlighting}
-\end{Shaded}
+\begin{table}[ht]
+\centering
+\small
+\caption{\texttt{PublicValuesStruct} --- shared between ZK circuit and smart contract.}
+\label{tab:public-values}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Field & Type & Description \\
+\midrule
+\texttt{nullifier} & \texttt{bytes32} & $\mathcal{H}(\text{nullifier\_sig} \| \text{walletIndex})$ \\
+\texttt{caMerkleRoot} & \texttt{bytes32} & Merkle root of allowed CA set \\
+\texttt{timestamp} & \texttt{uint64} & Proof generation timestamp \\
+\texttt{registrant} & \texttt{address} & Wallet address bound to proof \\
+\texttt{walletIndex} & \texttt{uint32} & Wallet slot index \\
+\texttt{notAfter} & \texttt{uint64} & Certificate expiry \\
+\texttt{chainId} & \texttt{uint64} & EIP-155 chain ID \\
+\texttt{registryAddress} & \texttt{address} & Target registry address \\
+\texttt{crlMerkleRoot} & \texttt{bytes32} & CRL Merkle root (\texttt{0} = disabled) \\
+\texttt{countryHash} & \texttt{bytes32} & $\mathcal{H}(\text{country} \| \text{salt})$ or \texttt{0x0} \\
+\texttt{orgHash} & \texttt{bytes32} & $\mathcal{H}(\text{organization} \| \text{salt})$ or \texttt{0x0} \\
+\texttt{orgUnitHash} & \texttt{bytes32} & $\mathcal{H}(\text{org unit} \| \text{salt})$ or \texttt{0x0} \\
+\texttt{commonNameHash} & \texttt{bytes32} & $\mathcal{H}(\text{common name} \| \text{salt})$ or \texttt{0x0} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 This struct is ABI-encoded using \texttt{alloy-sol-types} in Rust and
 ABI-decoded in Solidity, ensuring binary compatibility across the stack.
@@ -1110,27 +1114,36 @@ configurable multi-wallet registration.
 
 The \texttt{IdentityRegistry} contract manages on-chain state:
 
-\begin{lstlisting}
-State Variables:
-  sp1Verifier       : ISP1Verifier (immutable)     — On-chain proof verifier
-  programVKey       : bytes32 (immutable)           — ZK program verification key
-  maxWalletsPerCert : uint32 (immutable)            — Max wallets per certificate
-  caMerkleRoot      : bytes32                        — Merkle root of allowed CA set (auto-computed)
-  caLeaves          : bytes32[]                     — On-chain list of trusted CA hashes
-  caExists          : mapping(bytes32 => bool)      — Duplicate CA prevention
-  crlMerkleRoot     : bytes32                        — CRL Merkle root (bytes32(0) = disabled)
-  nullifierOwner    : mapping(bytes32 => address)   — Nullifier → registered wallet
-  revokedNullifiers : mapping(bytes32 => bool)      — Permanently revoked nullifiers
-  verifiedUntil     : mapping(address => uint64)    — Wallet → cert expiry timestamp
-  owner             : address                       — Contract administrator
-  pendingOwner      : address                       — For 2-step ownership transfer
-  maxProofAge       : uint256                        — Max proof age (adjustable: 5 min–24 hours)
-  paused            : bool                          — Emergency stop flag
-  previousCaMerkleRoot : bytes32                    — Previous CA Merkle root (for grace period)
-  caMerkleRootUpdatedAt : uint256                   — Timestamp of last CA root update
-  caRootGracePeriod : uint256                       — Grace period allowing old CA root (default 24 hours)
-  minDisclosureMask : uint8 (immutable)             — Minimum required disclosure fields
-\end{lstlisting}
+\begin{table}[ht]
+\centering
+\small
+\caption{IdentityRegistry state variables.}
+\label{tab:state-variables}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Variable & Type & Description \\
+\midrule
+\texttt{sp1Verifier} & \texttt{ISP1Verifier} (immut.) & On-chain proof verifier \\
+\texttt{programVKey} & \texttt{bytes32} (immut.) & ZK program verification key \\
+\texttt{maxWalletsPerCert} & \texttt{uint32} (immut.) & Max wallets per certificate \\
+\texttt{caMerkleRoot} & \texttt{bytes32} & Merkle root of allowed CA set \\
+\texttt{caLeaves} & \texttt{bytes32[]} & On-chain list of trusted CA hashes \\
+\texttt{caExists} & \texttt{bytes32 $\Rightarrow$ bool} & Duplicate CA prevention \\
+\texttt{crlMerkleRoot} & \texttt{bytes32} & CRL Merkle root (\texttt{0} = disabled) \\
+\texttt{nullifierOwner} & \texttt{bytes32 $\Rightarrow$ address} & Nullifier $\rightarrow$ registered wallet \\
+\texttt{revokedNullifiers} & \texttt{bytes32 $\Rightarrow$ bool} & Permanently revoked nullifiers \\
+\texttt{verifiedUntil} & \texttt{address $\Rightarrow$ uint64} & Wallet $\rightarrow$ cert expiry timestamp \\
+\texttt{owner} & \texttt{address} & Contract administrator \\
+\texttt{pendingOwner} & \texttt{address} & For 2-step ownership transfer \\
+\texttt{maxProofAge} & \texttt{uint256} & Max proof age (5 min--24 hours) \\
+\texttt{paused} & \texttt{bool} & Emergency stop flag \\
+\texttt{previousCaMerkleRoot} & \texttt{bytes32} & Previous CA Merkle root (grace) \\
+\texttt{caMerkleRootUpdatedAt} & \texttt{uint256} & Timestamp of last CA root update \\
+\texttt{caRootGracePeriod} & \texttt{uint256} & Grace period for old CA root \\
+\texttt{minDisclosureMask} & \texttt{uint8} (immut.) & Minimum required disclosure fields \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 The \texttt{maxWalletsPerCert} parameter is set at deployment, enabling
 configurable registration policy per L2 deployment (see Section 3.6).
@@ -1622,16 +1635,25 @@ ECDSA Verification & p256, p384 (pure Rust) & 0.13 \\
 
 \subsection{Repository Structure}\label{repository-structure}
 
-\begin{lstlisting}
-zk-X509/
-├── lib/              # Shared types (PublicValuesStruct)
-├── program/          # SP1 Guest program (zkVM)
-├── script/           # SP1 Host (CLI, keychain integration)
-├── contracts/        # Solidity (IdentityRegistry, tests, deploy scripts)
-├── frontend/         # Next.js web UI
-├── certs/            # Test certificate generator (OpenSSL scripts)
-└── docs/             # Documentation and this paper
-\end{lstlisting}
+\begin{table}[ht]
+\centering
+\small
+\caption{Repository structure.}
+\label{tab:repo-structure}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Directory & Description \\
+\midrule
+\texttt{lib/} & Shared types (\texttt{PublicValuesStruct}) \\
+\texttt{program/} & SP1 Guest program (zkVM) \\
+\texttt{script/} & SP1 Host (CLI, keychain integration) \\
+\texttt{contracts/} & Solidity (IdentityRegistry, tests, deploy scripts) \\
+\texttt{frontend/} & Next.js web UI \\
+\texttt{certs/} & Test certificate generator (OpenSSL scripts) \\
+\texttt{docs/} & Documentation and this paper \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Performance Evaluation}\label{performance-evaluation}
 
@@ -1989,16 +2011,17 @@ that simulates the system.
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{forge}}\):
 
-\begin{lstlisting}
-Game Exp_A^forge:
-  1. C deploys IdentityRegistry with verification key vkey
-     and whitelists a set of CA root hashes {h_1, ..., h_n}
-  2. A is given: vkey, {h_1, ..., h_n}, the contract address,
-     and access to the public blockchain
-  3. A is NOT given: any valid certificate or private key
-  4. A outputs: (π*, pubvals*)
-  5. A wins if: V.register(π*, pubvals*) succeeds
-\end{lstlisting}
+\begin{mdframed}[linewidth=0.5pt, innertopmargin=6pt, innerbottommargin=6pt]
+\small
+\textbf{Game} $\text{Exp}_{\mathcal{A}}^{\text{forge}}$:
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item $\mathcal{C}$ deploys IdentityRegistry with verification key \textit{vkey} and whitelists CA root hashes $\{h_1, \ldots, h_n\}$
+\item $\mathcal{A}$ is given: \textit{vkey}, $\{h_1, \ldots, h_n\}$, the contract address, and access to the public blockchain
+\item $\mathcal{A}$ is \textbf{NOT} given: any valid certificate or private key
+\item $\mathcal{A}$ outputs: $(\pi^*, \text{pubvals}^*)$
+\item $\mathcal{A}$ wins if: $\mathcal{V}.\texttt{register}(\pi^*, \text{pubvals}^*)$ succeeds
+\end{enumerate}
+\end{mdframed}
 
 \textbf{zk-X509 is unforgeable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2010,17 +2033,19 @@ Game Exp_A^forge:
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{link}}\):
 
-\begin{lstlisting}
-Game Exp_A^link:
-  1. C generates two valid certificates (cert_0, sk_0) and (cert_1, sk_1)
-     both signed by the same CA
-  2. C generates registrations for both, producing nullifiers n_0 and n_1
-  3. C flips a random bit b ∈ {0, 1}
-  4. A is given: n_b, n_{1-b} (in random order), and the caMerkleRoot
-  5. A is NOT given: the certificates, private keys, or serial numbers
-  6. A outputs: b'
-  7. A wins if: b' = b
-\end{lstlisting}
+\begin{mdframed}[linewidth=0.5pt, innertopmargin=6pt, innerbottommargin=6pt]
+\small
+\textbf{Game} $\text{Exp}_{\mathcal{A}}^{\text{link}}$:
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item $\mathcal{C}$ generates two valid certificates $(\text{cert}_0, sk_0)$ and $(\text{cert}_1, sk_1)$ both signed by the same CA
+\item $\mathcal{C}$ generates registrations for both, producing nullifiers $n_0$ and $n_1$
+\item $\mathcal{C}$ flips a random bit $b \in \{0, 1\}$
+\item $\mathcal{A}$ is given: $n_b$, $n_{1-b}$ (in random order), and the caMerkleRoot
+\item $\mathcal{A}$ is \textbf{NOT} given: the certificates, private keys, or serial numbers
+\item $\mathcal{A}$ outputs: $b'$
+\item $\mathcal{A}$ wins if: $b' = b$
+\end{enumerate}
+\end{mdframed}
 
 \textbf{zk-X509 is unlinkable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2032,14 +2057,16 @@ Resistance)}\label{definition-3-double-registration-resistance}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{double}}\):
 
-\begin{lstlisting}
-Game Exp_A^double:
-  1. C deploys IdentityRegistry and whitelists CA roots
-  2. A is given: one valid certificate (cert, sk) and two addresses addr_1, addr_2
-  3. A outputs: two registration transactions tx_1 = (π_1, pubvals_1) from addr_1
-                and tx_2 = (π_2, pubvals_2) from addr_2
-  4. A wins if: both V.register(tx_1) and V.register(tx_2) succeed
-\end{lstlisting}
+\begin{mdframed}[linewidth=0.5pt, innertopmargin=6pt, innerbottommargin=6pt]
+\small
+\textbf{Game} $\text{Exp}_{\mathcal{A}}^{\text{double}}$:
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item $\mathcal{C}$ deploys IdentityRegistry and whitelists CA roots
+\item $\mathcal{A}$ is given: one valid certificate $(\text{cert}, sk)$ and two addresses $\text{addr}_1$, $\text{addr}_2$
+\item $\mathcal{A}$ outputs: two registration transactions $\text{tx}_1 = (\pi_1, \text{pubvals}_1)$ from $\text{addr}_1$ and $\text{tx}_2 = (\pi_2, \text{pubvals}_2)$ from $\text{addr}_2$
+\item $\mathcal{A}$ wins if: both $\mathcal{V}.\texttt{register}(\text{tx}_1)$ and $\mathcal{V}.\texttt{register}(\text{tx}_2)$ succeed
+\end{enumerate}
+\end{mdframed}
 
 \textbf{zk-X509 is double-registration resistant} if for all PPT
 adversaries \(\mathcal{A}\):
@@ -2051,14 +2078,16 @@ Immunity)}\label{definition-4-front-running-immunity}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{front}}\):
 
-\begin{lstlisting}
-Game Exp_A^front:
-  1. An honest user P generates a valid registration tx = (π, pubvals) for addr_P
-  2. A observes tx in the mempool before it is mined
-  3. A outputs: tx' = (π', pubvals') from addr_A ≠ addr_P
-     where A may copy, modify, or replay any data from tx
-  4. A wins if: V.register(tx') succeeds using any data derived from tx
-\end{lstlisting}
+\begin{mdframed}[linewidth=0.5pt, innertopmargin=6pt, innerbottommargin=6pt]
+\small
+\textbf{Game} $\text{Exp}_{\mathcal{A}}^{\text{front}}$:
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item An honest user $\mathcal{P}$ generates a valid registration $\text{tx} = (\pi, \text{pubvals})$ for $\text{addr}_P$
+\item $\mathcal{A}$ observes tx in the mempool before it is mined
+\item $\mathcal{A}$ outputs: $\text{tx}' = (\pi', \text{pubvals}')$ from $\text{addr}_A \neq \text{addr}_P$ where $\mathcal{A}$ may copy, modify, or replay any data from tx
+\item $\mathcal{A}$ wins if: $\mathcal{V}.\texttt{register}(\text{tx}')$ succeeds using any data derived from tx
+\end{enumerate}
+\end{mdframed}
 
 \textbf{zk-X509 is front-running immune} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2070,19 +2099,19 @@ Hiding)}\label{definition-5-ca-membership-hiding}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{ca-anon}}\):
 
-\begin{lstlisting}
-Game Exp_A^ca-anon:
-  1. C whitelists two CAs: CA_0 and CA_1, constructing a Merkle tree
-     with roots {h_0 = H(pk_0), h_1 = H(pk_1)} and Merkle root M
-  2. C generates a valid certificate cert_b signed by CA_b,
-     where b ∈ {0, 1} is chosen uniformly at random
-  3. C generates a registration proof π with public values pubvals
-     (containing caMerkleRoot = M)
-  4. A is given: π, pubvals, M, and the public keys pk_0, pk_1
-  5. A is NOT given: cert_b, sk_b, or the Merkle proof path
-  6. A outputs: b'
-  7. A wins if: b' = b
-\end{lstlisting}
+\begin{mdframed}[linewidth=0.5pt, innertopmargin=6pt, innerbottommargin=6pt]
+\small
+\textbf{Game} $\text{Exp}_{\mathcal{A}}^{\text{ca-anon}}$:
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item $\mathcal{C}$ whitelists two CAs: $\text{CA}_0$ and $\text{CA}_1$, constructing a Merkle tree with roots $\{h_0 = \mathcal{H}(\text{pk}_0), h_1 = \mathcal{H}(\text{pk}_1)\}$ and Merkle root $M$
+\item $\mathcal{C}$ generates a valid certificate $\text{cert}_b$ signed by $\text{CA}_b$, where $b \in \{0, 1\}$ is chosen uniformly at random
+\item $\mathcal{C}$ generates a registration proof $\pi$ with public values pubvals (containing $\text{caMerkleRoot} = M$)
+\item $\mathcal{A}$ is given: $\pi$, pubvals, $M$, and the public keys $\text{pk}_0$, $\text{pk}_1$
+\item $\mathcal{A}$ is \textbf{NOT} given: $\text{cert}_b$, $sk_b$, or the Merkle proof path
+\item $\mathcal{A}$ outputs: $b'$
+\item $\mathcal{A}$ wins if: $b' = b$
+\end{enumerate}
+\end{mdframed}
 
 \textbf{zk-X509 satisfies CA-membership hiding} if for all PPT
 adversaries \(\mathcal{A}\):
@@ -2094,17 +2123,17 @@ adversaries \(\mathcal{A}\):
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{transfer}}\):
 
-\begin{lstlisting}
-Game Exp_A^transfer:
-  1. C deploys IdentityRegistry and whitelists CA roots
-  2. An honest user P holds (cert, sk) and does NOT cooperate with A
-     (i.e., P does not sign any challenges, share signatures, or
-      reveal any private data to A)
-  3. A is given: access to the public blockchain, P's on-chain
-     registration (if any), and P's certificate (public data)
-  4. A outputs: (π*, pubvals*) with a registrant address controlled by A
-  5. A wins if: V.register(π*, pubvals*) succeeds using P's certificate
-\end{lstlisting}
+\begin{mdframed}[linewidth=0.5pt, innertopmargin=6pt, innerbottommargin=6pt]
+\small
+\textbf{Game} $\text{Exp}_{\mathcal{A}}^{\text{transfer}}$:
+\begin{enumerate}[nosep,leftmargin=1.5em]
+\item $\mathcal{C}$ deploys IdentityRegistry and whitelists CA roots
+\item An honest user $\mathcal{P}$ holds $(\text{cert}, sk)$ and does \textbf{NOT} cooperate with $\mathcal{A}$ (i.e., $\mathcal{P}$ does not sign any challenges, share signatures, or reveal any private data to $\mathcal{A}$)
+\item $\mathcal{A}$ is given: access to the public blockchain, $\mathcal{P}$'s on-chain registration (if any), and $\mathcal{P}$'s certificate (public data)
+\item $\mathcal{A}$ outputs: $(\pi^*, \text{pubvals}^*)$ with a registrant address controlled by $\mathcal{A}$
+\item $\mathcal{A}$ wins if: $\mathcal{V}.\texttt{register}(\pi^*, \text{pubvals}^*)$ succeeds using $\mathcal{P}$'s certificate
+\end{enumerate}
+\end{mdframed}
 
 \textbf{zk-X509 is non-transferable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2483,7 +2512,9 @@ produce a valid proof \(\pi^*\) whose witness includes:
 \item
   \textbf{A nullifier signature} \(\text{nullifier\_sig}\) that verifies
   under \(\mathcal{P}\)'s public key:
-  \(\text{Sig.Verify}(\text{cert.pk}, \mathcal{H}(\text{"zk-X509-Nullifier-v2"} \| \text{contract\_address} \| \text{chain\_id}), \text{nullifier\_sig})\).
+  \(\text{Sig.Verify}(\text{cert.pk},\)
+  \(\mathcal{H}(\text{``zk-X509-Nullifier-v2''} \| \text{contract\_addr} \| \text{chain\_id}),\)
+  \(\text{nullifier\_sig})\).
   Again, forging this without the private key contradicts A3.
 \end{enumerate}
 
@@ -2578,7 +2609,8 @@ keychain:
   Security.framework, Windows CNG). The user authenticates via the OS-level prompt (e.g., password dialog or Touch ID).
 \item
   The OS keychain signs the ownership challenge:
-  \(\mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{timestamp} \| \text{chain\_id})\).
+  \(\mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index}\)
+  \(\| \text{timestamp} \| \text{chain\_id})\).
 \item
   Only the resulting \textbf{signature bytes} are returned to the prover process and passed to the SP1 zkVM as input.
 \item
