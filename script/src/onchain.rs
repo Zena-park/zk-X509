@@ -49,6 +49,23 @@ pub fn build_ca_merkle_from_onchain(
     Ok(merkle::merkle_root_and_proof(&ca_leaves, my_index))
 }
 
+/// Build CA Merkle tree: try on-chain first, fall back to single-CA local mode.
+///
+/// This is the common pattern used by interactive, main, and evm binaries.
+pub fn build_ca_merkle(
+    rpc_url: &str,
+    registry: &[u8; 20],
+    ca_pub_key: &[u8],
+) -> (Hash, Vec<Hash>) {
+    match build_ca_merkle_from_onchain(rpc_url, registry, ca_pub_key) {
+        Ok(result) => result,
+        Err(_) => {
+            let (_leaf, root, proof) = crate::merkle::ca_merkle_tree(ca_pub_key, &[]);
+            (root, proof)
+        }
+    }
+}
+
 pub fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
     let data = eth_call(rpc_url, registry, SELECTOR_GET_CA_LEAVES)?;
     decode_bytes32_array(&data)

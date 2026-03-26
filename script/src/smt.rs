@@ -112,19 +112,22 @@ impl CrlMerkleTree {
     }
 
     /// Generate a non-inclusion proof for a serial number.
-    /// Panics if the serial IS in the revoked list.
-    pub fn prove_non_inclusion(&self, serial: &[u8]) -> NonInclusionProof {
+    /// Returns `Err` if the serial IS in the revoked list.
+    pub fn prove_non_inclusion(&self, serial: &[u8]) -> Result<NonInclusionProof, String> {
         let key: Hash = Sha256::digest(serial).into();
 
         // Binary search: find where key would be inserted
         let insert_pos = match self.leaves.binary_search(&key) {
-            Ok(_) => panic!("Serial is revoked — cannot generate non-inclusion proof"),
+            Ok(_) => return Err("Serial is revoked — cannot generate non-inclusion proof".to_string()),
             Err(pos) => pos,
         };
 
         // Adjacent leaves: left < key < right
-        let left_index = insert_pos - 1; // MIN_SENTINEL guarantees this exists
-        let right_index = insert_pos;     // MAX_SENTINEL guarantees this exists
+        // MIN_SENTINEL ([0x00; 32]) guarantees insert_pos >= 1
+        // MAX_SENTINEL ([0xff; 32]) guarantees insert_pos < leaves.len()
+        let left_index = insert_pos.checked_sub(1)
+            .ok_or_else(|| "insert_pos is 0 — MIN_SENTINEL missing".to_string())?;
+        let right_index = insert_pos;
 
         let left_leaf = self.leaves[left_index];
         let right_leaf = self.leaves[right_index];
@@ -132,7 +135,7 @@ impl CrlMerkleTree {
         let (left_proof, left_directions) = self.merkle_proof(left_index);
         let (right_proof, right_directions) = self.merkle_proof(right_index);
 
-        NonInclusionProof {
+        Ok(NonInclusionProof {
             left_leaf,
             right_leaf,
             left_proof,
@@ -141,7 +144,7 @@ impl CrlMerkleTree {
             right_directions,
             left_index,
             right_index,
-        }
+        })
     }
 
     /// Generate Merkle proof for a leaf at given index.
@@ -246,7 +249,7 @@ mod tests {
         let tree = CrlMerkleTree::empty();
         assert!(!tree.is_revoked(b"any_serial"));
 
-        let proof = tree.prove_non_inclusion(b"any_serial");
+        let proof = tree.prove_non_inclusion(b"any_serial").unwrap();
         assert!(verify_non_inclusion(b"any_serial", &proof, &tree.root()));
     }
 
@@ -257,15 +260,16 @@ mod tests {
         assert!(tree.is_revoked(b"revoked_001"));
         assert!(!tree.is_revoked(b"valid_001"));
 
-        let proof = tree.prove_non_inclusion(b"valid_001");
+        let proof = tree.prove_non_inclusion(b"valid_001").unwrap();
         assert!(verify_non_inclusion(b"valid_001", &proof, &tree.root()));
     }
 
     #[test]
-    #[should_panic(expected = "Serial is revoked")]
-    fn test_prove_revoked_panics() {
+    fn test_prove_revoked_returns_err() {
         let tree = CrlMerkleTree::from_revoked_serials(&[b"revoked_001".to_vec()]);
-        tree.prove_non_inclusion(b"revoked_001"); // should panic
+        let result = tree.prove_non_inclusion(b"revoked_001");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("revoked"));
     }
 
     #[test]
@@ -285,7 +289,7 @@ mod tests {
         // Valid serials — prove non-inclusion
         for valid in &[b"serial_050", b"serial_150", b"serial_250", b"serial_999"] {
             assert!(!tree.is_revoked(*valid));
-            let proof = tree.prove_non_inclusion(*valid);
+            let proof = tree.prove_non_inclusion(*valid).unwrap();
             assert!(
                 verify_non_inclusion(*valid, &proof, &tree.root()),
                 "Non-inclusion proof failed for {:?}", valid
@@ -299,7 +303,7 @@ mod tests {
         let tree = CrlMerkleTree::from_revoked_serials(&[
             b"aaa".to_vec(), b"mmm".to_vec(), b"zzz".to_vec(),
         ]);
-        let proof = tree.prove_non_inclusion(b"bbb"); // between "aaa" and "mmm"
+        let proof = tree.prove_non_inclusion(b"bbb").unwrap(); // between "aaa" and "mmm"
 
         // A revoked serial should fail verification (ordering check)
         assert!(!verify_non_inclusion(b"aaa", &proof, &tree.root()));
@@ -308,7 +312,7 @@ mod tests {
     #[test]
     fn test_wrong_root_fails() {
         let tree = CrlMerkleTree::from_revoked_serials(&[b"revoked_001".to_vec()]);
-        let proof = tree.prove_non_inclusion(b"valid_001");
+        let proof = tree.prove_non_inclusion(b"valid_001").unwrap();
 
         let fake_root: Hash = [0xAA; 32];
         assert!(!verify_non_inclusion(b"valid_001", &proof, &fake_root));
@@ -329,7 +333,7 @@ mod tests {
         // Prove non-inclusion for valid serials
         for i in [1001, 2000, 9999] {
             let serial = format!("valid_{:06}", i);
-            let proof = tree.prove_non_inclusion(serial.as_bytes());
+            let proof = tree.prove_non_inclusion(serial.as_bytes()).unwrap();
             assert!(
                 verify_non_inclusion(serial.as_bytes(), &proof, &tree.root()),
                 "Failed for {}", serial

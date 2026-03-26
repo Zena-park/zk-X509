@@ -12,7 +12,7 @@ use sha2::Digest;
 use clap::Parser;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
-    include_elf, Elf, ProvingKey, SP1Stdin,
+    include_elf, Elf, ProvingKey,
 };
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -185,9 +185,8 @@ fn main() {
     // Build CA Merkle tree (from on-chain if --rpc-url, else from local files)
     let (ca_merkle_root, ca_merkle_proof) = if let Some(rpc_url) = &args.rpc_url {
         println!("Fetching CA list from on-chain ({})...", rpc_url);
-        let (root, proof) = zk_x509_script::onchain::build_ca_merkle_from_onchain(rpc_url, &registry_bytes, &ca_pub_key)
-            .expect("Failed to build CA Merkle tree from on-chain");
-        println!("CA Merkle Root (on-chain): 0x{}", hex::encode(root));
+        let (root, proof) = zk_x509_script::onchain::build_ca_merkle(rpc_url, &registry_bytes, &ca_pub_key);
+        println!("CA Merkle Root: 0x{}", hex::encode(root));
         (root, proof)
     } else {
         let mut extra_hashes = Vec::new();
