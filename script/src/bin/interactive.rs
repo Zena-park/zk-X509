@@ -2,8 +2,8 @@
 //!
 //! Walks through each step sequentially:
 //!   1. Settings (RPC, registry, chain)
-//!   2. Certificate selection (NPKI scan)
-//!   3. Password + wallet address
+//!   2. Certificate selection (Keychain scan)
+//!   3. Wallet address
 //!   4. Proof generation (Execute or Groth16)
 //!   5. Output proof for Dashboard
 //!
@@ -18,7 +18,6 @@ use sp1_sdk::{
 use std::io::{self, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 use zk_x509_lib::PublicValuesStruct;
-use zk_x509_script::keychain::CertSource;
 
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 const DEFAULT_REGISTRY: &str = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
@@ -29,14 +28,6 @@ fn prompt(msg: &str) -> String {
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
     input.trim().to_string()
-}
-
-fn prompt_password(msg: &str) -> String {
-    if atty::is(atty::Stream::Stdin) {
-        rpassword::prompt_password(msg).unwrap_or_default()
-    } else {
-        prompt(msg)
-    }
 }
 
 fn format_decoded(decoded: &PublicValuesStruct) -> (String, String) {
@@ -101,14 +92,16 @@ fn main() {
     println!();
     println!("  ── Step 2/5: Select Certificate ──");
     println!();
-    println!("  Scanning for certificates...");
+    println!("  Scanning macOS Keychain for certificates...");
 
-    // Collect file-based certs
-    let file_certs = zk_x509_script::keychain::scan_npki_certs();
+    #[cfg(not(target_os = "macos"))]
+    {
+        println!("  ✗ Keychain scanning is only supported on macOS.");
+        return;
+    }
 
-    // Collect keychain identities (macOS only) — keep handles for signing later
     #[cfg(target_os = "macos")]
-    let keychain_identities: Vec<(zk_x509_script::keychain::NpkiCertEntry,
+    let keychain_identities: Vec<(zk_x509_script::keychain::CertEntry,
         zk_x509_script::keychain::macos_keychain::KeychainIdentity)> = {
         match zk_x509_script::keychain::macos_keychain::scan_identities() {
             Ok(ids) => ids,
@@ -119,34 +112,23 @@ fn main() {
         }
     };
 
-    // Build unified display list
-    let mut certs: Vec<&zk_x509_script::keychain::NpkiCertEntry> = Vec::new();
-    for c in &file_certs { certs.push(c); }
     #[cfg(target_os = "macos")]
-    for (c, _) in &keychain_identities { certs.push(c); }
+    let certs: Vec<&zk_x509_script::keychain::CertEntry> =
+        keychain_identities.iter().map(|(c, _)| c).collect();
 
+    #[cfg(target_os = "macos")]
     if certs.is_empty() {
-        println!("  No certificates found.");
-        println!("  Checked: ~/Library/Preferences/NPKI/, ~/.pki/NPKI/, certs/");
-        #[cfg(target_os = "macos")]
-        println!("  Also checked: macOS Keychain");
-        println!("  Place test certs in certs/ directory and retry.");
+        println!("  No certificates found in macOS Keychain.");
+        println!("  Import a certificate+key identity into Keychain Access and retry.");
         return;
     }
 
+    #[cfg(target_os = "macos")]
+    {
+
     for (i, c) in certs.iter().enumerate() {
-        let source_label = format!("[{}]", c.source);
-        println!("  {}. {} {} ({})", i + 1, source_label, c.subject, c.issuer);
-        match c.source {
-            CertSource::File => {
-                println!("     Expires: {} | Path: {}", c.expires,
-                    c.cert_path.parent().unwrap_or(&c.cert_path).display());
-            }
-            #[cfg(target_os = "macos")]
-            CertSource::Keychain => {
-                println!("     Expires: {} | Source: macOS Keychain", c.expires);
-            }
-        }
+        println!("  {}. [Keychain] {} ({})", i + 1, c.subject, c.issuer);
+        println!("     Expires: {} | Source: macOS Keychain", c.expires);
     }
     println!();
 
@@ -163,63 +145,29 @@ fn main() {
     println!("  ── Step 3/5: Credentials ──");
     println!();
 
-    // Load certificate DER and prepare signing capability based on source
-    #[cfg(target_os = "macos")]
-    let mut keychain_identity: Option<zk_x509_script::keychain::macos_keychain::KeychainIdentity>;
+    // Find the matching identity from the already-scanned list
+    let matched = keychain_identities.iter()
+        .find(|(e, _)| e.serial_hex == entry.serial_hex);
 
-    let (cert_der, key_der_opt) = match entry.source {
-        CertSource::File => {
-            let cert = match std::fs::read(&entry.cert_path) {
-                Ok(d) => d,
-                Err(e) => { println!("  Failed to read cert: {}", e); return; }
+    let (cert_der, mut keychain_identity) = match matched {
+        Some((kc_entry, kc_id)) => {
+            let cert = match kc_entry.cert_der.clone() {
+                Some(der) => der,
+                None => match kc_id.identity.certificate() {
+                    Ok(c) => c.to_der(),
+                    Err(e) => {
+                        println!("  ✗ Failed to read certificate from Keychain: {}", e);
+                        return;
+                    }
+                },
             };
-            let key_raw = match std::fs::read(&entry.key_path) {
-                Ok(d) => d,
-                Err(e) => { println!("  Failed to read key: {}", e); return; }
-            };
-
-            let password = prompt_password("  Certificate password (empty if unencrypted): ");
-            let key_der = if password.is_empty() {
-                key_raw
-            } else {
-                match zk_x509_script::npki::decrypt_npki_key(&key_raw, &password) {
-                    Ok(k) => k,
-                    Err(e) => { println!("  Decryption failed: {}", e); return; }
-                }
-            };
-            drop(password);
-            println!("  ✓ Private key decrypted");
-            #[cfg(target_os = "macos")]
-            { keychain_identity = None; }
-            (cert, Some(key_der))
+            println!("  ✓ Using macOS Keychain (no password needed)");
+            println!("  ✓ Private key stays in Secure Enclave / Keychain");
+            (cert, kc_id.clone())
         }
-        #[cfg(target_os = "macos")]
-        CertSource::Keychain => {
-            // Find the matching identity from the already-scanned list (no re-scan)
-            let matched = keychain_identities.iter()
-                .find(|(e, _)| e.serial_hex == entry.serial_hex);
-            match matched {
-                Some((kc_entry, kc_id)) => {
-                    let cert = match kc_entry.cert_der.clone() {
-                        Some(der) => der,
-                        None => match kc_id.identity.certificate() {
-                            Ok(c) => c.to_der(),
-                            Err(e) => {
-                                println!("  ✗ Failed to read certificate from Keychain: {}", e);
-                                return;
-                            }
-                        },
-                    };
-                    println!("  ✓ Using macOS Keychain (no password needed)");
-                    println!("  ✓ Private key stays in Secure Enclave / Keychain");
-                    keychain_identity = Some(kc_id.clone());
-                    (cert, None)
-                }
-                None => {
-                    println!("  ✗ Keychain identity not found (may have been removed)");
-                    return;
-                }
-            }
+        None => {
+            println!("  ✗ Keychain identity not found (may have been removed)");
+            return;
         }
     };
 
@@ -266,59 +214,28 @@ fn main() {
     let cert_chain: Vec<Vec<u8>> = vec![ca_pub_key.clone()];
     let crl_der: Vec<u8> = Vec::new();
 
-    // Signatures — branch on cert source
-    let (ownership_sig, nullifier_sig) = match &key_der_opt {
-        Some(key_der) => {
-            // File-based: sign with decrypted private key
-            let ownership = match zk_x509_script::ownership::sign_ownership(
-                &cert_der, key_der, &registrant_bytes, wallet_index, timestamp, chain_id,
-            ) {
-                Ok(s) => s,
-                Err(e) => { println!("  Ownership sign failed: {}", e); return; }
-            };
-            let nullifier = match zk_x509_script::ownership::sign_nullifier(
-                &cert_der, key_der, &registry_bytes, chain_id,
-            ) {
-                Ok(s) => s,
-                Err(e) => { println!("  Nullifier sign failed: {}", e); return; }
-            };
-            (ownership, nullifier)
-        }
-        #[cfg(target_os = "macos")]
-        None => {
-            // Keychain-based: sign via OS keychain (private key never in memory)
-            let kc_id = keychain_identity.as_mut().unwrap();
+    // Keychain-based signing (private key never in memory)
+    let ownership_hash = match zk_x509_script::ownership::ownership_challenge_hash(
+        &cert_der, &registrant_bytes, wallet_index, timestamp, chain_id,
+    ) {
+        Ok(h) => h,
+        Err(e) => { println!("  Failed to build ownership hash: {}", e); return; }
+    };
+    let ownership_sig = match zk_x509_script::keychain::macos_keychain::sign_with_identity(
+        &mut keychain_identity, &ownership_hash,
+    ) {
+        Ok(s) => s,
+        Err(e) => { println!("  Keychain ownership sign failed: {}", e); return; }
+    };
 
-            let ownership_hash = match zk_x509_script::ownership::ownership_challenge_hash(
-                &cert_der, &registrant_bytes, wallet_index, timestamp, chain_id,
-            ) {
-                Ok(h) => h,
-                Err(e) => { println!("  Failed to build ownership hash: {}", e); return; }
-            };
-            let ownership = match zk_x509_script::keychain::macos_keychain::sign_with_identity(
-                kc_id, &ownership_hash,
-            ) {
-                Ok(s) => s,
-                Err(e) => { println!("  Keychain ownership sign failed: {}", e); return; }
-            };
-
-            let nullifier_hash = zk_x509_script::ownership::nullifier_challenge_hash(
-                &registry_bytes, chain_id,
-            );
-            let nullifier = match zk_x509_script::keychain::macos_keychain::sign_with_identity(
-                kc_id, &nullifier_hash,
-            ) {
-                Ok(s) => s,
-                Err(e) => { println!("  Keychain nullifier sign failed: {}", e); return; }
-            };
-
-            (ownership, nullifier)
-        }
-        #[cfg(not(target_os = "macos"))]
-        None => {
-            println!("  ✗ Keychain signing not supported on this platform");
-            return;
-        }
+    let nullifier_hash = zk_x509_script::ownership::nullifier_challenge_hash(
+        &registry_bytes, chain_id,
+    );
+    let nullifier_sig = match zk_x509_script::keychain::macos_keychain::sign_with_identity(
+        &mut keychain_identity, &nullifier_hash,
+    ) {
+        Ok(s) => s,
+        Err(e) => { println!("  Keychain nullifier sign failed: {}", e); return; }
     };
     println!("  ✓ Signatures generated");
 
@@ -438,6 +355,8 @@ fn main() {
 
     println!();
     println!("  Done!");
+
+    } // end #[cfg(target_os = "macos")] block
 }
 
 /// Check if Docker is running (required for Groth16 proof generation).

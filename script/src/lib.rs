@@ -1,7 +1,6 @@
 pub mod ca;
 pub mod keychain;
 pub mod merkle;
-pub mod npki;
 pub mod onchain;
 pub mod ownership;
 pub mod smt;
