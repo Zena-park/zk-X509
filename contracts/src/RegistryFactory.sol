@@ -10,7 +10,7 @@ import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol"
 /// @notice Factory for deploying independent IdentityRegistry instances as Beacon Proxies.
 /// @dev Each deployed registry is fully independent with its own owner,
 ///      CA list, and configuration. The factory shares the SP1 verifier
-///      and ZK program verification key across all registries.
+///      across all registries, with versioned ZK program verification keys.
 ///      All proxies share a single implementation via UpgradeableBeacon,
 ///      allowing the factory owner to upgrade all registries at once.
 contract RegistryFactory {
@@ -20,8 +20,14 @@ contract RegistryFactory {
     /// @notice The shared SP1 verifier contract.
     ISP1Verifier public immutable SP1_VERIFIER;
 
-    /// @notice The shared ZK program verification key.
-    bytes32 public immutable PROGRAM_V_KEY;
+    /// @notice The current ZK program verification key (used for new registries).
+    bytes32 public currentProgramVKey;
+
+    /// @notice VKey version history: version number → VKey.
+    mapping(uint256 => bytes32) public vKeyVersions;
+
+    /// @notice Total number of VKey versions published.
+    uint256 public vKeyVersionCount;
 
     /// @notice The beacon that all registry proxies point to.
     UpgradeableBeacon public beacon;
@@ -41,6 +47,7 @@ contract RegistryFactory {
         uint8 minDisclosureMask;
         uint256 maxProofAge;
         uint256 createdAt;
+        uint256 vKeyVersion;
     }
 
     /// @notice Registry address → metadata.
@@ -53,10 +60,13 @@ contract RegistryFactory {
         address indexed owner,
         string name,
         uint32 maxWallets,
-        uint8 minDisclosureMask
+        uint8 minDisclosureMask,
+        uint256 vKeyVersion
     );
 
     event ImplementationUpgraded(address indexed newImplementation);
+
+    event ProgramVKeyUpdated(bytes32 indexed newVKey, uint256 version);
 
     // ============ Errors ============
 
@@ -64,6 +74,8 @@ contract RegistryFactory {
     error ZeroMaxProofAge();
     error InvalidDisclosureMask();
     error OnlyOwner();
+    error ZeroVKey();
+    error DuplicateVKey();
 
     // ============ Modifiers ============
 
@@ -75,15 +87,20 @@ contract RegistryFactory {
     // ============ Constructor ============
 
     /// @param _sp1Verifier Address of the shared SP1 verifier contract.
-    /// @param _programVKey The shared ZK program verification key.
+    /// @param _programVKey The initial ZK program verification key.
     constructor(address _sp1Verifier, bytes32 _programVKey) {
+        if (_programVKey == bytes32(0)) revert ZeroVKey();
         owner = msg.sender;
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
-        PROGRAM_V_KEY = _programVKey;
+        currentProgramVKey = _programVKey;
+        vKeyVersions[0] = _programVKey;
+        vKeyVersionCount = 1;
 
         // Deploy implementation + beacon (factory is beacon admin)
         address implementation = address(new IdentityRegistry());
         beacon = new UpgradeableBeacon(implementation, address(this));
+
+        emit ProgramVKeyUpdated(_programVKey, 0);
     }
 
     // ============ External Functions ============
@@ -104,10 +121,10 @@ contract RegistryFactory {
         if (minDisclosureMask > 0x0F) revert InvalidDisclosureMask();
         if (maxProofAge < 5 minutes || maxProofAge > 24 hours) revert ZeroMaxProofAge();
 
-        // Encode the initialize call for the proxy
+        // Encode the initialize call for the proxy (uses latest VKey)
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(SP1_VERIFIER), PROGRAM_V_KEY, maxWallets, minDisclosureMask, maxProofAge, msg.sender)
+            (address(SP1_VERIFIER), currentProgramVKey, maxWallets, minDisclosureMask, maxProofAge, msg.sender)
         );
 
         BeaconProxy proxy = new BeaconProxy(address(beacon), initData);
@@ -121,10 +138,24 @@ contract RegistryFactory {
             maxWallets: maxWallets,
             minDisclosureMask: minDisclosureMask,
             maxProofAge: maxProofAge,
-            createdAt: block.timestamp
+            createdAt: block.timestamp,
+            vKeyVersion: vKeyVersionCount - 1
         });
 
-        emit RegistryCreated(registry, msg.sender, name, maxWallets, minDisclosureMask);
+        emit RegistryCreated(registry, msg.sender, name, maxWallets, minDisclosureMask, vKeyVersionCount - 1);
+    }
+
+    /// @notice Update the ZK program verification key.
+    /// @dev New registries will use the updated VKey. Existing registries keep
+    ///      their deployment-time VKey (set during initialize, immutable per registry).
+    /// @param newVKey The new verification key.
+    function updateProgramVKey(bytes32 newVKey) external onlyOwner {
+        if (newVKey == bytes32(0)) revert ZeroVKey();
+        if (newVKey == currentProgramVKey) revert DuplicateVKey();
+        uint256 version = vKeyVersionCount++;
+        vKeyVersions[version] = newVKey;
+        currentProgramVKey = newVKey;
+        emit ProgramVKeyUpdated(newVKey, version);
     }
 
     /// @notice Upgrade all registries to a new implementation.

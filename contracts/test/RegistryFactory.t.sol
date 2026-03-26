@@ -68,7 +68,7 @@ contract RegistryFactoryTest is Test {
         vm.prank(alice);
         address reg = factory.createRegistry("My Service", 2, 0x01, 3600);
 
-        (address creator, string memory name, uint32 maxWallets, uint8 mask, uint256 proofAge, uint256 createdAt) =
+        (address creator, string memory name, uint32 maxWallets, uint8 mask, uint256 proofAge, uint256 createdAt, uint256 vKeyVer) =
             factory.registryInfo(reg);
 
         assertEq(creator, alice);
@@ -76,6 +76,7 @@ contract RegistryFactoryTest is Test {
         assertEq(maxWallets, 2);
         assertEq(mask, 0x01);
         assertGt(createdAt, 0);
+        assertEq(vKeyVer, 0);
     }
 
     function test_OwnerCanManageCA() public {
@@ -168,5 +169,64 @@ contract RegistryFactoryTest is Test {
         assertEq(registry.getCaCount(), 1);
         assertEq(registry.owner(), alice);
         assertEq(registry.MAX_WALLETS_PER_CERT(), 1);
+    }
+
+    function test_InitialVKeyVersion() public view {
+        assertEq(factory.currentProgramVKey(), PROGRAM_V_KEY);
+        assertEq(factory.vKeyVersionCount(), 1);
+        assertEq(factory.vKeyVersions(0), PROGRAM_V_KEY);
+    }
+
+    function test_UpdateProgramVKey() public {
+        bytes32 newVKey = bytes32(uint256(0x5678));
+
+        factory.updateProgramVKey(newVKey);
+
+        assertEq(factory.currentProgramVKey(), newVKey);
+        assertEq(factory.vKeyVersionCount(), 2);
+        assertEq(factory.vKeyVersions(0), PROGRAM_V_KEY);
+        assertEq(factory.vKeyVersions(1), newVKey);
+    }
+
+    function test_UpdateVKeyOnlyOwner() public {
+        bytes32 newVKey = bytes32(uint256(0x5678));
+
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.OnlyOwner.selector);
+        factory.updateProgramVKey(newVKey);
+    }
+
+    function test_UpdateVKeyRevertZero() public {
+        vm.expectRevert(RegistryFactory.ZeroVKey.selector);
+        factory.updateProgramVKey(bytes32(0));
+    }
+
+    function test_UpdateVKeyRevertDuplicate() public {
+        vm.expectRevert(RegistryFactory.DuplicateVKey.selector);
+        factory.updateProgramVKey(PROGRAM_V_KEY);
+    }
+
+    function test_NewRegistryUsesLatestVKey() public {
+        // Create registry with initial VKey
+        vm.prank(alice);
+        address reg1 = factory.createRegistry("V1", 1, 0, 3600);
+
+        // Update VKey
+        bytes32 newVKey = bytes32(uint256(0x5678));
+        factory.updateProgramVKey(newVKey);
+
+        // Create registry with new VKey
+        vm.prank(bob);
+        address reg2 = factory.createRegistry("V2", 1, 0, 3600);
+
+        // reg1 has old VKey, reg2 has new VKey
+        assertEq(IdentityRegistry(reg1).PROGRAM_V_KEY(), PROGRAM_V_KEY);
+        assertEq(IdentityRegistry(reg2).PROGRAM_V_KEY(), newVKey);
+
+        // RegistryInfo tracks version numbers
+        (,,,,,,uint256 v1) = factory.registryInfo(reg1);
+        (,,,,,,uint256 v2) = factory.registryInfo(reg2);
+        assertEq(v1, 0);
+        assertEq(v2, 1);
     }
 }
