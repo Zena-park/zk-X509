@@ -5,6 +5,8 @@ import {IdentityRegistry} from "./IdentityRegistry.sol";
 import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
 import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title RegistryFactory
 /// @notice Factory for deploying independent IdentityRegistry instances as Beacon Proxies.
@@ -13,6 +15,7 @@ import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol"
 ///      across all registries, with versioned ZK program verification keys.
 ///      All proxies share a single implementation via UpgradeableBeacon,
 ///      allowing the factory owner to upgrade all registries at once.
+///      Registry creation fee can be paid in native token or ERC-20 (TON).
 contract RegistryFactory {
     /// @notice Factory owner (can upgrade implementation and update settings).
     address public owner;
@@ -40,6 +43,17 @@ contract RegistryFactory {
 
     /// @notice Quick lookup: is this address a registry deployed by this factory?
     mapping(address => bool) public isRegistry;
+
+    // ============ Fee Configuration ============
+
+    /// @notice Fee token address. address(0) = native token (ETH/TON), else ERC-20.
+    address public feeToken;
+
+    /// @notice Registry creation fee amount. 0 = free.
+    uint256 public registryCreationFee;
+
+    /// @notice Address that receives platform fees.
+    address public feeRecipient;
 
     /// @notice Metadata for each registry (immutable config snapshot at creation time).
     /// @dev `owner` reflects the initial creator. For current owner, call registry.owner() directly.
@@ -71,6 +85,8 @@ contract RegistryFactory {
 
     event ProgramVKeyUpdated(bytes32 indexed newVKey, uint256 version);
 
+    event FeeConfigUpdated(address feeToken, uint256 fee, address recipient);
+
     // ============ Errors ============
 
     error ZeroMaxWallets();
@@ -80,6 +96,10 @@ contract RegistryFactory {
     error ZeroVKey();
     error ZeroVerifier();
     error DuplicateVKey();
+    error InsufficientFee();
+    error UnexpectedValue();
+    error FeeTransferFailed();
+    error ZeroFeeRecipient();
 
     // ============ Modifiers ============
 
@@ -92,15 +112,30 @@ contract RegistryFactory {
 
     /// @param _sp1Verifier Address of the shared SP1 verifier contract.
     /// @param _programVKey The initial ZK program verification key.
-    constructor(address _sp1Verifier, bytes32 _programVKey) {
+    /// @param _feeToken Fee token: address(0) = native token, else ERC-20 (e.g., TON).
+    /// @param _creationFee Registry creation fee amount. 0 = free.
+    /// @param _feeRecipient Address that receives fees. Required if fee > 0.
+    constructor(
+        address _sp1Verifier,
+        bytes32 _programVKey,
+        address _feeToken,
+        uint256 _creationFee,
+        address _feeRecipient
+    ) {
         if (_sp1Verifier == address(0)) revert ZeroVerifier();
         if (_programVKey == bytes32(0)) revert ZeroVKey();
+        if (_creationFee > 0 && _feeRecipient == address(0)) revert ZeroFeeRecipient();
+
         owner = msg.sender;
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
         currentProgramVKey = _programVKey;
         vKeyVersions[0] = _programVKey;
         usedVKeys[_programVKey] = true;
         vKeyVersionCount = 1;
+
+        feeToken = _feeToken;
+        registryCreationFee = _creationFee;
+        feeRecipient = _feeRecipient;
 
         // Deploy implementation + beacon (factory is beacon admin)
         address implementation = address(new IdentityRegistry());
@@ -112,6 +147,9 @@ contract RegistryFactory {
     // ============ External Functions ============
 
     /// @notice Deploy a new IdentityRegistry as a Beacon Proxy with the given configuration.
+    /// @dev If a creation fee is configured, the caller must either:
+    ///      - Send sufficient msg.value (if feeToken == address(0)), or
+    ///      - Have approved sufficient ERC-20 allowance (if feeToken != address(0)).
     /// @param name Human-readable name for the registry (e.g., "DAO Voting").
     /// @param maxWallets Max wallets per certificate (1 = strict, N = multi-wallet).
     /// @param minDisclosureMask Minimum disclosure bitmask (0x00 = none required).
@@ -122,10 +160,12 @@ contract RegistryFactory {
         uint32 maxWallets,
         uint8 minDisclosureMask,
         uint256 maxProofAge
-    ) external returns (address registry) {
+    ) external payable returns (address registry) {
         if (maxWallets == 0) revert ZeroMaxWallets();
         if (minDisclosureMask > 0x0F) revert InvalidDisclosureMask();
         if (maxProofAge < 5 minutes || maxProofAge > 24 hours) revert ZeroMaxProofAge();
+
+        _collectFee();
 
         // Encode the initialize call for the proxy (uses latest VKey)
         bytes memory initData = abi.encodeCall(
@@ -171,6 +211,46 @@ contract RegistryFactory {
     function upgradeImplementation(address newImplementation) external onlyOwner {
         beacon.upgradeTo(newImplementation);
         emit ImplementationUpgraded(newImplementation);
+    }
+
+    /// @notice Update fee configuration.
+    /// @param _feeToken Fee token: address(0) = native, else ERC-20.
+    /// @param _fee Fee amount. 0 = free.
+    /// @param _recipient Fee recipient. Required if fee > 0.
+    function setFeeConfig(address _feeToken, uint256 _fee, address _recipient) external onlyOwner {
+        if (_fee > 0 && _recipient == address(0)) revert ZeroFeeRecipient();
+        feeToken = _feeToken;
+        registryCreationFee = _fee;
+        feeRecipient = _recipient;
+        emit FeeConfigUpdated(_feeToken, _fee, _recipient);
+    }
+
+    // ============ Internal Functions ============
+
+    /// @dev Collect platform fee for registry creation.
+    function _collectFee() internal {
+        if (registryCreationFee == 0) {
+            // No fee — reject accidental ETH sends
+            if (msg.value > 0) revert UnexpectedValue();
+            return;
+        }
+
+        if (feeToken == address(0)) {
+            // Native token (ETH on L1, TON on L2)
+            if (msg.value < registryCreationFee) revert InsufficientFee();
+            (bool sent,) = feeRecipient.call{value: registryCreationFee}("");
+            if (!sent) revert FeeTransferFailed();
+            // Refund excess
+            uint256 excess = msg.value - registryCreationFee;
+            if (excess > 0) {
+                (bool refunded,) = msg.sender.call{value: excess}("");
+                if (!refunded) revert FeeTransferFailed();
+            }
+        } else {
+            // ERC-20 token (TON on L1) — reject native token sends
+            if (msg.value > 0) revert UnexpectedValue();
+            SafeERC20.safeTransferFrom(IERC20(feeToken), msg.sender, feeRecipient, registryCreationFee);
+        }
     }
 
     // ============ View Functions ============
