@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use x509_parser::prelude::FromDer;
 
 /// Parsed CA certificate info.
+#[derive(Debug)]
 pub struct CaCertInfo {
     /// DER-encoded subject distinguished name (for issuer matching)
     pub subject_der: Vec<u8>,
@@ -21,8 +22,25 @@ pub struct CaCertInfo {
     pub spki_der: Vec<u8>,
     /// SHA-256(SPKI DER) — the on-chain CA leaf hash
     pub leaf_hash: [u8; 32],
-    /// Source file path
-    pub path: PathBuf,
+    /// Source file path (None for remotely fetched certs)
+    pub path: Option<PathBuf>,
+}
+
+impl CaCertInfo {
+    /// Construct from raw DER bytes (e.g., downloaded from remote repository).
+    pub fn from_der_bytes(cert_der: &[u8]) -> Option<Self> {
+        let (_, cert) = x509_parser::certificate::X509Certificate::from_der(cert_der).ok()?;
+        let spki_der = cert.tbs_certificate.subject_pki.raw.to_vec();
+        let leaf_hash: [u8; 32] = Sha256::digest(&spki_der).into();
+
+        Some(CaCertInfo {
+            subject_der: cert.subject().as_raw().to_vec(),
+            subject: cert.subject().to_string(),
+            spki_der,
+            leaf_hash,
+            path: None,
+        })
+    }
 }
 
 /// Default CA certificate directory name.
@@ -98,7 +116,7 @@ fn parse_ca_cert(path: &Path) -> Option<CaCertInfo> {
         subject: cert.subject().to_string(),
         spki_der,
         leaf_hash,
-        path: path.to_path_buf(),
+        path: Some(path.to_path_buf()),
     })
 }
 
@@ -177,8 +195,8 @@ mod tests {
         // Re-scan and verify hashes are identical
         let mut certs2 = scan_ca_certs();
         // Sort by path to ensure deterministic ordering (read_dir order is not guaranteed)
-        certs.sort_by(|a, b| a.path.cmp(&b.path));
-        certs2.sort_by(|a, b| a.path.cmp(&b.path));
+        certs.sort_by(|a, b| a.leaf_hash.cmp(&b.leaf_hash));
+        certs2.sort_by(|a, b| a.leaf_hash.cmp(&b.leaf_hash));
         assert_eq!(certs.len(), certs2.len(), "Scan count should be stable");
         for (a, b) in certs.iter().zip(certs2.iter()) {
             assert_eq!(a.leaf_hash, b.leaf_hash, "Leaf hash should be deterministic");

@@ -1,4 +1,5 @@
 pub mod ca;
+pub mod ca_repo;
 pub mod keychain;
 pub mod merkle;
 pub mod onchain;
