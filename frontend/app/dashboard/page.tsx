@@ -246,7 +246,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [account, chainId]);
+  }, [account, chainId, provider]);
 
   const verifiedRegistries = registries.filter((r) => r.verified);
   const availableRegistries = registries.filter((r) => !r.verified);

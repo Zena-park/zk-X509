@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo } from "react";
 import { ethers } from "ethers";
 import { getRpcUrl } from "./contract";
 
@@ -8,13 +8,9 @@ import { getRpcUrl } from "./contract";
  * Shared read-only JsonRpcProvider hook.
  *
  * Returns a stable provider instance that persists across re-renders.
- * Avoids creating a new provider on every render (which causes RPC
- * connection churn and MetaMask BrowserProvider caching issues).
+ * Uses useMemo (not useRef) to avoid side effects during render phase.
+ * Safe for React Strict Mode and concurrent features.
  */
 export function useReadProvider(): ethers.JsonRpcProvider {
-  const ref = useRef<ethers.JsonRpcProvider | null>(null);
-  if (!ref.current) {
-    ref.current = new ethers.JsonRpcProvider(getRpcUrl());
-  }
-  return ref.current;
+  return useMemo(() => new ethers.JsonRpcProvider(getRpcUrl()), []);
 }

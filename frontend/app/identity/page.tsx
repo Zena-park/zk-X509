@@ -215,7 +215,7 @@ export default function IdentityPage() {
     return () => {
       cancelled = true;
     };
-  }, [account, chainId]);
+  }, [account, chainId, provider]);
 
   /* ---------- not connected ---------- */
   if (!account) {

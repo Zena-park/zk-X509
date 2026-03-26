@@ -31,7 +31,7 @@ export default function ScopedAdminPage() {
         console.error("Failed to load service name:", e);
       }
     })();
-  }, [address, chainId]);
+  }, [address, chainId, provider]);
 
   return (
     <>
