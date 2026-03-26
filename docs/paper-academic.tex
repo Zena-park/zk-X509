@@ -23,13 +23,8 @@
   \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
 \fi
 \usepackage{lmodern}
-\ifPDFTeX
-  \usepackage{CJKutf8}
-\else
-  \usepackage{xeCJK}
-  \setCJKmainfont{Noto Sans CJK KR}
-  \setCJKmonofont{Noto Sans CJK KR}
-\fi
+% CJK support removed for arXiv compatibility (no CJK fonts on server).
+% Korean terms are transliterated in parentheses instead.
 % Use upquote if available, for straight quotes in verbatim environments
 \IfFileExists{upquote.sty}{\usepackage{upquote}}{}
 \IfFileExists{microtype.sty}{% use microtype if available
@@ -307,9 +302,9 @@ DAO may whitelist government CAs from multiple nations simultaneously.
 
 \textbf{Primary validation target: Korean NPKI.} Our implementation is
 validated against the Korean National Public Key Infrastructure (NPKI)
-as a concrete case study. Korean digital certificates (공인인증서) are
+as a concrete case study. Korean digital certificates (Accredited Certificate) are
 issued by authorized CAs such as the Korea Financial Telecommunications
-and Clearings Institute (금융결제원), employing a 3-level certificate
+and Clearings Institute (KFTC), employing a 3-level certificate
 chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 and
 SHA-256 or SHA-1 signatures. Certificates and private keys are imported
 into the OS keychain, where the private key is managed by the secure
@@ -403,7 +398,7 @@ In practice, most PKI deployments use multi-level certificate chains. A
 user certificate is signed by an intermediate CA, which is in turn
 signed by a root CA. Verification requires traversing the entire chain,
 verifying each signature and validity period. Korean NPKI uses a 3-level
-hierarchy: KISA Root CA → Authorized CA (e.g., 금융결제원) → User
+hierarchy: KISA Root CA → Authorized CA (e.g., KFTC) → User
 Certificate.
 
 \subsection{Zero-Knowledge Proofs and
@@ -1440,8 +1435,8 @@ Bit & Field & X.509 OID & Example \\
 \bottomrule\noalign{}
 \endlastfoot
 0 & Country (C) & 2.5.4.6 & ``KR'', ``EE'', ``DE'' \\
-1 & Organization (O) & 2.5.4.10 & ``금융결제원'', ``Samsung'' \\
-2 & Organizational Unit (OU) & 2.5.4.11 & ``개인'', ``Engineering'' \\
+1 & Organization (O) & 2.5.4.10 & ``KFTC'', ``Samsung'' \\
+2 & Organizational Unit (OU) & 2.5.4.11 & ``Personal'', ``Engineering'' \\
 3 & Common Name (CN) & 2.5.4.3 & (user's name --- typically hidden) \\
 \end{longtable}
 
@@ -1940,7 +1935,7 @@ The system involves three entity types:
   registration state.
 \item
   \textbf{Certificate Authority} (\(\text{CA}\)): A trusted authority
-  (e.g., 금융결제원) whose root public key hash is whitelisted in
+  (e.g., KFTC) whose root public key hash is whitelisted in
   \(\mathcal{V}\).
 \end{itemize}
 
