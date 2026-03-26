@@ -41,6 +41,7 @@ import {
 } from "@/lib/platform";
 
 import { parseCaDer, generateCaGuide, type CaMetadata } from "@/lib/x509";
+import CaRegistrationModal from "./CaRegistrationModal";
 
 const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
 
@@ -354,6 +355,13 @@ export default function AdminContent() {
   const [removeAllTx, setRemoveAllTx] = useState<TxStatus>(IDLE);
   const [selectedCaLeaves, setSelectedCaLeaves] = useState<Set<string>>(new Set());
 
+  // CA Registration Modal
+  const [caModalOpen, setCaModalOpen] = useState(false);
+  const [caModalEntry, setCaModalEntry] = useState<CaFileEntry | null>(null);
+  const [githubToken, setGithubToken] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("zk-x509-github-token") || "" : ""
+  );
+
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
   const [transferTx, setTransferTx] = useState<TxStatus>(IDLE);
@@ -566,22 +574,29 @@ export default function AdminContent() {
 
   const handleAddCa = (entry: CaFileEntry) => {
     if (!writeContract) return;
-    const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
-      setAddCaTxMap((prev) => ({
-        ...prev,
-        [entry.hashHex]: typeof s === "function" ? s(prev[entry.hashHex] ?? IDLE) : s,
-      }));
-    };
-    execTx(
-      setStatus,
-      () => writeContract.addCA(entry.hashHex),
-      () => {
-        refresh();
-        fetchCaLeaves();
-        // Remove from pending files after successful add
-        setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
-      },
-    );
+
+    if (githubToken) {
+      // Open modal for unified on-chain + Git flow
+      setCaModalEntry(entry);
+      setCaModalOpen(true);
+    } else {
+      // Fallback: on-chain only (no Git token)
+      const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
+        setAddCaTxMap((prev) => ({
+          ...prev,
+          [entry.hashHex]: typeof s === "function" ? s(prev[entry.hashHex] ?? IDLE) : s,
+        }));
+      };
+      execTx(
+        setStatus,
+        () => writeContract.addCA(entry.hashHex),
+        () => {
+          refresh();
+          fetchCaLeaves();
+          setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
+        },
+      );
+    }
   };
 
   const handleRemoveCa = (index: number, leafHash: string) => {
@@ -834,6 +849,7 @@ export default function AdminContent() {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
   return (
+    <>
     <main className="max-w-6xl mx-auto pt-4 px-8 min-h-screen">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Alert Section — non-owner */}
@@ -1109,6 +1125,24 @@ export default function AdminContent() {
                   <code>addCA()</code>. The Merkle root is auto-computed by the
                   contract.
                 </p>
+
+                {/* GitHub Token for Git integration */}
+                <div className="flex items-center gap-3 mb-4 p-3 bg-surface-highest rounded-xl">
+                  <Globe className="w-4 h-4 text-on-surface-variant shrink-0" />
+                  <input
+                    type="password"
+                    placeholder="GitHub Token (optional — enables auto PR to CA registry)"
+                    value={githubToken}
+                    onChange={(e) => {
+                      setGithubToken(e.target.value);
+                      localStorage.setItem("zk-x509-github-token", e.target.value);
+                    }}
+                    className="flex-1 bg-transparent text-xs text-on-surface placeholder:text-on-surface-variant/50 outline-none"
+                  />
+                  {githubToken && (
+                    <span className="text-[10px] text-green-400 font-mono">Connected</span>
+                  )}
+                </div>
 
                 {/* Drop zone */}
                 <div
@@ -1907,5 +1941,38 @@ export default function AdminContent() {
         </div>
       </footer>
     </main>
+
+    {/* CA Registration Modal (on-chain + Git) */}
+    {caModalEntry && (
+      <CaRegistrationModal
+        open={caModalOpen}
+        onClose={() => {
+          setCaModalOpen(false);
+          setCaModalEntry(null);
+          refresh();
+          fetchCaLeaves();
+          setCaFiles((prev) => prev.filter((f) => f.hashHex !== caModalEntry.hashHex));
+        }}
+        operation="add-ca"
+        chainId={chainId || "31337"}
+        registryAddress={registryAddr}
+        adminAddress={account || ""}
+        serviceName={svcMetadata?.description || registryAddr}
+        executeTx={writeContract ? async () => {
+          const tx = await writeContract.addCA(caModalEntry.hashHex);
+          const receipt = await tx.wait();
+          return receipt?.hash || tx.hash;
+        } : null}
+        certs={[{
+          hashHex: caModalEntry.hashHex,
+          derBase64: btoa(String.fromCharCode(...caModalEntry.derBytes)),
+          guide: caModalEntry.guide,
+        }]}
+        existingCas={svcCaGuides}
+        githubToken={githubToken}
+        signer={writeContract?.runner as ethers.Signer || null}
+      />
+    )}
+    </>
   );
 }
