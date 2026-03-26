@@ -41,7 +41,10 @@ pub struct CertEntry {
     pub cert_der: Option<Vec<u8>>,
 }
 
-/// Scan all sources and return a unified list.
+/// Scan the OS keychain and return discovered certificates.
+///
+/// Currently macOS-only (Security.framework). Returns an empty list on other platforms.
+/// Windows Certificate Store support is planned for a future release.
 pub fn scan_certs() -> Vec<CertEntry> {
     let mut entries = Vec::new();
 
