@@ -5,9 +5,21 @@ import {Test} from "forge-std/Test.sol";
 import {RegistryFactory} from "../src/RegistryFactory.sol";
 import {IdentityRegistry} from "../src/IdentityRegistry.sol";
 
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
 /// @dev Minimal mock SP1 verifier that accepts all proofs.
 contract MockSP1Verifier {
     function verifyProof(bytes32, bytes calldata, bytes calldata) external pure {}
+}
+
+/// @dev Mock ERC-20 token for fee testing.
+contract MockTON is ERC20 {
+    constructor() ERC20("Mock TON", "TON") {
+        _mint(msg.sender, 1_000_000 ether);
+    }
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
 }
 
 contract RegistryFactoryTest is Test {
@@ -20,7 +32,8 @@ contract RegistryFactoryTest is Test {
 
     function setUp() public {
         mockVerifier = new MockSP1Verifier();
-        factory = new RegistryFactory(address(mockVerifier), PROGRAM_V_KEY);
+        // Deploy with no fee (free mode)
+        factory = new RegistryFactory(address(mockVerifier), PROGRAM_V_KEY, address(0), 0, address(0));
     }
 
     function test_CreateRegistry() public {
@@ -240,5 +253,131 @@ contract RegistryFactoryTest is Test {
         (,,,,,,uint256 v2) = factory.registryInfo(reg2);
         assertEq(v1, 0);
         assertEq(v2, 1);
+    }
+
+    // ============ Fee Tests ============
+
+    function test_FreeModeNoFeeRequired() public {
+        // Default factory has no fee — should work without msg.value
+        vm.prank(alice);
+        address reg = factory.createRegistry("Free", 1, 0, 3600);
+        assertTrue(factory.isRegistry(reg));
+    }
+
+    function test_NativeFeeCollection() public {
+        address recipient = address(0xFEE);
+        // Create factory with native fee
+        RegistryFactory feeFactory = new RegistryFactory(
+            address(mockVerifier), PROGRAM_V_KEY, address(0), 1 ether, recipient
+        );
+
+        vm.deal(alice, 10 ether);
+        vm.prank(alice);
+        address reg = feeFactory.createRegistry{value: 1 ether}("Paid", 1, 0, 3600);
+        assertTrue(feeFactory.isRegistry(reg));
+        assertEq(recipient.balance, 1 ether);
+    }
+
+    function test_NativeFeeRefundsExcess() public {
+        address recipient = address(0xFEE);
+        RegistryFactory feeFactory = new RegistryFactory(
+            address(mockVerifier), PROGRAM_V_KEY, address(0), 1 ether, recipient
+        );
+
+        vm.deal(alice, 10 ether);
+        uint256 balanceBefore = alice.balance;
+        vm.prank(alice);
+        feeFactory.createRegistry{value: 3 ether}("Paid", 1, 0, 3600);
+        // Alice should get 2 ether refund (sent 3, fee is 1)
+        assertEq(alice.balance, balanceBefore - 1 ether);
+        assertEq(recipient.balance, 1 ether);
+    }
+
+    function test_NativeFeeInsufficientReverts() public {
+        RegistryFactory feeFactory = new RegistryFactory(
+            address(mockVerifier), PROGRAM_V_KEY, address(0), 1 ether, address(0xFEE)
+        );
+
+        vm.deal(alice, 0.5 ether);
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.InsufficientFee.selector);
+        feeFactory.createRegistry{value: 0.5 ether}("Cheap", 1, 0, 3600);
+    }
+
+    function test_ERC20FeeCollection() public {
+        MockTON ton = new MockTON();
+        address recipient = address(0xFEE);
+        uint256 fee = 10 ether;
+
+        RegistryFactory feeFactory = new RegistryFactory(
+            address(mockVerifier), PROGRAM_V_KEY, address(ton), fee, recipient
+        );
+
+        // Give alice some TON and approve
+        ton.mint(alice, 100 ether);
+        vm.prank(alice);
+        ton.approve(address(feeFactory), fee);
+
+        vm.prank(alice);
+        address reg = feeFactory.createRegistry("TON Paid", 1, 0, 3600);
+        assertTrue(feeFactory.isRegistry(reg));
+        assertEq(ton.balanceOf(recipient), fee);
+        assertEq(ton.balanceOf(alice), 90 ether);
+    }
+
+    function test_ERC20FeeNoApprovalReverts() public {
+        MockTON ton = new MockTON();
+        RegistryFactory feeFactory = new RegistryFactory(
+            address(mockVerifier), PROGRAM_V_KEY, address(ton), 10 ether, address(0xFEE)
+        );
+
+        ton.mint(alice, 100 ether);
+        // No approve — should revert
+        vm.prank(alice);
+        vm.expectRevert();
+        feeFactory.createRegistry("No Approve", 1, 0, 3600);
+    }
+
+    function test_SetFeeConfig() public {
+        MockTON ton = new MockTON();
+        factory.setFeeConfig(address(ton), 5 ether, address(0xFEE));
+        assertEq(factory.feeToken(), address(ton));
+        assertEq(factory.registryCreationFee(), 5 ether);
+        assertEq(factory.feeRecipient(), address(0xFEE));
+    }
+
+    function test_SetFeeConfigOnlyOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.OnlyOwner.selector);
+        factory.setFeeConfig(address(0), 1 ether, address(0xFEE));
+    }
+
+    function test_SetFeeConfigZeroRecipientReverts() public {
+        vm.expectRevert(RegistryFactory.ZeroFeeRecipient.selector);
+        factory.setFeeConfig(address(0), 1 ether, address(0));
+    }
+
+    function test_FreeModeRejectsValue() public {
+        // Free mode factory — sending ETH should revert
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.UnexpectedValue.selector);
+        factory.createRegistry{value: 0.1 ether}("Free", 1, 0, 3600);
+    }
+
+    function test_ERC20ModeRejectsValue() public {
+        MockTON ton = new MockTON();
+        RegistryFactory feeFactory = new RegistryFactory(
+            address(mockVerifier), PROGRAM_V_KEY, address(ton), 10 ether, address(0xFEE)
+        );
+        ton.mint(alice, 100 ether);
+        vm.prank(alice);
+        ton.approve(address(feeFactory), 10 ether);
+
+        // ERC-20 mode — sending ETH alongside should revert
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.UnexpectedValue.selector);
+        feeFactory.createRegistry{value: 0.1 ether}("Bad", 1, 0, 3600);
     }
 }
