@@ -99,6 +99,7 @@ contract RegistryFactory {
     error InsufficientFee();
     error UnexpectedValue();
     error FeeTransferFailed();
+    error RefundFailed();
     error ZeroFeeRecipient();
 
     // ============ Modifiers ============
@@ -244,7 +245,7 @@ contract RegistryFactory {
             uint256 excess = msg.value - registryCreationFee;
             if (excess > 0) {
                 (bool refunded,) = msg.sender.call{value: excess}("");
-                if (!refunded) revert FeeTransferFailed();
+                if (!refunded) revert RefundFailed();
             }
         } else {
             // ERC-20 token (TON on L1) — reject native token sends

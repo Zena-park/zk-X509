@@ -356,4 +356,28 @@ contract RegistryFactoryTest is Test {
         vm.expectRevert(RegistryFactory.ZeroFeeRecipient.selector);
         factory.setFeeConfig(address(0), 1 ether, address(0));
     }
+
+    function test_FreeModeRejectsValue() public {
+        // Free mode factory — sending ETH should revert
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.UnexpectedValue.selector);
+        factory.createRegistry{value: 0.1 ether}("Free", 1, 0, 3600);
+    }
+
+    function test_ERC20ModeRejectsValue() public {
+        MockTON ton = new MockTON();
+        RegistryFactory feeFactory = new RegistryFactory(
+            address(mockVerifier), PROGRAM_V_KEY, address(ton), 10 ether, address(0xFEE)
+        );
+        ton.mint(alice, 100 ether);
+        vm.prank(alice);
+        ton.approve(address(feeFactory), 10 ether);
+
+        // ERC-20 mode — sending ETH alongside should revert
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.UnexpectedValue.selector);
+        feeFactory.createRegistry{value: 0.1 ether}("Bad", 1, 0, 3600);
+    }
 }
