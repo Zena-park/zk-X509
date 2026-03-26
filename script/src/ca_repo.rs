@@ -32,7 +32,7 @@ pub fn fetch_verified_cas(
     repo_url: Option<&str>,
 ) -> Vec<CaCertInfo> {
     let repo = repo_url.unwrap_or(DEFAULT_REPO_URL);
-    let cache_dir = cache_dir();
+    let cache = cache_dir();
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(15)))
         .build()
@@ -41,9 +41,11 @@ pub fn fetch_verified_cas(
 
     for hash in on_chain_hashes {
         // 1. Try cache
-        if let Some(info) = read_cache(&cache_dir, hash) {
-            results.push(info);
-            continue;
+        if let Some(ref dir) = cache {
+            if let Some(info) = read_cache(dir, hash) {
+                results.push(info);
+                continue;
+            }
         }
 
         // 2. Try remote
@@ -52,7 +54,9 @@ pub fn fetch_verified_cas(
             Ok(cert_der) => {
                 match verify_and_parse(&cert_der, hash) {
                     Ok(info) => {
-                        write_cache_der(&cache_dir, hash, &cert_der);
+                        if let Some(ref dir) = cache {
+                            write_cache_der(dir, hash, &cert_der);
+                        }
                         results.push(info);
                     }
                     Err(e) => {
@@ -87,11 +91,6 @@ fn fetch_der(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
         .call()
         .map_err(|e| format!("fetch failed: {}", e))?;
 
-    let status = response.status();
-    if status != 200 {
-        return Err(format!("HTTP {}", status));
-    }
-
     let cert_der = response
         .into_body()
         .read_to_vec()
@@ -118,12 +117,13 @@ pub fn verify_and_parse(cert_der: &[u8], expected_hash: &[u8; 32]) -> Result<CaC
 
 // ── Local cache ────────────────────────────────────────────────────
 
-/// Cache directory: `~/.zk-x509/ca-cache/`
-fn cache_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".zk-x509")
-        .join("ca-cache")
+/// Cache directory using platform conventions:
+/// - macOS: `~/Library/Caches/zk-x509/ca-cache/`
+/// - Linux: `~/.cache/zk-x509/ca-cache/`
+/// - Windows: `{LOCALAPPDATA}/zk-x509/ca-cache/`
+/// Returns None if no cache directory can be determined (caching disabled).
+fn cache_dir() -> Option<PathBuf> {
+    dirs::cache_dir().map(|d| d.join("zk-x509").join("ca-cache"))
 }
 
 /// Try reading a cached CA cert by hash.
@@ -234,8 +234,11 @@ mod tests {
         let cert_der = std::fs::read(entries[0].path()).unwrap();
         let info = CaCertInfo::from_der_bytes(&cert_der).unwrap();
 
-        // Write to temp cache
-        let tmp_cache = std::env::temp_dir().join("zk-x509-test-cache");
+        // Write to unique temp cache (avoid collisions in parallel CI)
+        let tmp_cache = std::env::temp_dir().join(format!(
+            "zk-x509-test-cache-{}",
+            std::process::id()
+        ));
         write_cache_der(&tmp_cache, &info.leaf_hash, &cert_der);
 
         // Read back

@@ -39,7 +39,7 @@ tokamak-network/zk-x509-ca-registry/
 │
 ├── services/
 │   ├── 11155111/                                    # Chain ID (Sepolia)
-│   │   └── 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512/
+│   │   └── 0xe7f1725e7734ce288f8367e1bb143e90bb3f0512/
 │   │       ├── service.json                         # Service metadata + CA guides
 │   │       └── certs/
 │   │           ├── 0x28a2f0e0...abcd1234.der        # Filename = SHA-256(SPKI)
@@ -52,7 +52,7 @@ tokamak-network/zk-x509-ca-registry/
 │   │           └── 0x28a2f0e0...abcd1234.der
 │   │
 │   └── 31337/                                       # Chain ID (Local Anvil)
-│       └── 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512/
+│       └── 0xe7f1725e7734ce288f8367e1bb143e90bb3f0512/
 │           ├── service.json
 │           └── certs/
 │               └── 0xdeadbeef...00001111.der
@@ -62,6 +62,8 @@ tokamak-network/zk-x509-ca-registry/
 ```
 
 **Key design**: DER filename = on-chain hash hex. No index file needed — on-chain hash directly maps to download URL.
+
+**Convention**: All hex values (registry addresses, CA hashes) use **lowercase** in directory names and filenames. This matches `hex::encode()` output and avoids case-sensitivity issues across platforms.
 
 ## `service.json`
 
@@ -157,7 +159,7 @@ Input: chain_id, registry_address, rpc_url
    d. Verified  → save to cache
    e. Mismatch  → reject, log warning
 
-3. If any CA missing: fallback to local data/ca-certs/
+3. If no remote certs fetched: fallback to local data/ca-certs/
 
 4. find_issuer_ca(user_cert, verified_cas) → auto-select
 
@@ -166,7 +168,7 @@ Input: chain_id, registry_address, rpc_url
 
 **No index.json fetch needed.** On-chain hash → URL is deterministic:
 ```
-https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main/services/{chainId}/{addr}/certs/{hash}.der
+https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main/services/{chainId}/0x{addr}/certs/0x{hash}.der
 ```
 
 ### Resolution Order

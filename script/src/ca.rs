@@ -194,7 +194,7 @@ mod tests {
         }
         // Re-scan and verify hashes are identical
         let mut certs2 = scan_ca_certs();
-        // Sort by path to ensure deterministic ordering (read_dir order is not guaranteed)
+        // Sort by leaf_hash for deterministic ordering (read_dir order is not guaranteed)
         certs.sort_by(|a, b| a.leaf_hash.cmp(&b.leaf_hash));
         certs2.sort_by(|a, b| a.leaf_hash.cmp(&b.leaf_hash));
         assert_eq!(certs.len(), certs2.len(), "Scan count should be stable");
