@@ -49,6 +49,27 @@ pub fn build_ca_merkle_from_onchain(
     Ok(merkle::merkle_root_and_proof(&ca_leaves, my_index))
 }
 
+/// Build CA Merkle tree: try on-chain first, fall back to single-CA local mode.
+///
+/// On-chain errors are logged via `eprintln!` and the function falls back
+/// to a single-CA tree (no anonymity set). Callers that need strict on-chain
+/// verification should use `build_ca_merkle_from_onchain()` directly.
+pub fn build_ca_merkle(
+    rpc_url: &str,
+    registry: &[u8; 20],
+    ca_pub_key: &[u8],
+) -> (Hash, Vec<Hash>) {
+    match build_ca_merkle_from_onchain(rpc_url, registry, ca_pub_key) {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("  ⚠ On-chain CA Merkle failed: {}", e);
+            eprintln!("    Falling back to single-CA local mode (proof may not verify on-chain)");
+            let (_leaf, root, proof) = crate::merkle::ca_merkle_tree(ca_pub_key, &[]);
+            (root, proof)
+        }
+    }
+}
+
 pub fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
     let data = eth_call(rpc_url, registry, SELECTOR_GET_CA_LEAVES)?;
     decode_bytes32_array(&data)

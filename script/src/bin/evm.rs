@@ -6,11 +6,10 @@
 
 use alloy_sol_types::SolType;
 use clap::{Parser, ValueEnum};
-use sha2::Digest;
 use serde::{Deserialize, Serialize};
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
-    include_elf, Elf, HashableKey, ProvingKey, SP1ProofWithPublicValues, SP1Stdin, SP1VerifyingKey,
+    include_elf, Elf, HashableKey, ProvingKey, SP1ProofWithPublicValues, SP1VerifyingKey,
 };
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -99,8 +98,7 @@ fn main() {
     let crl_der: Vec<u8> = Vec::new();
     let (ca_merkle_root, ca_merkle_proof) = if let Some(rpc_url) = &args.rpc_url {
         println!("Fetching CA list from on-chain ({})...", rpc_url);
-        zk_x509_script::onchain::build_ca_merkle_from_onchain(rpc_url, &registry_address, &ca_pub_key)
-            .expect("Failed to build CA Merkle tree from on-chain")
+        zk_x509_script::onchain::build_ca_merkle(rpc_url, &registry_address, &ca_pub_key)
     } else {
         let (_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
         (root, proof)

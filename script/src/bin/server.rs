@@ -143,7 +143,7 @@ fn check_cert_source(
     cert_index: usize,
 ) -> Result<(), (StatusCode, String)> {
     let certs = state.certs.read().unwrap_or_else(|e| e.into_inner());
-    let _entry = certs.get(cert_index).ok_or_else(|| {
+    certs.get(cert_index).ok_or_else(|| {
         (StatusCode::BAD_REQUEST, format!("Invalid cert_index: {}", cert_index))
     })?;
 
@@ -160,7 +160,8 @@ async fn execute_handler(
     state: Arc<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     check_cert_source(&state, req.cert_index)?;
-    unreachable!()
+    // check_cert_source always returns Err for keychain-only certs
+    unreachable!("check_cert_source always returns Err")
 }
 
 /// Generate a full ZK proof.
@@ -169,5 +170,5 @@ async fn prove_handler(
     state: Arc<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     check_cert_source(&state, req.cert_index)?;
-    unreachable!()
+    unreachable!("check_cert_source always returns Err")
 }

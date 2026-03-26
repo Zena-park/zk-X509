@@ -257,19 +257,11 @@ fn main() {
     };
     println!("  ✓ Signatures generated");
 
-    // CA Merkle tree
-    println!("  Fetching CA list from on-chain...");
-    let (ca_merkle_root, ca_merkle_proof) = match zk_x509_script::onchain::build_ca_merkle_from_onchain(
+    // CA Merkle tree (on-chain → local fallback)
+    println!("  Building CA Merkle tree...");
+    let (ca_merkle_root, ca_merkle_proof) = zk_x509_script::onchain::build_ca_merkle(
         &rpc_url, &registry_bytes, &ca_pub_key,
-    ) {
-        Ok(r) => { println!("  ✓ On-chain CA Merkle tree built"); r }
-        Err(e) => {
-            println!("  ⚠ On-chain fetch failed: {}", e);
-            println!("    Falling back to single-CA local mode...");
-            let (_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
-            (root, proof)
-        }
-    };
+    );
     println!("  CA Merkle Root: 0x{}", hex::encode(ca_merkle_root));
 
     // Build stdin
