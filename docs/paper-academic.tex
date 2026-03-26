@@ -88,6 +88,16 @@
 \setlength{\emergencystretch}{3em} % prevent overfull lines
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+% Fix verbatim overflow: allow line breaks and use smaller font
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  literate={π}{$\pi$}1 {→}{$\rightarrow$}1 {←}{$\leftarrow$}1 {≤}{$\leq$}1 {≥}{$\geq$}1 {≠}{$\neq$}1 {∈}{$\in$}1 {∉}{$\notin$}1 {‖}{$\|$}1 {∅}{$\emptyset$}1
+}
 \usepackage{bookmark}
 \IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
 \urlstyle{same}
@@ -97,11 +107,15 @@
 
 \title{zk-X509: Privacy-Preserving On-Chain Identity\\from Legacy PKI via Zero-Knowledge Proofs}
 
-\author{Yeong Ju Bak\\
+\author{Yeongju Bak\\
 Tokamak Network\\
-\texttt{zena@tokamak.network}}
+\texttt{zena@tokamak.network}
+\and
+Iltaeck Joo\\
+Hanyang University\\
+\texttt{itjoo@hanyang.ac.kr}}
 
-\date{March 2026\\{\small arXiv preprint --- v1}}
+\date{March 26, 2026\\{\small arXiv preprint --- v1}}
 
 \begin{document}
 
@@ -129,7 +143,7 @@ CA---without revealing private keys or personal identifiers. A key
 architectural distinction is that the private key never enters the ZK
 circuit; ownership is instead proven via signature verification
 delegated to the OS keychain (macOS Secure Enclave, Windows TPM). The
-circuit verifies six properties: (1) full certificate chain validity to
+circuit performs six verification checks: (1) full certificate chain validity to
 a trusted root, (2) temporal validity, (3) signature-based key
 ownership, (4) trustless CRL revocation checking with CA signature
 verification inside the zkVM, (5) binding to a specific blockchain
@@ -140,8 +154,8 @@ timestamp, and four optional selective disclosure hashes. On-chain
 verification status automatically lapses upon certificate expiry.
 
 We formalize the security model under a Dolev-Yao adversary and
-establish six properties via game-based definitions: unforgeability,
-unlinkability, double-registration resistance, front-running immunity,
+establish eight properties via game-based definitions: unforgeability,
+unlinkability, cross-service unlinkability, cross-chain replay resistance, double-registration resistance, front-running immunity,
 CA anonymity, and non-transferability, with explicit reductions to
 sEUF-CMA signature security, SHA-256 modeled as a random oracle, and ZK
 soundness. The SP1 zkVM implementation achieves 11.8 million cycles for
@@ -153,9 +167,8 @@ providing a complementary approach to DID-based systems for integrating
 existing trust anchors into decentralized applications.
 \end{abstract}
 
-\noindent\textbf{Keywords:} Zero-Knowledge Proofs, X.509, Digital Identity, zkVM,
-Ethereum, Korean NPKI, Privacy-Preserving Authentication, Proof of
-Personhood
+\noindent\textbf{Keywords:} Zero-Knowledge Proofs, X.509, PKI, Digital Identity, zkVM,
+Blockchain, Privacy-Preserving Authentication, Proof of Personhood
 
 \vspace{1em}\hrule\vspace{1em}
 
@@ -174,7 +187,7 @@ actions---including OFAC sanctions on privacy-preserving protocols
 Personhood'' (PoP) systems that satisfy compliance requirements without
 sacrificing user anonymity.
 
-Existing approaches to on-chain identity fall into three categories,
+Existing approaches to on-chain identity fall into four categories,
 each with significant limitations:
 
 \begin{enumerate}
@@ -335,8 +348,8 @@ This paper makes the following contributions:
   and a web-based frontend with NPKI auto-discovery.
 \item
   A \textbf{formal security analysis} with game-based definitions under
-  the Dolev-Yao adversary model, establishing six properties ---
-  unforgeability, unlinkability, double-registration resistance,
+  the Dolev-Yao adversary model, establishing eight properties ---
+  unforgeability, unlinkability, cross-service unlinkability, cross-chain replay resistance, double-registration resistance,
   front-running immunity, CA anonymity, and non-transferability --- with
   explicit reductions to standard cryptographic assumptions (EUF-CMA,
   SHA-256 collision resistance, ZK soundness).
@@ -449,7 +462,7 @@ proprietary device (the Orb) to generate unique identity proofs. The
 hardware dependency and biometric data collection raise both
 accessibility and privacy concerns that zk-X509 avoids entirely.
 
-\textbf{Polygon ID and DID-based systems} \cite{ref13} use W3C Verifiable
+\textbf{Polygon ID and DID-based systems} \cite{ref13, ref33} use W3C Verifiable
 Credentials (VCs) with ZK proofs. While providing a flexible credential
 framework, DID systems face a fundamental bootstrapping problem: they
 require new credential issuers, trust registries, and verification
@@ -543,7 +556,7 @@ requirements.
 \subsection{zk-X509 vs Decentralized Identifiers
 (DIDs)}\label{zk-x509-vs-decentralized-identifiers-dids}
 
-Decentralized Identifier (DID) frameworks \cite{ref13} represent the
+Decentralized Identifier (DID) frameworks \cite{ref13, ref33} represent the
 dominant paradigm in blockchain identity research. While architecturally
 elegant, DID-based systems differ fundamentally from zk-X509 in their
 trust assumptions and deployment requirements. We highlight the key
@@ -632,15 +645,15 @@ verification.
 The zk-X509 system comprises four components arranged in a layered
 architecture:
 
-\begin{verbatim}
+\begin{lstlisting}
 ┌──────────────────────────────────────────────────────────────┐
 │                     Frontend (Next.js)                        │
 │   Browser: NPKI cert selection, wallet connect, TX submission  │
 └───────────────────────┬──────────────────────────────────────┘
-                        │ HTTP POST (cert, key, password, registrant)
+                        │ CLI invocation (registrant address, wallet index)
 ┌───────────────────────▼──────────────────────────────────────┐
-│                 Prover Server (Rust/Axum)                     │
-│   Localhost daemon: scan NPKI → decrypt key → prove → return  │
+│                 Prover CLI (Rust, native application)          │
+│   Scan keychain → sign via OS API → prove → return             │
 └───────────────────────┬──────────────────────────────────────┘
                         │ SP1 stdin (cert, chain, key, timestamp,
                         │            crl_der, registrant)
@@ -656,13 +669,13 @@ architecture:
 │   IdentityRegistry: verify registrant → verify timestamp →   │
 │   check CA → check nullifier → verify proof → register       │
 └──────────────────────────────────────────────────────────────┘
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{Formal Protocol
 Specification}\label{formal-protocol-specification}
 
 We define the registration protocol formally. Let \(\mathcal{P}\) denote
-the prover (user), \(\mathcal{S}\) the prover server (localhost daemon
+the prover (user), \(\mathcal{S}\) the prover application (running locally
 on \(\mathcal{P}\)'s machine), \(\mathcal{Z}\) the SP1 zkVM, and
 \(\mathcal{V}\) the on-chain verifier (smart contract).
 
@@ -677,11 +690,11 @@ bytes) - \(t\): Current Unix timestamp - \(\mathcal{H}\): SHA-256
 
 \textbf{Protocol.}
 
-\begin{verbatim}
+\begin{lstlisting}
 Step 1.  P → S:   (cert_index, addr, wallet_index?, max_wallets?, disclosure_mask?)
-                   via HTTP POST to localhost
+                   via local API call
                    cert_index identifies a certificate discovered by the
-                   server's keychain scanner
+                   application's keychain scanner
                    wallet_index, max_wallets, disclosure_mask have sensible defaults
 
 Step 2.  S:        (cert, identity) ← Keychain.GetIdentity(cert_index)
@@ -757,7 +770,7 @@ Step 4.  Z:        // Parse and validate user certificate
 Step 5.  Z → S:   (π, pubvals)
                    where π is the ZK proof, pubvals = ABI(nullifier, caMerkleRoot, t, addr, ...)
 
-Step 6.  S → P:   (π, pubvals) via HTTP response
+Step 6.  S → P:   (π, pubvals) returned to caller
 
 Step 7.  P → V:   register(π, pubvals)
                    via Ethereum transaction signed by addr
@@ -784,7 +797,7 @@ Step 8.  V:        // On-chain verification
                    nullifierOwner[nullifier] ← msg.sender
                    verifiedUntil[msg.sender] ← notAfter          // auto-expiry
                    Emit UserRegistered(msg.sender, nullifier)
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{Public Values
 Structure}\label{public-values-structure}
@@ -838,7 +851,7 @@ disclosed) or zero (when hidden), controlled by the user's
 
 The guest program executes inside the SP1 zkVM and performs all
 sensitive computations. A critical design principle is that \textbf{the
-user's private key never enters the zkVM}. Instead, the prover server
+user's private key never enters the zkVM}. Instead, the prover application
 uses the OS keychain to sign a challenge, and only the resulting
 signature enters the circuit. This eliminates private key exposure from
 the proving process entirely.
@@ -1039,7 +1052,7 @@ data is not committed to public values; the proof attests only that
 revocation was checked against a valid, CA-signed CRL.
 
 \textbf{Signature-Based Key Ownership Verification.} Rather than
-importing the private key into the zkVM, the prover server signs a
+importing the private key into the zkVM, the prover application signs a
 challenge using the OS keychain (macOS Secure Enclave, Windows TPM, or
 software keystore). The challenge is
 \(\mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{timestamp} \| \text{chain\_id})\),
@@ -1057,10 +1070,10 @@ the \texttt{p256}/\texttt{p384} crates with the curve determined from
 the SPKI \texttt{namedCurve} parameter.
 
 This approach has three advantages: (1) the private key never exists in
-the prover server's process memory---only the OS keychain handles it at
+the prover's process memory---only the OS keychain handles it at
 the hardware level, (2) the ownership proof is bound to the registrant
 address and wallet index, preventing signature replay across wallets,
-and (3) the timestamp binding prevents a compromised prover server from
+and (3) the timestamp binding prevents a compromised prover from
 replaying a captured ownership signature in a later proof --- the
 signature is only valid for the specific proof generation timestamp
 committed as a public value.
@@ -1095,7 +1108,7 @@ configurable multi-wallet registration.
 
 The \texttt{IdentityRegistry} contract manages on-chain state:
 
-\begin{verbatim}
+\begin{lstlisting}
 State Variables:
   sp1Verifier       : ISP1Verifier (immutable)     — On-chain proof verifier
   programVKey       : bytes32 (immutable)           — ZK program verification key
@@ -1115,7 +1128,7 @@ State Variables:
   caMerkleRootUpdatedAt : uint256                   — Timestamp of last CA root update
   caRootGracePeriod : uint256                       — Grace period allowing old CA root (default 24 hours)
   minDisclosureMask : uint8 (immutable)             — Minimum required disclosure fields
-\end{verbatim}
+\end{lstlisting}
 
 The \texttt{maxWalletsPerCert} parameter is set at deployment, enabling
 configurable registration policy per L2 deployment (see Section 3.6).
@@ -1311,7 +1324,7 @@ centralized party.
 \subsection{OS Keychain
 Integration}\label{os-keychain-integration}
 
-The prover server scans the OS keychain for identities (certificate +
+The prover application scans the OS keychain for identities (certificate +
 private key pairs) via platform-native APIs. On macOS, the login
 keychain is queried through Security.framework; on Windows, the
 certificate store is accessed via CNG (Cryptography API: Next
@@ -1320,11 +1333,11 @@ Generation).
 The private key is managed entirely by the OS keychain and \textbf{never
 leaves the secure hardware boundary}. Signing is performed by calling
 the keychain's signing API (\texttt{SecKey.createSignature()} on macOS)
---- the prover server receives only the resulting signature bytes and
+--- the prover application receives only the resulting signature bytes and
 never accesses the raw private key material. The signing algorithm (RSA
 PKCS\#1 v1.5 or ECDSA) is auto-detected from the certificate's SPKI
 algorithm OID. This model provides the strongest private key isolation:
-even the prover server's process memory never contains the key.
+even the prover's process memory never contains the key.
 
 For each discovered identity, the scanner extracts metadata (subject,
 issuer, serial number, expiry) for display in the frontend's certificate
@@ -1374,12 +1387,11 @@ The proving flow is entirely local:
 \def\labelenumi{\arabic{enumi}.}
 \tightlist
 \item
-  \textbf{Signing ($\sim$1 second).} The prover server
+  \textbf{Signing ($\sim$1 second).} The prover application
   generates \texttt{ownership\_sig} and \texttt{nullifier\_sig} using
-  the OS keychain. The private key is erased from memory immediately
-  after signing.
+  the OS keychain. The private key never leaves the keychain --- only the resulting signature bytes are returned to the prover process.
 \item
-  \textbf{Proving ($\sim$10 minutes CPU).} The SP1 zkVM
+  \textbf{Proving ($\sim$5 minutes CPU).} The SP1 zkVM
   executes the guest program locally, receiving only the signatures,
   certificate, and chain data as inputs. The private key is never part
   of the zkVM witness.
@@ -1473,7 +1485,7 @@ follows:
   \(h_i = \mathcal{H}(\text{pk}_{\text{root}_i})\). The Merkle root
   \(M\) is stored on-chain.
 \item
-  \textbf{Proof generation.} The prover server computes
+  \textbf{Proof generation.} The prover application computes
   \(\text{caRootHash} = \mathcal{H}(\text{pk}_{\text{root}})\) and
   generates a Merkle proof \(\pi_M\) demonstrating that
   \(\text{caRootHash}\) is a leaf in the tree with root \(M\). Both
@@ -1599,7 +1611,7 @@ Component & Technology & Version \\
 ZK Prover & SP1 zkVM (Succinct) & v6.0.1 \\
 ZK Guest Language & Rust (RISC-V target) & stable \\
 Smart Contracts & Solidity + Foundry & \^{}0.8.20 / v1.5.1 \\
-Prover Server & Rust + Axum & 0.7 \\
+Prover CLI & Rust & --- \\
 Frontend & Next.js + React + ethers.js & 16 / 19 / 6 \\
 X.509 Parsing & x509-parser (no\_std) & 0.16 \\
 RSA Verification & rsa (pure Rust) & 0.9 \\
@@ -1608,16 +1620,16 @@ ECDSA Verification & p256, p384 (pure Rust) & 0.13 \\
 
 \subsection{Repository Structure}\label{repository-structure}
 
-\begin{verbatim}
+\begin{lstlisting}
 zk-X509/
 ├── lib/              # Shared types (PublicValuesStruct)
 ├── program/          # SP1 Guest program (zkVM)
-├── script/           # SP1 Host (CLI, HTTP server, NPKI decrypt)
+├── script/           # SP1 Host (CLI, keychain integration)
 ├── contracts/        # Solidity (IdentityRegistry, tests, deploy scripts)
 ├── frontend/         # Next.js web UI
 ├── certs/            # Test certificate generator (OpenSSL scripts)
 └── docs/             # Documentation and this paper
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{Performance Evaluation}\label{performance-evaluation}
 
@@ -1848,7 +1860,7 @@ The system includes three levels of testing:
   circuit logic.
 \item
   \textbf{End-to-end integration}: Anvil local chain + contract
-  deployment + prover server + frontend registration, verified with
+  deployment + prover CLI + frontend registration, verified with
   \texttt{cast} commands.
 \end{enumerate}
 
@@ -1901,7 +1913,7 @@ The system involves three entity types:
 \item
   \textbf{Prover} (\(\mathcal{P}\)): The user who owns an X.509
   certificate and wishes to register on-chain. \(\mathcal{P}\) runs the
-  prover server as a localhost daemon on their own machine.
+  prover as a local application on their own machine.
 \item
   \textbf{Verifier} (\(\mathcal{V}\)): The Ethereum smart contract
   (\texttt{IdentityRegistry}) that verifies proofs and manages
@@ -1912,10 +1924,7 @@ The system involves three entity types:
   \(\mathcal{V}\).
 \end{itemize}
 
-\textbf{Localhost assumption.} The prover server operates as a local
-daemon on the user's physical machine. Private keys transit only within
-the local loopback interface (\texttt{127.0.0.1}), never over the public
-network. This ensures that the private key exposure surface is limited
+\textbf{Localhost assumption.} The prover runs as a native application on the user's machine. Private keys remain within the OS keychain and never enter general process memory; only signature results are passed to the proving engine. The security boundary is limited
 to the user's own operating system, equivalent to the trust model of any
 local application that reads certificate files (e.g., a web browser
 using client certificates).
@@ -1969,7 +1978,7 @@ We adopt the \textbf{Dolev-Yao} adversary model \cite{ref11}. The adversary
 
 \subsection{Security Definitions}\label{security-definitions}
 
-We formalize six security properties using game-based definitions. In
+We formalize eight security properties using game-based definitions. In
 each game, \(\mathcal{A}\) interacts with a challenger \(\mathcal{C}\)
 that simulates the system.
 
@@ -1978,7 +1987,7 @@ that simulates the system.
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{forge}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^forge:
   1. C deploys IdentityRegistry with verification key vkey
      and whitelists a set of CA root hashes {h_1, ..., h_n}
@@ -1987,7 +1996,7 @@ Game Exp_A^forge:
   3. A is NOT given: any valid certificate or private key
   4. A outputs: (π*, pubvals*)
   5. A wins if: V.register(π*, pubvals*) succeeds
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is unforgeable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -1999,7 +2008,7 @@ Game Exp_A^forge:
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{link}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^link:
   1. C generates two valid certificates (cert_0, sk_0) and (cert_1, sk_1)
      both signed by the same CA
@@ -2009,7 +2018,7 @@ Game Exp_A^link:
   5. A is NOT given: the certificates, private keys, or serial numbers
   6. A outputs: b'
   7. A wins if: b' = b
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is unlinkable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2021,14 +2030,14 @@ Resistance)}\label{definition-3-double-registration-resistance}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{double}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^double:
   1. C deploys IdentityRegistry and whitelists CA roots
   2. A is given: one valid certificate (cert, sk) and two addresses addr_1, addr_2
   3. A outputs: two registration transactions tx_1 = (π_1, pubvals_1) from addr_1
                 and tx_2 = (π_2, pubvals_2) from addr_2
   4. A wins if: both V.register(tx_1) and V.register(tx_2) succeed
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is double-registration resistant} if for all PPT
 adversaries \(\mathcal{A}\):
@@ -2040,14 +2049,14 @@ Immunity)}\label{definition-4-front-running-immunity}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{front}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^front:
   1. An honest user P generates a valid registration tx = (π, pubvals) for addr_P
   2. A observes tx in the mempool before it is mined
   3. A outputs: tx' = (π', pubvals') from addr_A ≠ addr_P
      where A may copy, modify, or replay any data from tx
   4. A wins if: V.register(tx') succeeds using any data derived from tx
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is front-running immune} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2059,7 +2068,7 @@ Hiding)}\label{definition-5-ca-membership-hiding}
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{ca-anon}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^ca-anon:
   1. C whitelists two CAs: CA_0 and CA_1, constructing a Merkle tree
      with roots {h_0 = H(pk_0), h_1 = H(pk_1)} and Merkle root M
@@ -2071,7 +2080,7 @@ Game Exp_A^ca-anon:
   5. A is NOT given: cert_b, sk_b, or the Merkle proof path
   6. A outputs: b'
   7. A wins if: b' = b
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 satisfies CA-membership hiding} if for all PPT
 adversaries \(\mathcal{A}\):
@@ -2083,7 +2092,7 @@ adversaries \(\mathcal{A}\):
 
 Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{transfer}}\):
 
-\begin{verbatim}
+\begin{lstlisting}
 Game Exp_A^transfer:
   1. C deploys IdentityRegistry and whitelists CA roots
   2. An honest user P holds (cert, sk) and does NOT cooperate with A
@@ -2093,7 +2102,7 @@ Game Exp_A^transfer:
      registration (if any), and P's certificate (public data)
   4. A outputs: (π*, pubvals*) with a registrant address controlled by A
   5. A wins if: V.register(π*, pubvals*) succeeds using P's certificate
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{zk-X509 is non-transferable} if for all PPT adversaries
 \(\mathcal{A}\):
@@ -2210,7 +2219,7 @@ certificate (which contains the public key) cannot compute the nullifier
 --- the private key is required to produce the deterministic
 \texttt{nullifier\_sig}.
 
-\textbf{Theorem 7 (Cross-Service Unlinkability).} For any two
+\paragraph{Theorem 3 (Cross-Service Unlinkability)}\label{theorem-3-cross-service-unlinkability} For any two
 IdentityRegistry contracts \(C_1\) and \(C_2\) deployed at different
 addresses, an adversary observing the on-chain nullifiers
 \(\nu_1 \in C_1\) and \(\nu_2 \in C_2\) cannot determine whether
@@ -2296,7 +2305,7 @@ Combining all transitions:
 where the factor of 2 accounts for the two independent hash inversions
 required. \(\square\)
 
-\textbf{Theorem 8 (Cross-Chain Replay Resistance).} A valid proof for
+\paragraph{Theorem 4 (Cross-Chain Replay Resistance)}\label{theorem-4-cross-chain-replay-resistance} A valid proof for
 chain \(c_1\) cannot be accepted on chain \(c_2 \neq c_1\).
 
 \emph{Under assumptions A1 (local security), A3 (EUF-CMA security), and
@@ -2359,7 +2368,7 @@ where the factor of 2 accounts for the two independent signature
 forgeries (ownership and nullifier) required in strategy (c).
 \(\square\)
 
-\paragraph{Theorem 3 (Double-Registration
+\paragraph{Theorem 5 (Double-Registration
 Resistance)}\label{theorem-3-double-registration-resistance}
 
 \emph{Under assumption A4 (ZK soundness) and the determinism of SHA-256,
@@ -2379,7 +2388,7 @@ Any subsequent attempt to register the same nullifier fails because
 registrations per certificate is bounded by \texttt{maxWalletsPerCert}.
 \(\square\)
 
-\paragraph{Theorem 4 (Front-Running
+\paragraph{Theorem 8 (Front-Running
 Immunity)}\label{theorem-4-front-running-immunity}
 
 \emph{Under assumption A4 (ZK soundness) and A1 (local security),
@@ -2412,7 +2421,7 @@ zk-X509 satisfies front-running immunity (Definition 4).}
 
 All strategies fail. \(\square\)
 
-\paragraph{Theorem 5 (CA-Membership
+\paragraph{Theorem 7 (CA-Membership
 Hiding)}\label{theorem-5-ca-membership-hiding}
 
 \emph{Under assumption A4 (ZK soundness) and the zero-knowledge property
@@ -2449,7 +2458,7 @@ only Korean NPKI), CA anonymity is trivially satisfied (anonymity set =
 property becomes meaningful in multi-national deployments with
 \(n \geq 2\) CAs.
 
-\paragraph{Theorem 6
+\paragraph{Theorem 8
 (Non-Transferability)}\label{theorem-6-non-transferability}
 
 \emph{Under assumptions A1 (local security), A3 (cryptographic
@@ -2563,19 +2572,15 @@ keychain:
 \def\labelenumi{\arabic{enumi}.}
 \tightlist
 \item
-  The prover server decrypts the NPKI private key file using the user's
-  password.
-\item
-  The decrypted key is passed to the OS keychain signing API (macOS
-  Security.framework, Windows CNG).
+  The prover application requests a signature from the OS keychain (macOS
+  Security.framework, Windows CNG). The user authenticates via the OS-level prompt (e.g., password dialog or Touch ID).
 \item
   The OS keychain signs the ownership challenge:
   \(\mathcal{H}(\text{serial} \| \text{registrant} \| \text{wallet\_index} \| \text{timestamp} \| \text{chain\_id})\).
 \item
-  Only the resulting \textbf{signature bytes} are passed to the SP1 zkVM
-  as input.
+  Only the resulting \textbf{signature bytes} are returned to the prover process and passed to the SP1 zkVM as input.
 \item
-  The private key is immediately erased from memory after signing.
+  The private key never leaves the OS keychain and never enters general process memory.
 \end{enumerate}
 
 \textbf{Security properties:} - The private key never appears in any
@@ -2583,8 +2588,7 @@ HTTP request or response. - The private key never enters the SP1 RISC-V
 virtual machine. - On devices with hardware-backed keystores (macOS
 Secure Enclave, Windows TPM), the private key may never exist in general
 process memory at all --- the signing operation occurs within the secure
-hardware. - CORS restricted to \texttt{localhost:3000}; no
-\texttt{Debug} derive on key-holding structs.
+hardware. No \texttt{Debug} derive on key-holding structs; API access restricted to authenticated requests.
 
 This represents a strictly stronger security model than the typical
 approach of importing the private key directly into the ZK circuit, and
@@ -2710,9 +2714,9 @@ isolation \\
 CA identity & Hidden & caMerkleRoot hides which CA; Merkle membership
 proof (Section 3.12) \\
 Wallet-to-certificate link & Unlinkable & Theorem 2 \\
-Proof-to-address binding & Enforced & Theorem 4 \\
-Double registration & Prevented & Theorem 3 \\
-Non-transferability & Enforced (without cooperation) & Theorem 6;
+Proof-to-address binding & Enforced & Theorem 6 \\
+Double registration & Prevented & Theorem 5 \\
+Non-transferability & Enforced (without cooperation) & Theorem 8;
 voluntary delegation is a universal credential limitation \\
 Multiple certs per wallet & Prevented & \texttt{verifiedUntil}
 mapping \\
@@ -2816,10 +2820,10 @@ Groth16 & Circom + Groth16 & Noir/Circom & Custom \\
 \textbf{Constraints / Cycles} & 11.8M cycles (P-256) & 1.26M constraints
 (measured) & $\sim$1M constraints (docs) & $\sim$150K
 constraints (docs) & N/A & N/A \\
-\textbf{Proof Generation} & 102s (CPU, multi-core) & TBD & TBD & TBD &
-TBD & TBD \\
+\textbf{Proof Generation} & 102s (CPU, multi-core) & Not reported & Not reported & Not reported &
+Not reported & Not reported \\
 \textbf{Trusted Setup} & Not required (STARK) & Required (Groth16) &
-Required & Required & TBD & N/A \\
+Required & Required & Not reported & N/A \\
 \textbf{On-Chain Gas} & $\sim$300K (est. Groth16) &
 $\sim$300K (est. Groth16) & $\sim$350K (docs) &
 $\sim$150K (docs) & $\sim$250K (est.) &
@@ -2858,7 +2862,7 @@ Work}\label{limitations-and-future-work}
 
 \subsection{Client-Side Proving}\label{client-side-proving}
 
-The current architecture requires a localhost prover server. While the
+The current architecture runs the prover as a native application. While the
 private key never leaves the local machine (assumption A1), moving proof
 generation entirely into the browser via WebAssembly would eliminate
 even the inter-process transfer. SP1's WASM support is under active
@@ -2972,10 +2976,12 @@ never enters the ZK circuit or the prover's general process memory---a
 strictly stronger security model than existing ZK identity systems. The
 CA Merkle tree design hides which specific CA issued the certificate,
 significantly enlarging the anonymity set in multi-national deployments.
-The security analysis under the Dolev-Yao model establishes six
+The security analysis under the Dolev-Yao model establishes eight
 properties with game-based definitions and proofs: unforgeability
 (reduced to EUF-CMA security and ZK soundness), unlinkability (reduced
-to EUF-CMA security and ZK zero-knowledge), double-registration
+to EUF-CMA security and ZK zero-knowledge), cross-service unlinkability
+(reduced to key privacy and random oracle preimage resistance), cross-chain replay resistance
+(via chain ID binding and ZK soundness), double-registration
 resistance (via deterministic nullifiers and ZK soundness),
 front-running immunity (via registrant binding), CA anonymity (via
 Merkle hiding and ZK zero-knowledge), and non-transferability (reduced
@@ -2998,6 +3004,15 @@ scratch'' philosophy represents a pragmatic and underexplored direction
 in the blockchain identity literature, complementary to rather than
 competing with DID-based systems.
 
+
+\section*{Availability}
+
+Source code will be made publicly available at:
+\url{https://github.com/tokamak-network/zk-X509}
+
+\section*{Acknowledgments}
+
+The authors acknowledge the use of large language models, specifically Claude, Gemini, and GitHub Copilot, for assistance in code review, implementation optimization, and editorial refinement of the manuscript.
 
 \bibliographystyle{plain}
 \bibliography{references}
