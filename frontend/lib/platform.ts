@@ -1,6 +1,33 @@
-/// Platform backend API client for off-chain registry metadata.
+/// Platform data client — reads service metadata and CA guides from
+/// the zk-x509-ca-registry Git repository (GitHub raw).
+///
+/// Write operations (update guide, post announcement) require a Git PR
+/// to the ca-registry repo. The frontend provides links to guide admins.
+
+const CA_REGISTRY_BASE =
+  process.env.NEXT_PUBLIC_CA_REGISTRY_URL ||
+  "https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
+
+// ── Types ────────────────────────────────────────
+
+export interface ServiceJson {
+  name: string;
+  description: string;
+  admin: string;
+  website?: string;
+  created_at: string;
+  updated_at: string;
+  cas: Record<string, CaGuide>;
+}
+
+export interface CaGuide {
+  name: string;
+  description?: string;
+  issue_url?: string;
+  instructions?: string;
+}
 
 export interface RegistryMetadata {
   description: string;
@@ -17,14 +44,44 @@ export interface Announcement {
   createdAt: string;
 }
 
-export interface CaGuide {
-  name: string;
-  description: string;
-  issueUrl: string;
-  instructions: string;
+// ── CA Registry (Git repository) ────────────────
+
+/// Build the service.json URL for a given chain + registry address.
+function serviceJsonUrl(chainId: string, registryAddr: string): string {
+  return `${CA_REGISTRY_BASE}/services/${chainId}/${registryAddr.toLowerCase()}/service.json`;
 }
 
-// ── Registry Metadata ────────────────────────────
+/// Fetch the full service.json from the ca-registry Git repo.
+export async function getServiceJson(
+  chainId: string,
+  registryAddr: string,
+): Promise<ServiceJson | null> {
+  try {
+    const url = serviceJsonUrl(chainId, registryAddr);
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/// Fetch CA guides from the ca-registry's service.json.
+/// Returns the `cas` field mapped to CaGuide records.
+export async function getCaGuides(
+  chainId: string,
+  registryAddr: string,
+): Promise<Record<string, CaGuide>> {
+  const svc = await getServiceJson(chainId, registryAddr);
+  return svc?.cas ?? {};
+}
+
+/// Get the ca-registry PR URL for admins to register/update their service.
+export function getCaRegistryPrUrl(): string {
+  return "https://github.com/tokamak-network/zk-x509-ca-registry";
+}
+
+// ── Backend Server (announcements, metadata not in Git) ─────────
 
 export async function getRegistryMetadata(address: string): Promise<RegistryMetadata | null> {
   try {
@@ -53,7 +110,7 @@ export async function updateRegistryMetadata(
   }
 }
 
-// ── Announcements ────────────────────────────────
+// ── Announcements (still backend-based) ─────────
 
 export async function getAnnouncements(address: string): Promise<Announcement[]> {
   try {
@@ -86,46 +143,6 @@ export async function postAnnouncement(
 export async function deleteAnnouncement(address: string, id: string): Promise<boolean> {
   try {
     const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements/${id}`, {
-      method: "DELETE",
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-// ── CA Guides ────────────────────────────────────
-
-export async function getCaGuides(address: string): Promise<Record<string, CaGuide>> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides`);
-    if (!res.ok) return {};
-    return await res.json();
-  } catch {
-    return {};
-  }
-}
-
-export async function updateCaGuide(
-  address: string,
-  caHash: string,
-  guide: CaGuide,
-): Promise<boolean> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${caHash}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(guide),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function deleteCaGuide(address: string, caHash: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${caHash}`, {
       method: "DELETE",
     });
     return res.ok;

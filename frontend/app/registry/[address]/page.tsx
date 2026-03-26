@@ -100,11 +100,12 @@ export default function RegistryDetailPage() {
           contract.paused(),
         ]);
 
-        // Fetch service name from factory
+        // Fetch chain ID and service name from factory
         let serviceName = "";
+        const { chainId: cid } = await provider.getNetwork();
+        const detectedChainId = cid.toString();
         try {
-          const { chainId: cid } = await provider.getNetwork();
-          const factoryAddr = getFactoryAddress(cid.toString());
+          const factoryAddr = getFactoryAddress(detectedChainId);
           if (factoryAddr) {
             const factory = new ethers.Contract(factoryAddr, REGISTRY_FACTORY_ABI, provider);
             const fInfo = await factory.registryInfo(address);
@@ -143,7 +144,7 @@ export default function RegistryDetailPage() {
         const [meta, anncs, guides] = await Promise.all([
           getRegistryMetadata(address),
           getAnnouncements(address),
-          getCaGuides(address),
+          getCaGuides(detectedChainId, address),
         ]);
         if (meta) setMetadata(meta);
         setAnnouncements(anncs);
@@ -428,9 +429,9 @@ export default function RegistryDetailPage() {
                                 {guide.instructions}
                               </p>
                             )}
-                            {guide.issueUrl && (
+                            {guide.issue_url && (
                               <a
-                                href={guide.issueUrl}
+                                href={guide.issue_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-tertiary text-xs hover:text-primary transition-colors"
