@@ -355,9 +355,12 @@ export default function AdminContent() {
   const [removeAllTx, setRemoveAllTx] = useState<TxStatus>(IDLE);
   const [selectedCaLeaves, setSelectedCaLeaves] = useState<Set<string>>(new Set());
 
-  // CA Registration Modal
+  // CA Registration Modal (shared for add/remove/edit)
   const [caModalOpen, setCaModalOpen] = useState(false);
   const [caModalEntry, setCaModalEntry] = useState<CaFileEntry | null>(null);
+  const [caModalOp, setCaModalOp] = useState<"add-ca" | "remove-ca" | "update">("add-ca");
+  const [caModalTxFn, setCaModalTxFn] = useState<(() => Promise<string | null>) | null>(null);
+  const [caModalCerts, setCaModalCerts] = useState<Array<{ hashHex: string; derBase64: string; guide: CaGuide }>>([]);
   const [githubToken, setGithubToken] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem("zk-x509-github-token") || "" : ""
   );
@@ -601,22 +604,36 @@ export default function AdminContent() {
 
   const handleRemoveCa = (index: number, leafHash: string) => {
     if (!writeContract) return;
-    const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
-      setRemoveCaTxMap((prev) => ({
-        ...prev,
-        [leafHash]: typeof s === "function" ? s(prev[leafHash] ?? IDLE) : s,
-      }));
-    };
-    execTx(
-      setStatus,
-      () => writeContract.removeCA(index),
-      () => {
-        refresh();
-        fetchCaLeaves();
-        // Clear stale statuses after list changes (indices shifted)
-        setRemoveCaTxMap({});
-      },
-    );
+
+    if (githubToken) {
+      // Open modal for unified on-chain + Git flow
+      setCaModalOp("remove-ca");
+      setCaModalTxFn(() => async () => {
+        const tx = await writeContract.removeCA(index);
+        const receipt = await tx.wait();
+        return receipt?.hash || tx.hash;
+      });
+      setCaModalCerts([{ hashHex: leafHash, derBase64: "", guide: svcCaGuides[leafHash] || EMPTY_CA_GUIDE }]);
+      setCaModalEntry(null); // not a file entry
+      setCaModalOpen(true);
+    } else {
+      // Fallback: on-chain only
+      const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
+        setRemoveCaTxMap((prev) => ({
+          ...prev,
+          [leafHash]: typeof s === "function" ? s(prev[leafHash] ?? IDLE) : s,
+        }));
+      };
+      execTx(
+        setStatus,
+        () => writeContract.removeCA(index),
+        () => {
+          refresh();
+          fetchCaLeaves();
+          setRemoveCaTxMap({});
+        },
+      );
+    }
   };
 
   const handleRemoveSelected = () => {
@@ -782,10 +799,19 @@ export default function AdminContent() {
     }
   };
 
-  const handleSaveCaGuide = async (_caHash: string) => {
-    // CA guides are managed via the zk-x509-ca-registry Git repository.
-    // Open the repo for the admin to submit a PR.
-    window.open(getCaRegistryRepoUrl(), "_blank");
+  const handleSaveCaGuide = async (caHash: string) => {
+    if (githubToken) {
+      // Open modal for Git PR (no on-chain TX for guide edit)
+      const guide = svcGuideEdits[caHash] || EMPTY_CA_GUIDE;
+      setCaModalOp("update");
+      setCaModalTxFn(null); // no on-chain TX
+      setCaModalCerts([{ hashHex: caHash, derBase64: "", guide }]);
+      setCaModalEntry(null);
+      setCaModalOpen(true);
+    } else {
+      // Fallback: open Git repo
+      window.open(getCaRegistryRepoUrl(), "_blank");
+    }
   };
 
   const updateGuideField = (caHash: string, field: keyof CaGuide, value: string) => {
@@ -1942,37 +1968,42 @@ export default function AdminContent() {
       </footer>
     </main>
 
-    {/* CA Registration Modal (on-chain + Git) */}
-    {caModalEntry && (
-      <CaRegistrationModal
-        open={caModalOpen}
-        onClose={() => {
-          setCaModalOpen(false);
-          setCaModalEntry(null);
-          refresh();
-          fetchCaLeaves();
+    {/* CA Registration Modal (on-chain + Git) — shared for add/remove/edit */}
+    <CaRegistrationModal
+      open={caModalOpen}
+      onClose={() => {
+        setCaModalOpen(false);
+        setCaModalEntry(null);
+        setCaModalTxFn(null);
+        setCaModalCerts([]);
+        refresh();
+        fetchCaLeaves();
+        if (caModalEntry) {
           setCaFiles((prev) => prev.filter((f) => f.hashHex !== caModalEntry.hashHex));
-        }}
-        operation="add-ca"
-        chainId={chainId || "31337"}
-        registryAddress={registryAddr}
-        adminAddress={account || ""}
-        serviceName={svcMetadata?.description || registryAddr}
-        executeTx={writeContract ? async () => {
-          const tx = await writeContract.addCA(caModalEntry.hashHex);
-          const receipt = await tx.wait();
-          return receipt?.hash || tx.hash;
-        } : null}
-        certs={[{
-          hashHex: caModalEntry.hashHex,
-          derBase64: btoa(String.fromCharCode(...caModalEntry.derBytes)),
-          guide: caModalEntry.guide,
-        }]}
-        existingCas={svcCaGuides}
-        githubToken={githubToken}
-        signer={writeContract?.runner as ethers.Signer || null}
-      />
-    )}
+        }
+        if (caModalOp === "remove-ca") {
+          setRemoveCaTxMap({});
+        }
+      }}
+      operation={caModalOp}
+      chainId={chainId || "31337"}
+      registryAddress={registryAddr}
+      adminAddress={account || ""}
+      serviceName={svcMetadata?.description || registryAddr}
+      executeTx={caModalEntry && writeContract ? async () => {
+        const tx = await writeContract.addCA(caModalEntry.hashHex);
+        const receipt = await tx.wait();
+        return receipt?.hash || tx.hash;
+      } : caModalTxFn}
+      certs={caModalEntry ? [{
+        hashHex: caModalEntry.hashHex,
+        derBase64: btoa(String.fromCharCode(...caModalEntry.derBytes)),
+        guide: caModalEntry.guide,
+      }] : caModalCerts}
+      existingCas={svcCaGuides}
+      githubToken={githubToken}
+      signer={writeContract?.runner as ethers.Signer || null}
+    />
     </>
   );
 }
