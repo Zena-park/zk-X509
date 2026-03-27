@@ -46,29 +46,32 @@ import CaRegistrationModal from "./CaRegistrationModal";
 const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
 const MAX_DER_SIZE = 10 * 1024; // 10KB — typical CA DER is 1-2KB
 
-/** Sanitize URL input: allow only http:// or https:// URLs and trim whitespace.
- *  Returns null for dangerous/disallowed schemes, the trimmed value for valid URLs,
- *  and empty string as-is to allow clearing the field. Partial typing is allowed
- *  (non-URL strings pass through until they form a parseable URL with a bad scheme). */
-function sanitizeUrl(value: string): string | null {
+/** Block dangerous URL schemes during typing (blacklist approach).
+ *  Allows partial input so users can type character-by-character. */
+function sanitizeUrlInput(value: string): string | null {
   if (!value) return value;
-  const trimmed = value.trim();
+  const lower = value.trimStart().toLowerCase();
+  if (lower.startsWith("javascript:") || lower.startsWith("data:") || lower.startsWith("vbscript:")) {
+    return null;
+  }
+  return value;
+}
 
+/** Validate a completed URL on blur/save: must be absolute http:// or https://.
+ *  Returns the trimmed URL if valid, or empty string if not. */
+function validateUrlOnCommit(value: string): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
   try {
     const url = new URL(trimmed);
     const protocol = url.protocol.toLowerCase();
     if (protocol === "http:" || protocol === "https:") {
       return trimmed;
     }
-    // Disallow all other protocols (file:, ftp:, mailto:, javascript:, data:, etc.)
-    return null;
+    return "";
   } catch {
-    // Not a valid absolute URL yet — allow partial typing (e.g., "htt", "https://exam")
-    const lower = trimmed.toLowerCase();
-    if (lower.startsWith("javascript:") || lower.startsWith("data:") || lower.startsWith("vbscript:")) {
-      return null;
-    }
-    return trimmed;
+    return "";
   }
 }
 
@@ -1350,16 +1353,23 @@ export default function AdminContent() {
                               placeholder="Issue URL (e.g., https://www.yessign.or.kr)"
                               value={entry.guide.issue_url || ""}
                               onChange={(e) => {
-                                const raw = e.target.value;
-                                const safe = sanitizeUrl(raw);
+                                const safe = sanitizeUrlInput(e.target.value);
                                 if (safe === null) {
-                                  e.target.setCustomValidity("Invalid or unsafe URL. Please enter a URL starting with http:// or https://.");
+                                  e.target.setCustomValidity("Dangerous URL scheme blocked.");
                                   e.target.reportValidity();
                                   handleGuideChange(idx, "issue_url", "");
                                 } else {
                                   e.target.setCustomValidity("");
                                   handleGuideChange(idx, "issue_url", safe);
                                 }
+                              }}
+                              onBlur={(e) => {
+                                const validated = validateUrlOnCommit(e.target.value);
+                                if (e.target.value && !validated) {
+                                  e.target.setCustomValidity("Please enter a URL starting with http:// or https://.");
+                                  e.target.reportValidity();
+                                }
+                                handleGuideChange(idx, "issue_url", validated);
                               }}
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
@@ -1950,16 +1960,23 @@ export default function AdminContent() {
                                 placeholder="https://ca-provider.com/issue"
                                 value={edit.issue_url}
                                 onChange={(e) => {
-                                  const raw = e.target.value;
-                                  const safe = sanitizeUrl(raw);
+                                  const safe = sanitizeUrlInput(e.target.value);
                                   if (safe === null) {
-                                    e.target.setCustomValidity("Invalid or unsafe URL. Please enter a URL starting with http:// or https://.");
+                                    e.target.setCustomValidity("Dangerous URL scheme blocked.");
                                     e.target.reportValidity();
                                     updateGuideField(leaf, "issue_url", "");
                                   } else {
                                     e.target.setCustomValidity("");
                                     updateGuideField(leaf, "issue_url", safe);
                                   }
+                                }}
+                                onBlur={(e) => {
+                                  const validated = validateUrlOnCommit(e.target.value);
+                                  if (e.target.value && !validated) {
+                                    e.target.setCustomValidity("Please enter a URL starting with http:// or https://.");
+                                    e.target.reportValidity();
+                                  }
+                                  updateGuideField(leaf, "issue_url", validated);
                                 }}
                                 disabled={disabled}
                               />
