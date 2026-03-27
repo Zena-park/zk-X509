@@ -392,9 +392,8 @@ export default function AdminContent() {
   const [caModalOp, setCaModalOp] = useState<"add-ca" | "remove-ca" | "update">("add-ca");
   const [caModalTxFn, setCaModalTxFn] = useState<(() => Promise<string | null>) | null>(null);
   const [caModalCerts, setCaModalCerts] = useState<Array<{ hashHex: string; derBase64: string; guide: CaGuide }>>([]);
-  const [githubToken, setGithubToken] = useState(() =>
-    typeof window !== "undefined" ? sessionStorage.getItem("zk-x509-github-token") || "" : ""
-  );
+  // Security: keep token in memory only — never persist to sessionStorage/localStorage
+  const [githubToken, setGithubToken] = useState("");
 
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
@@ -1208,10 +1207,7 @@ export default function AdminContent() {
                     type="password"
                     placeholder="GitHub Token (optional — enables auto PR to CA registry)"
                     value={githubToken}
-                    onChange={(e) => {
-                      setGithubToken(e.target.value);
-                      sessionStorage.setItem("zk-x509-github-token", e.target.value);
-                    }}
+                    onChange={(e) => setGithubToken(e.target.value)}
                     className="flex-1 bg-transparent text-xs text-on-surface placeholder:text-on-surface-variant/50 outline-none"
                   />
                   {githubToken && (
