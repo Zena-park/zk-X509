@@ -46,14 +46,30 @@ import CaRegistrationModal from "./CaRegistrationModal";
 const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
 const MAX_DER_SIZE = 10 * 1024; // 10KB — typical CA DER is 1-2KB
 
-/** Sanitize URL input: block dangerous schemes like javascript: */
+/** Sanitize URL input: allow only http:// or https:// URLs and trim whitespace.
+ *  Returns null for dangerous/disallowed schemes, the trimmed value for valid URLs,
+ *  and empty string as-is to allow clearing the field. Partial typing is allowed
+ *  (non-URL strings pass through until they form a parseable URL with a bad scheme). */
 function sanitizeUrl(value: string): string | null {
   if (!value) return value;
-  const trimmed = value.trim().toLowerCase();
-  if (trimmed.startsWith("javascript:") || trimmed.startsWith("data:") || trimmed.startsWith("vbscript:")) {
+  const trimmed = value.trim();
+
+  try {
+    const url = new URL(trimmed);
+    const protocol = url.protocol.toLowerCase();
+    if (protocol === "http:" || protocol === "https:") {
+      return trimmed;
+    }
+    // Disallow all other protocols (file:, ftp:, mailto:, javascript:, data:, etc.)
     return null;
+  } catch {
+    // Not a valid absolute URL yet — allow partial typing (e.g., "htt", "https://exam")
+    const lower = trimmed.toLowerCase();
+    if (lower.startsWith("javascript:") || lower.startsWith("data:") || lower.startsWith("vbscript:")) {
+      return null;
+    }
+    return trimmed;
   }
-  return value;
 }
 
 /* ------------------------------------------------------------------ */
@@ -509,6 +525,7 @@ export default function AdminContent() {
   /* ---------- CA file handlers ---------- */
   const processFiles = useCallback(async (files: FileList | File[]) => {
     setCaFileProcessing(true);
+    setCaFileWarning("");
     try {
       const newEntries: CaFileEntry[] = [];
       const skipped: string[] = [];
@@ -1240,7 +1257,7 @@ export default function AdminContent() {
                   <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-3 flex items-start gap-2">
                     <span className="text-yellow-400 text-xs shrink-0">⚠</span>
                     <p className="text-xs text-yellow-300/80">{caFileWarning}</p>
-                    <button onClick={() => setCaFileWarning("")} className="text-yellow-400/60 hover:text-yellow-400 ml-auto shrink-0 text-xs">✕</button>
+                    <button type="button" aria-label="Dismiss file warning" onClick={() => setCaFileWarning("")} className="text-yellow-400/60 hover:text-yellow-400 ml-auto shrink-0 text-xs">✕</button>
                   </div>
                 )}
 
@@ -1333,8 +1350,16 @@ export default function AdminContent() {
                               placeholder="Issue URL (e.g., https://www.yessign.or.kr)"
                               value={entry.guide.issue_url || ""}
                               onChange={(e) => {
-                                const safe = sanitizeUrl(e.target.value);
-                                if (safe !== null) handleGuideChange(idx, "issue_url", safe);
+                                const raw = e.target.value;
+                                const safe = sanitizeUrl(raw);
+                                if (safe === null) {
+                                  e.target.setCustomValidity("Invalid or unsafe URL. Please enter a URL starting with http:// or https://.");
+                                  e.target.reportValidity();
+                                  handleGuideChange(idx, "issue_url", "");
+                                } else {
+                                  e.target.setCustomValidity("");
+                                  handleGuideChange(idx, "issue_url", safe);
+                                }
                               }}
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
@@ -1920,12 +1945,21 @@ export default function AdminContent() {
                             <div>
                               <label className="text-[10px] font-label text-on-surface-variant mb-0.5 block">Issue URL</label>
                               <input
+                                type="url"
                                 className="w-full bg-surface border-none rounded-lg px-3 py-2 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
                                 placeholder="https://ca-provider.com/issue"
                                 value={edit.issue_url}
                                 onChange={(e) => {
-                                  const safe = sanitizeUrl(e.target.value);
-                                  if (safe !== null) updateGuideField(leaf, "issue_url", safe);
+                                  const raw = e.target.value;
+                                  const safe = sanitizeUrl(raw);
+                                  if (safe === null) {
+                                    e.target.setCustomValidity("Invalid or unsafe URL. Please enter a URL starting with http:// or https://.");
+                                    e.target.reportValidity();
+                                    updateGuideField(leaf, "issue_url", "");
+                                  } else {
+                                    e.target.setCustomValidity("");
+                                    updateGuideField(leaf, "issue_url", safe);
+                                  }
                                 }}
                                 disabled={disabled}
                               />
