@@ -40,6 +40,9 @@ import {
   type CaGuide,
 } from "@/lib/platform";
 
+import { parseCaDer, generateCaGuide, type CaMetadata } from "@/lib/x509";
+import CaRegistrationModal from "./CaRegistrationModal";
+
 const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
 
 /* ------------------------------------------------------------------ */
@@ -301,6 +304,9 @@ interface CaFileEntry {
   name: string;
   hash: Uint8Array;
   hashHex: string;
+  derBytes: Uint8Array;
+  metadata: CaMetadata | null;
+  guide: CaGuide;
 }
 
 /* ================================================================== */
@@ -348,6 +354,16 @@ export default function AdminContent() {
   const [removeCaTxMap, setRemoveCaTxMap] = useState<Record<string, TxStatus>>({});
   const [removeAllTx, setRemoveAllTx] = useState<TxStatus>(IDLE);
   const [selectedCaLeaves, setSelectedCaLeaves] = useState<Set<string>>(new Set());
+
+  // CA Registration Modal (shared for add/remove/edit)
+  const [caModalOpen, setCaModalOpen] = useState(false);
+  const [caModalEntry, setCaModalEntry] = useState<CaFileEntry | null>(null);
+  const [caModalOp, setCaModalOp] = useState<"add-ca" | "remove-ca" | "update">("add-ca");
+  const [caModalTxFn, setCaModalTxFn] = useState<(() => Promise<string | null>) | null>(null);
+  const [caModalCerts, setCaModalCerts] = useState<Array<{ hashHex: string; derBase64: string; guide: CaGuide }>>([]);
+  const [githubToken, setGithubToken] = useState(() =>
+    typeof window !== "undefined" ? sessionStorage.getItem("zk-x509-github-token") || "" : ""
+  );
 
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
@@ -489,7 +505,10 @@ export default function AdminContent() {
         const certDer = new Uint8Array(arrayBuffer);
         const hash = await computeCaLeafHash(certDer);
         const hashHex = ethers.hexlify(hash);
-        newEntries.push({ name: file.name, hash, hashHex });
+        // Parse X.509 metadata and auto-generate guide
+        const metadata = parseCaDer(certDer);
+        const guide = metadata ? generateCaGuide(metadata) : EMPTY_CA_GUIDE;
+        newEntries.push({ name: file.name, hash, hashHex, derBytes: certDer, metadata, guide });
       }
       setCaFiles((prev) => {
         const existing = new Set(prev.map((f) => f.hashHex));
@@ -503,6 +522,15 @@ export default function AdminContent() {
 
   const removeCaFile = useCallback((index: number) => {
     setCaFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleGuideChange = useCallback((index: number, field: keyof CaGuide, value: string) => {
+    setCaFiles((prev) => {
+      const updated = [...prev];
+      const entry = updated[index];
+      updated[index] = { ...entry, guide: { ...entry.guide, [field]: value } };
+      return updated;
+    });
   }, []);
 
   const handleDrop = useCallback(
@@ -558,42 +586,63 @@ export default function AdminContent() {
 
   const handleAddCa = (entry: CaFileEntry) => {
     if (!writeContract) return;
-    const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
-      setAddCaTxMap((prev) => ({
-        ...prev,
-        [entry.hashHex]: typeof s === "function" ? s(prev[entry.hashHex] ?? IDLE) : s,
-      }));
-    };
-    execTx(
-      setStatus,
-      () => writeContract.addCA(entry.hashHex),
-      () => {
-        refresh();
-        fetchCaLeaves();
-        // Remove from pending files after successful add
-        setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
-      },
-    );
+
+    if (githubToken) {
+      // Open modal for unified on-chain + Git flow
+      setCaModalEntry(entry);
+      setCaModalOpen(true);
+    } else {
+      // Fallback: on-chain only (no Git token)
+      const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
+        setAddCaTxMap((prev) => ({
+          ...prev,
+          [entry.hashHex]: typeof s === "function" ? s(prev[entry.hashHex] ?? IDLE) : s,
+        }));
+      };
+      execTx(
+        setStatus,
+        () => writeContract.addCA(entry.hashHex),
+        () => {
+          refresh();
+          fetchCaLeaves();
+          setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
+        },
+      );
+    }
   };
 
   const handleRemoveCa = (index: number, leafHash: string) => {
     if (!writeContract) return;
-    const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
-      setRemoveCaTxMap((prev) => ({
-        ...prev,
-        [leafHash]: typeof s === "function" ? s(prev[leafHash] ?? IDLE) : s,
-      }));
-    };
-    execTx(
-      setStatus,
-      () => writeContract.removeCA(index),
-      () => {
-        refresh();
-        fetchCaLeaves();
-        // Clear stale statuses after list changes (indices shifted)
-        setRemoveCaTxMap({});
-      },
-    );
+
+    if (githubToken) {
+      // Open modal for unified on-chain + Git flow
+      setCaModalOp("remove-ca");
+      setCaModalTxFn(() => async () => {
+        const tx = await writeContract.removeCA(index);
+        const receipt = await tx.wait();
+        return receipt?.hash || tx.hash;
+      });
+      setCaModalCerts([{ hashHex: leafHash, derBase64: "", guide: svcCaGuides[leafHash] || EMPTY_CA_GUIDE }]);
+      setCaModalEntry(null); // not a file entry
+      setCaModalOpen(true);
+    } else {
+      // Fallback: on-chain only
+      const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
+        setRemoveCaTxMap((prev) => ({
+          ...prev,
+          [leafHash]: typeof s === "function" ? s(prev[leafHash] ?? IDLE) : s,
+        }));
+      };
+      execTx(
+        setStatus,
+        () => writeContract.removeCA(index),
+        () => {
+          refresh();
+          fetchCaLeaves();
+          setRemoveCaTxMap({});
+        },
+      );
+    }
   };
 
   const handleRemoveSelected = () => {
@@ -759,10 +808,19 @@ export default function AdminContent() {
     }
   };
 
-  const handleSaveCaGuide = async (_caHash: string) => {
-    // CA guides are managed via the zk-x509-ca-registry Git repository.
-    // Open the repo for the admin to submit a PR.
-    window.open(getCaRegistryRepoUrl(), "_blank");
+  const handleSaveCaGuide = async (caHash: string) => {
+    if (githubToken) {
+      // Open modal for Git PR (no on-chain TX for guide edit)
+      const guide = svcGuideEdits[caHash] || EMPTY_CA_GUIDE;
+      setCaModalOp("update");
+      setCaModalTxFn(null); // no on-chain TX
+      setCaModalCerts([{ hashHex: caHash, derBase64: "", guide }]);
+      setCaModalEntry(null);
+      setCaModalOpen(true);
+    } else {
+      // Fallback: open Git repo
+      window.open(getCaRegistryRepoUrl(), "_blank");
+    }
   };
 
   const updateGuideField = (caHash: string, field: keyof CaGuide, value: string) => {
@@ -826,6 +884,7 @@ export default function AdminContent() {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
   return (
+    <>
     <main className="max-w-6xl mx-auto pt-4 px-8 min-h-screen">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Alert Section — non-owner */}
@@ -1102,6 +1161,24 @@ export default function AdminContent() {
                   contract.
                 </p>
 
+                {/* GitHub Token for Git integration */}
+                <div className="flex items-center gap-3 mb-4 p-3 bg-surface-highest rounded-xl">
+                  <Globe className="w-4 h-4 text-on-surface-variant shrink-0" />
+                  <input
+                    type="password"
+                    placeholder="GitHub Token (optional — enables auto PR to CA registry)"
+                    value={githubToken}
+                    onChange={(e) => {
+                      setGithubToken(e.target.value);
+                      sessionStorage.setItem("zk-x509-github-token", e.target.value);
+                    }}
+                    className="flex-1 bg-transparent text-xs text-on-surface placeholder:text-on-surface-variant/50 outline-none"
+                  />
+                  {githubToken && (
+                    <span className="text-[10px] text-green-400 font-mono">Connected</span>
+                  )}
+                </div>
+
                 {/* Drop zone */}
                 <div
                   onDrop={handleDrop}
@@ -1160,32 +1237,76 @@ export default function AdminContent() {
                     </div>
                     {caFiles.map((entry, idx) => {
                       const txStatus = addCaTxMap[entry.hashHex] ?? IDLE;
+                      const meta = entry.metadata;
                       return (
                         <div
                           key={entry.hashHex}
-                          className="flex items-center gap-3 bg-surface-highest rounded-xl px-4 py-3"
+                          className="bg-surface-highest rounded-xl px-4 py-3 space-y-2"
                         >
-                          <FileText className="w-4 h-4 text-tertiary shrink-0" />
-                          <span className="text-sm font-headline font-medium text-primary truncate">
-                            {entry.name}
-                          </span>
-                          <span className="text-[10px] font-mono text-on-surface-variant truncate flex-1">
-                            {truncateHex(entry.hashHex, 10, 8)}
-                          </span>
-                          <TxBadge status={txStatus} />
-                          <button
-                            onClick={() => handleAddCa(entry)}
-                            disabled={disabled || isBusy(txStatus)}
-                            className="bg-primary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all shrink-0"
-                          >
-                            {isBusy(txStatus) ? "..." : "ADD TO REGISTRY"}
-                          </button>
-                          <button
-                            onClick={() => removeCaFile(idx)}
-                            className="text-on-surface-variant/50 hover:text-error transition-colors shrink-0"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          {/* Header: filename + hash + actions */}
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-4 h-4 text-tertiary shrink-0" />
+                            <span className="text-sm font-headline font-medium text-primary truncate">
+                              {meta?.subjectCn || meta?.subjectOrg || entry.name}
+                            </span>
+                            <span className="text-[10px] font-mono text-on-surface-variant truncate flex-1">
+                              {truncateHex(entry.hashHex, 10, 8)}
+                            </span>
+                            <TxBadge status={txStatus} />
+                            <button
+                              onClick={() => handleAddCa(entry)}
+                              disabled={disabled || isBusy(txStatus)}
+                              className="bg-primary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all shrink-0"
+                            >
+                              {isBusy(txStatus) ? "..." : "ADD TO REGISTRY"}
+                            </button>
+                            <button
+                              onClick={() => removeCaFile(idx)}
+                              className="text-on-surface-variant/50 hover:text-error transition-colors shrink-0"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {/* Auto-extracted metadata */}
+                          {meta && (
+                            <div className="flex flex-wrap gap-2 text-[10px] text-on-surface-variant pl-7">
+                              <span className="bg-surface px-2 py-0.5 rounded">{meta.algorithm}</span>
+                              <span className="bg-surface px-2 py-0.5 rounded">Expires: {meta.expires}</span>
+                              {meta.country && (
+                                <span className="bg-surface px-2 py-0.5 rounded">Country: {meta.country}</span>
+                              )}
+                              {meta.issuerCn && (
+                                <span className="bg-surface px-2 py-0.5 rounded">Issuer: {meta.issuerCn}</span>
+                              )}
+                            </div>
+                          )}
+                          {/* Auto-generated guide (editable) */}
+                          <div className="pl-7 space-y-1">
+                            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">
+                              CA Guide (auto-generated)
+                            </p>
+                            <input
+                              type="text"
+                              placeholder="CA Name"
+                              value={entry.guide.name}
+                              onChange={(e) => handleGuideChange(idx, "name", e.target.value)}
+                              className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Description"
+                              value={entry.guide.description || ""}
+                              onChange={(e) => handleGuideChange(idx, "description", e.target.value)}
+                              className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Issue URL (e.g., https://www.yessign.or.kr)"
+                              value={entry.guide.issue_url || ""}
+                              onChange={(e) => handleGuideChange(idx, "issue_url", e.target.value)}
+                              className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
+                            />
+                          </div>
                         </div>
                       );
                     })}
@@ -1843,5 +1964,45 @@ export default function AdminContent() {
         </div>
       </footer>
     </main>
+
+    {/* CA Registration Modal (on-chain + Git) — shared for add/remove/edit */}
+    <CaRegistrationModal
+      open={caModalOpen}
+      onClose={() => {
+        const entry = caModalEntry; // capture before clearing
+        const op = caModalOp;
+        setCaModalOpen(false);
+        setCaModalEntry(null);
+        setCaModalTxFn(null);
+        setCaModalCerts([]);
+        refresh();
+        fetchCaLeaves();
+        if (entry) {
+          setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
+        }
+        if (op === "remove-ca") {
+          setRemoveCaTxMap({});
+        }
+      }}
+      operation={caModalOp}
+      chainId={chainId || "31337"}
+      registryAddress={registryAddr}
+      adminAddress={account || ""}
+      serviceName={svcMetadata?.description || registryAddr}
+      executeTx={caModalEntry && writeContract ? async () => {
+        const tx = await writeContract.addCA(caModalEntry.hashHex);
+        const receipt = await tx.wait();
+        return receipt?.hash || tx.hash;
+      } : caModalTxFn}
+      certs={caModalEntry ? [{
+        hashHex: caModalEntry.hashHex,
+        derBase64: btoa(Array.from(caModalEntry.derBytes, (b) => String.fromCharCode(b)).join("")),
+        guide: caModalEntry.guide,
+      }] : caModalCerts}
+      existingCas={svcCaGuides}
+      githubToken={githubToken}
+      signer={writeContract?.runner as ethers.Signer || null}
+    />
+    </>
   );
 }
