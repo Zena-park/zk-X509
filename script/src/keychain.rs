@@ -329,6 +329,17 @@ pub mod windows_certstore {
         }
     }
 
+    /// Simple RAII guard for a certificate store handle.
+    struct StoreHandle(*mut std::ffi::c_void);
+
+    impl Drop for StoreHandle {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe { windows_sys::Win32::Security::Cryptography::CertCloseStore(self.0, 0); }
+            }
+        }
+    }
+
     /// Scan the Windows MY certificate store for identities with private keys.
     pub fn scan_identities() -> Result<Vec<(CertEntry, CertStoreIdentity)>, String> {
         use windows_sys::Win32::Security::Cryptography::*;
@@ -350,6 +361,7 @@ pub mod windows_certstore {
         if store.is_null() {
             return Err("Failed to open MY certificate store".to_string());
         }
+        let _store_guard = StoreHandle(store);
 
         // Enumerate certificates
         let mut cert_ctx: *const CERT_CONTEXT = ptr::null();
@@ -395,8 +407,6 @@ pub mod windows_certstore {
                 }
             }
         }
-
-        unsafe { CertCloseStore(store, 0); }
 
         Ok(entries)
     }
@@ -551,7 +561,7 @@ pub mod windows_certstore {
         let result = unsafe {
             CryptAcquireCertificatePrivateKey(
                 cert_ctx,
-                CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
+                CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG | CRYPT_ACQUIRE_SILENT_FLAG,
                 ptr::null(),
                 &mut key_handle,
                 &mut key_spec,
@@ -723,8 +733,9 @@ pub mod windows_certstore {
             let stripped = val.iter().position(|&b| b != 0).unwrap_or(val.len() - 1);
             let val = &val[stripped..];
             let needs_padding = val[0] & 0x80 != 0;
+            let content_len = val.len() + if needs_padding { 1 } else { 0 };
             let mut encoded = vec![0x02]; // INTEGER tag
-            encoded.push((val.len() + if needs_padding { 1 } else { 0 }) as u8);
+            encode_der_length(&mut encoded, content_len);
             if needs_padding {
                 encoded.push(0x00);
             }
@@ -732,12 +743,25 @@ pub mod windows_certstore {
             encoded
         }
 
+        /// Encode a DER length field (supports lengths >= 128).
+        fn encode_der_length(buf: &mut Vec<u8>, len: usize) {
+            if len < 128 {
+                buf.push(len as u8);
+            } else {
+                let len_be = len.to_be_bytes();
+                let start = len_be.iter().position(|&b| b != 0).unwrap_or(len_be.len() - 1);
+                let len_bytes = &len_be[start..];
+                buf.push(0x80 | len_bytes.len() as u8);
+                buf.extend_from_slice(len_bytes);
+            }
+        }
+
         let r_enc = encode_integer(r);
         let s_enc = encode_integer(s);
         let total_len = r_enc.len() + s_enc.len();
 
         let mut der = vec![0x30]; // SEQUENCE tag
-        der.push(total_len as u8);
+        encode_der_length(&mut der, total_len);
         der.extend(r_enc);
         der.extend(s_enc);
         Ok(der)
