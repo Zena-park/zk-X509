@@ -499,8 +499,13 @@ export default function AdminContent() {
     setCaFileProcessing(true);
     try {
       const newEntries: CaFileEntry[] = [];
+      const MAX_DER_SIZE = 10 * 1024; // 10KB — typical CA DER is 1-2KB
       for (const file of Array.from(files)) {
         if (!file.name.endsWith(".der")) continue;
+        if (file.size > MAX_DER_SIZE) {
+          console.warn(`Skipping ${file.name}: ${file.size} bytes exceeds ${MAX_DER_SIZE} limit`);
+          continue;
+        }
         const arrayBuffer = await file.arrayBuffer();
         const certDer = new Uint8Array(arrayBuffer);
         const hash = await computeCaLeafHash(certDer);
@@ -1300,10 +1305,14 @@ export default function AdminContent() {
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
                             <input
-                              type="text"
+                              type="url"
                               placeholder="Issue URL (e.g., https://www.yessign.or.kr)"
                               value={entry.guide.issue_url || ""}
-                              onChange={(e) => handleGuideChange(idx, "issue_url", e.target.value)}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v && !v.startsWith("https://") && !v.startsWith("http://")) return;
+                                handleGuideChange(idx, "issue_url", v);
+                              }}
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
                           </div>
