@@ -46,14 +46,33 @@ import CaRegistrationModal from "./CaRegistrationModal";
 const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
 const MAX_DER_SIZE = 10 * 1024; // 10KB — typical CA DER is 1-2KB
 
-/** Sanitize URL input: block dangerous schemes like javascript: */
-function sanitizeUrl(value: string): string | null {
+/** Block dangerous URL schemes during typing (blacklist approach).
+ *  Allows partial input so users can type character-by-character. */
+function sanitizeUrlInput(value: string): string | null {
   if (!value) return value;
-  const trimmed = value.trim().toLowerCase();
-  if (trimmed.startsWith("javascript:") || trimmed.startsWith("data:") || trimmed.startsWith("vbscript:")) {
+  const lower = value.trimStart().toLowerCase();
+  if (lower.startsWith("javascript:") || lower.startsWith("data:") || lower.startsWith("vbscript:")) {
     return null;
   }
   return value;
+}
+
+/** Validate a completed URL on blur/save: must be absolute http:// or https://.
+ *  Returns the trimmed URL if valid, or empty string if not. */
+function validateUrlOnCommit(value: string): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    const protocol = url.protocol.toLowerCase();
+    if (protocol === "http:" || protocol === "https:") {
+      return trimmed;
+    }
+    return "";
+  } catch {
+    return "";
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -509,6 +528,7 @@ export default function AdminContent() {
   /* ---------- CA file handlers ---------- */
   const processFiles = useCallback(async (files: FileList | File[]) => {
     setCaFileProcessing(true);
+    setCaFileWarning("");
     try {
       const newEntries: CaFileEntry[] = [];
       const skipped: string[] = [];
@@ -1240,7 +1260,7 @@ export default function AdminContent() {
                   <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-3 flex items-start gap-2">
                     <span className="text-yellow-400 text-xs shrink-0">⚠</span>
                     <p className="text-xs text-yellow-300/80">{caFileWarning}</p>
-                    <button onClick={() => setCaFileWarning("")} className="text-yellow-400/60 hover:text-yellow-400 ml-auto shrink-0 text-xs">✕</button>
+                    <button type="button" aria-label="Dismiss file warning" onClick={() => setCaFileWarning("")} className="text-yellow-400/60 hover:text-yellow-400 ml-auto shrink-0 text-xs">✕</button>
                   </div>
                 )}
 
@@ -1333,8 +1353,23 @@ export default function AdminContent() {
                               placeholder="Issue URL (e.g., https://www.yessign.or.kr)"
                               value={entry.guide.issue_url || ""}
                               onChange={(e) => {
-                                const safe = sanitizeUrl(e.target.value);
-                                if (safe !== null) handleGuideChange(idx, "issue_url", safe);
+                                const safe = sanitizeUrlInput(e.target.value);
+                                if (safe === null) {
+                                  e.target.setCustomValidity("Dangerous URL scheme blocked.");
+                                  e.target.reportValidity();
+                                  handleGuideChange(idx, "issue_url", "");
+                                } else {
+                                  e.target.setCustomValidity("");
+                                  handleGuideChange(idx, "issue_url", safe);
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const validated = validateUrlOnCommit(e.target.value);
+                                if (e.target.value && !validated) {
+                                  e.target.setCustomValidity("Please enter a URL starting with http:// or https://.");
+                                  e.target.reportValidity();
+                                }
+                                handleGuideChange(idx, "issue_url", validated);
                               }}
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
@@ -1920,12 +1955,28 @@ export default function AdminContent() {
                             <div>
                               <label className="text-[10px] font-label text-on-surface-variant mb-0.5 block">Issue URL</label>
                               <input
+                                type="url"
                                 className="w-full bg-surface border-none rounded-lg px-3 py-2 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
                                 placeholder="https://ca-provider.com/issue"
                                 value={edit.issue_url}
                                 onChange={(e) => {
-                                  const safe = sanitizeUrl(e.target.value);
-                                  if (safe !== null) updateGuideField(leaf, "issue_url", safe);
+                                  const safe = sanitizeUrlInput(e.target.value);
+                                  if (safe === null) {
+                                    e.target.setCustomValidity("Dangerous URL scheme blocked.");
+                                    e.target.reportValidity();
+                                    updateGuideField(leaf, "issue_url", "");
+                                  } else {
+                                    e.target.setCustomValidity("");
+                                    updateGuideField(leaf, "issue_url", safe);
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  const validated = validateUrlOnCommit(e.target.value);
+                                  if (e.target.value && !validated) {
+                                    e.target.setCustomValidity("Please enter a URL starting with http:// or https://.");
+                                    e.target.reportValidity();
+                                  }
+                                  updateGuideField(leaf, "issue_url", validated);
                                 }}
                                 disabled={disabled}
                               />
