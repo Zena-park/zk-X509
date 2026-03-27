@@ -532,8 +532,9 @@ pub mod windows_certstore {
         };
 
         // Find certificate by thumbprint
-        // CRYPT_INTEGER_BLOB.pbData is declared *mut but only read by CertFindCertificateInStore.
-        // Use a mutable copy to avoid casting const→mut (undefined behavior).
+        // CRYPT_INTEGER_BLOB.pbData is declared *mut, but CertFindCertificateInStore only reads it.
+        // Use a mutable copy to avoid relying on the API not mutating pbData
+        // and to avoid potential aliasing violations if it does.
         let mut thumbprint_buf = identity.thumbprint.clone();
         let hash_blob = CRYPT_INTEGER_BLOB {
             cbData: thumbprint_buf.len() as u32,
