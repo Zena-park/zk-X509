@@ -394,6 +394,10 @@ export default function AdminContent() {
   const [caModalCerts, setCaModalCerts] = useState<Array<{ hashHex: string; derBase64: string; guide: CaGuide }>>([]);
   // Security: keep token in memory only — never persist to sessionStorage/localStorage
   const [githubToken, setGithubToken] = useState("");
+  // One-time cleanup of legacy sessionStorage key
+  useEffect(() => {
+    try { sessionStorage.removeItem("zk-x509-github-token"); } catch { /* ignore */ }
+  }, []);
 
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
@@ -1208,6 +1212,10 @@ export default function AdminContent() {
                     placeholder="GitHub Token (optional — enables auto PR to CA registry)"
                     value={githubToken}
                     onChange={(e) => setGithubToken(e.target.value)}
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     className="flex-1 bg-transparent text-xs text-on-surface placeholder:text-on-surface-variant/50 outline-none"
                   />
                   {githubToken && (
