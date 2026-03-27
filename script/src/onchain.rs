@@ -131,7 +131,9 @@ fn decode_bytes32_array(hex_str: &str) -> Result<Vec<Hash>, String> {
 
     let len_bytes: [u8; 8] = raw[56..64].try_into()
         .map_err(|_| "Invalid array length encoding".to_string())?;
-    let count = u64::from_be_bytes(len_bytes) as usize;
+    let count_u64 = u64::from_be_bytes(len_bytes);
+    let count: usize = usize::try_from(count_u64)
+        .map_err(|_| format!("Array count {} exceeds platform usize", count_u64))?;
 
     let data_start = 64;
     let expected_len = count.checked_mul(32)
@@ -207,6 +209,21 @@ mod tests {
         assert!(decode_bytes32_array("0x0000000000000000000000000000000000000000000000000000000000000020").is_err());
         // Empty hex
         assert!(decode_bytes32_array("0x").is_err());
+    }
+
+    #[test]
+    fn test_decode_huge_count_overflow_rejects() {
+        // count = 0x0800000000000000 → count * 32 overflows usize on 64-bit
+        let hex = format!(
+            "0x{}{}",
+            "0000000000000000000000000000000000000000000000000000000000000020",
+            "0800000000000000000000000000000000000000000000000000000000000000",
+        );
+        let result = decode_bytes32_array(&hex);
+        assert!(result.is_err());
+        // Verify it's an overflow error, not a truncation error
+        let err = result.unwrap_err();
+        assert!(err.contains("overflow") || err.contains("exceeds"), "unexpected error: {}", err);
     }
 
     #[test]
