@@ -122,9 +122,8 @@ pub fn sign_nullifier(
 
 /// RSA ownership signing (PKCS#1 v1.5 with SHA-256).
 ///
-/// The parsed key struct is dropped immediately after signing.
-/// Note: ECDSA SigningKey implements ZeroizeOnDrop (zeroed automatically),
-/// but RsaPrivateKey does not without the "zeroize" feature flag.
+/// RsaPrivateKey implements ZeroizeOnDrop (rsa 0.9+), so key material
+/// is securely erased from memory when dropped after signing.
 /// The keychain-based flow (production) never calls this — only test/file-based paths.
 fn sign_rsa_ownership(key_der: &[u8], challenge_hash: &[u8; 32]) -> Result<Vec<u8>, String> {
     let priv_key = RsaPrivateKey::from_pkcs1_der(key_der)
