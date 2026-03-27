@@ -102,6 +102,7 @@ contract RegistryFactory {
     error OnlyOwner();
     error ZeroVKey();
     error ZeroVerifier();
+    error VerifierNotContract();
     error DuplicateVKey();
     error InsufficientFee();
     error UnexpectedValue();
@@ -133,6 +134,7 @@ contract RegistryFactory {
         address _feeRecipient
     ) {
         if (_sp1Verifier == address(0)) revert ZeroVerifier();
+        if (_sp1Verifier.code.length == 0) revert VerifierNotContract();
         if (_programVKey == bytes32(0)) revert ZeroVKey();
         if (_creationFee > 0 && _feeRecipient == address(0)) revert ZeroFeeRecipient();
 

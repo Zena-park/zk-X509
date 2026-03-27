@@ -110,6 +110,7 @@ contract IdentityRegistry is Initializable {
 
     error InvalidCaMerkleRoot(bytes32 proofRoot, bytes32 expectedRoot);
     error ZeroMerkleRoot();
+    error ZeroProgramVKey();
     error AlreadyRegistered(bytes32 nullifier);
     error UserAlreadyVerified(address user);
     error ProofTooOld(uint64 proofTimestamp, uint256 blockTimestamp);
@@ -117,6 +118,7 @@ contract IdentityRegistry is Initializable {
     error RegistrantMismatch(address proofRegistrant, address actualSender);
     error OnlyOwner();
     error ZeroAddress();
+    error VerifierNotContract();
     error ContractPaused();
     error NotPendingOwner();
     error NullifierNotRegistered(bytes32 nullifier);
@@ -179,7 +181,8 @@ contract IdentityRegistry is Initializable {
         address _owner
     ) external initializer {
         if (_sp1Verifier == address(0)) revert ZeroAddress();
-        if (_programVKey == bytes32(0)) revert ZeroMerkleRoot();
+        if (_sp1Verifier.code.length == 0) revert VerifierNotContract();
+        if (_programVKey == bytes32(0)) revert ZeroProgramVKey();
         if (_owner == address(0)) revert ZeroAddress();
         if (_maxWallets == 0) revert ZeroMaxWallets();
         if (_minDisclosureMask > 0x0F) revert InvalidDisclosureMask(_minDisclosureMask);
