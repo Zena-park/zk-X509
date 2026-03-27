@@ -399,6 +399,34 @@ contract RegistryFactoryTest is Test {
         factory.acceptOwnership();
     }
 
+    function test_TransferOwnership_CanBeOverwritten() public {
+        factory.transferOwnership(alice);
+        assertEq(factory.pendingOwner(), alice);
+
+        // Overwrite with a new pending owner
+        factory.transferOwnership(bob);
+        assertEq(factory.pendingOwner(), bob);
+
+        // Old pending owner (alice) cannot accept anymore
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.NotPendingOwner.selector);
+        factory.acceptOwnership();
+
+        // New pending owner (bob) can accept
+        vm.prank(bob);
+        factory.acceptOwnership();
+        assertEq(factory.owner(), bob);
+    }
+
+    function test_AcceptOwnership_RevertWhenNoPendingOwner() public {
+        // No transfer initiated — pendingOwner is address(0)
+        assertEq(factory.pendingOwner(), address(0));
+
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.NotPendingOwner.selector);
+        factory.acceptOwnership();
+    }
+
     function test_ERC20ModeRejectsValue() public {
         MockTON ton = new MockTON();
         RegistryFactory feeFactory = new RegistryFactory(
