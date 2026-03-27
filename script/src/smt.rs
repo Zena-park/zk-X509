@@ -90,7 +90,9 @@ impl CrlMerkleTree {
         leaves.sort();
         leaves.dedup();
 
-        let layers = build_layers(&leaves);
+        // Safety: leaves always contains at least MIN_SENTINEL + MAX_SENTINEL
+        let layers = build_layers(&leaves)
+            .expect("CRL tree has at least 2 sentinel leaves");
 
         Self { leaves, layers }
     }
@@ -172,8 +174,10 @@ impl CrlMerkleTree {
 }
 
 /// Build Merkle tree layers from leaves.
-fn build_layers(leaves: &[Hash]) -> Vec<Vec<Hash>> {
-    assert!(!leaves.is_empty());
+fn build_layers(leaves: &[Hash]) -> Result<Vec<Vec<Hash>>, String> {
+    if leaves.is_empty() {
+        return Err("Cannot build Merkle tree from empty leaves".to_string());
+    }
 
     let mut layers: Vec<Vec<Hash>> = vec![leaves.to_vec()];
 
@@ -190,7 +194,7 @@ fn build_layers(leaves: &[Hash]) -> Vec<Vec<Hash>> {
         layers.push(next);
     }
 
-    layers
+    Ok(layers)
 }
 
 /// Verify a non-inclusion proof against a root.
