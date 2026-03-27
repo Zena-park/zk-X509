@@ -44,10 +44,23 @@ export interface Announcement {
   createdAt: string;
 }
 
+// ── Input Validation ─────────────────────────────
+
+/** Validate chainId is numeric and address is 0x-prefixed hex. Prevents path traversal. */
+function validatePathParams(chainId: string, address: string): void {
+  if (!/^\d+$/.test(chainId)) throw new Error(`Invalid chainId: ${chainId}`);
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error(`Invalid address: ${address}`);
+}
+
+function validateAddress(address: string): void {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error(`Invalid address: ${address}`);
+}
+
 // ── CA Registry (Git repository) ────────────────
 
 /// Build the service.json URL for a given chain + registry address.
 function serviceJsonUrl(chainId: string, registryAddr: string): string {
+  validatePathParams(chainId, registryAddr);
   return `${CA_REGISTRY_BASE}/services/${chainId}/${registryAddr.toLowerCase()}/service.json`;
 }
 
@@ -85,6 +98,7 @@ export function getCaRegistryRepoUrl(): string {
 
 export async function getRegistryMetadata(address: string): Promise<RegistryMetadata | null> {
   try {
+    validateAddress(address);
     const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}`);
     if (res.status === 404) return null;
     if (!res.ok) return null;
@@ -99,6 +113,7 @@ export async function updateRegistryMetadata(
   data: Partial<RegistryMetadata>,
 ): Promise<boolean> {
   try {
+    validateAddress(address);
     const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -114,6 +129,7 @@ export async function updateRegistryMetadata(
 
 export async function getAnnouncements(address: string): Promise<Announcement[]> {
   try {
+    validateAddress(address);
     const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements`);
     if (!res.ok) return [];
     return await res.json();
@@ -128,6 +144,7 @@ export async function postAnnouncement(
   body: string,
 ): Promise<Announcement | null> {
   try {
+    validateAddress(address);
     const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -142,7 +159,8 @@ export async function postAnnouncement(
 
 export async function deleteAnnouncement(address: string, id: string): Promise<boolean> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements/${id}`, {
+    validateAddress(address);
+    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
     return res.ok;
