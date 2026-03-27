@@ -188,12 +188,14 @@ def validate_service_path(service_dir: str) -> list[str]:
     errors = []
     parts = service_dir.strip("/").split("/")
     # Expected: services/{chainId}/{addr}
-    if len(parts) >= 3:
-        chain_id, addr = parts[-2], parts[-1]
-        if not chain_id.isdigit():
-            errors.append(f"{service_dir}: chainId '{chain_id}' is not a valid number")
-        if not re.fullmatch(r"0x[0-9a-f]{40}", addr):
-            errors.append(f"{service_dir}: address '{addr}' must be lowercase hex with 0x prefix (42 chars)")
+    if len(parts) < 3:
+        errors.append(f"{service_dir}: invalid path structure, expected services/{{chainId}}/{{addr}}")
+        return errors
+    chain_id, addr = parts[-2], parts[-1]
+    if not chain_id.isdigit():
+        errors.append(f"{service_dir}: chainId '{chain_id}' is not a valid number")
+    if not re.fullmatch(r"0x[0-9a-f]{40}", addr):
+        errors.append(f"{service_dir}: address '{addr}' must be lowercase hex with 0x prefix (42 chars)")
     return errors
 ```
 
@@ -401,13 +403,9 @@ def validate_der(filepath: Path) -> dict:
             f"Expires in {(cert.not_valid_after_utc - now).days} days"
         )
 
-    # CA check (BasicConstraints)
-    try:
-        bc = cert.extensions.get_extension_for_class(x509.BasicConstraints)
-        if not bc.value.ca:
-            result["warnings"].append("BasicConstraints CA=false (not a CA cert)")
-    except x509.ExtensionNotFound:
-        result["warnings"].append("No BasicConstraints extension")
+    # CA check (BasicConstraints CA=true OR self-signed)
+    if not is_ca_certificate(cert):
+        result["warnings"].append(f"{filepath.name}: not a CA certificate")
 
     return result
 
@@ -455,14 +453,21 @@ def validate_service_json(filepath: Path, certs_dir: Path) -> dict:
     return result
 
 
-def detect_service_dirs(changed_files: list[str]) -> set[str]:
-    """Extract unique service directory prefixes from changed files."""
+def detect_service_dirs(changed_files: list[str]) -> tuple[set[str], list[str]]:
+    """Extract unique service directory prefixes from changed files.
+    Returns (valid_dirs, path_errors) after running validate_service_path()."""
     dirs = set()
+    path_errors = []
     for f in changed_files:
         parts = f.split("/")
         if len(parts) >= 3 and parts[0] == "services":
-            dirs.add(f"{parts[0]}/{parts[1]}/{parts[2]}")
-    return dirs
+            service_dir = f"{parts[0]}/{parts[1]}/{parts[2]}"
+            errors = validate_service_path(service_dir)
+            if errors:
+                path_errors.extend(errors)
+            else:
+                dirs.add(service_dir)
+    return dirs, path_errors
 
 
 def main():
@@ -473,9 +478,9 @@ def main():
     args = parser.parse_args()
 
     changed = [f for f in args.changed_files.strip().split("\n") if f]
-    service_dirs = detect_service_dirs(changed)
+    service_dirs, path_errors = detect_service_dirs(changed)
 
-    errors = []
+    errors = list(path_errors)
     warnings = []
     cert_results = []
 
