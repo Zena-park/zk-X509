@@ -117,6 +117,7 @@ contract IdentityRegistry is Initializable {
     error RegistrantMismatch(address proofRegistrant, address actualSender);
     error OnlyOwner();
     error ZeroAddress();
+    error VerifierNotContract();
     error ContractPaused();
     error NotPendingOwner();
     error NullifierNotRegistered(bytes32 nullifier);
@@ -179,6 +180,7 @@ contract IdentityRegistry is Initializable {
         address _owner
     ) external initializer {
         if (_sp1Verifier == address(0)) revert ZeroAddress();
+        if (_sp1Verifier.code.length == 0) revert VerifierNotContract();
         if (_programVKey == bytes32(0)) revert ZeroMerkleRoot();
         if (_owner == address(0)) revert ZeroAddress();
         if (_maxWallets == 0) revert ZeroMaxWallets();
