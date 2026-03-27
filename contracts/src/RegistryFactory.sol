@@ -108,6 +108,7 @@ contract RegistryFactory {
     error FeeTransferFailed();
     error RefundFailed();
     error ZeroFeeRecipient();
+    error ZeroAddress();
     error NotPendingOwner();
 
     // ============ Modifiers ============
@@ -239,6 +240,7 @@ contract RegistryFactory {
     /// @notice Start 2-step ownership transfer. New owner must call acceptOwnership().
     /// @param newOwner The address to transfer ownership to.
     function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }

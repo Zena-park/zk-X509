@@ -438,7 +438,7 @@ contract IdentityRegistryTest is Test {
             IdentityRegistry.initialize,
             (address(mockVerifier), PROGRAM_V_KEY, 0, 0, 3600, address(this))
         );
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.ZeroMaxWallets.selector));
         new ERC1967Proxy(address(impl), initData);
     }
 

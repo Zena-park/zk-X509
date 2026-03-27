@@ -121,6 +121,7 @@ contract IdentityRegistry is Initializable {
     error NotPendingOwner();
     error NullifierNotRegistered(bytes32 nullifier);
     error NullifierRevoked(bytes32 nullifier);
+    error ZeroMaxWallets();
     error WalletIndexOutOfRange(uint32 walletIndex, uint32 maxAllowed);
     error CertAlreadyExpired(uint64 notAfter, uint256 blockTimestamp);
     error ChainIdMismatch(uint64 proofChainId, uint256 expectedChainId);
@@ -180,7 +181,7 @@ contract IdentityRegistry is Initializable {
         if (_sp1Verifier == address(0)) revert ZeroAddress();
         if (_programVKey == bytes32(0)) revert ZeroMerkleRoot();
         if (_owner == address(0)) revert ZeroAddress();
-        if (_maxWallets == 0) revert WalletIndexOutOfRange(0, 0);
+        if (_maxWallets == 0) revert ZeroMaxWallets();
         if (_minDisclosureMask > 0x0F) revert InvalidDisclosureMask(_minDisclosureMask);
         if (_maxProofAge < 5 minutes || _maxProofAge > 24 hours) revert ProofAgeOutOfRange(_maxProofAge, 5 minutes, 24 hours);
         SP1_VERIFIER = ISP1Verifier(_sp1Verifier);
