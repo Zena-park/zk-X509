@@ -46,7 +46,7 @@ pub fn build_ca_merkle_from_onchain(
         ))?;
 
     println!("On-chain CAs: {}, your index: {}", ca_leaves.len(), my_index);
-    Ok(merkle::merkle_root_and_proof(&ca_leaves, my_index))
+    merkle::merkle_root_and_proof(&ca_leaves, my_index)
 }
 
 /// Build CA Merkle tree: try on-chain first, fall back to single-CA local mode.
@@ -64,7 +64,8 @@ pub fn build_ca_merkle(
         Err(e) => {
             eprintln!("  ⚠ On-chain CA Merkle failed: {}", e);
             eprintln!("    Falling back to single-CA local mode (proof may not verify on-chain)");
-            let (_leaf, root, proof) = crate::merkle::ca_merkle_tree(ca_pub_key, &[]);
+            let (_leaf, root, proof) = crate::merkle::ca_merkle_tree(ca_pub_key, &[])
+                .expect("Single-leaf CA Merkle tree cannot fail");
             (root, proof)
         }
     }

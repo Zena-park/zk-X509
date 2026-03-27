@@ -107,7 +107,8 @@ fn main() {
                 .unwrap_or_else(|e| panic!("Failed to read extra CA {:?}: {}", extra, e));
             extra_hashes.push(sha2::Sha256::digest(&extra_pub).into());
         }
-        let (_, ca_merkle_root, _) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &extra_hashes);
+        let (_, ca_merkle_root, _) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &extra_hashes)
+            .expect("Failed to build CA Merkle tree");
         println!("CA Merkle Root: 0x{}", hex::encode(ca_merkle_root));
         println!("CA count: {}", 1 + extra_hashes.len());
         return;
@@ -197,7 +198,8 @@ fn main() {
             extra_hashes.push(extra_hash);
             println!("Extra CA: {} (hash: 0x{})", extra.display(), hex::encode(extra_hash));
         }
-        let (_ca_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &extra_hashes);
+        let (_ca_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &extra_hashes)
+            .expect("Failed to build CA Merkle tree");
         println!("CA Merkle Tree: {} leaves", 1 + extra_hashes.len());
         (root, proof)
     };

@@ -100,7 +100,8 @@ fn main() {
         println!("Fetching CA list from on-chain ({})...", rpc_url);
         zk_x509_script::onchain::build_ca_merkle(rpc_url, &registry_address, &ca_pub_key)
     } else {
-        let (_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[]);
+        let (_leaf, root, proof) = zk_x509_script::merkle::ca_merkle_tree(&ca_pub_key, &[])
+            .expect("Failed to build CA Merkle tree");
         (root, proof)
     };
 
