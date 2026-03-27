@@ -103,9 +103,11 @@ function detectAlgorithm(cert: x509.X509Certificate): string {
     const name = algo.name || "";
 
     if (name.includes("RSA") || name === "RSASSA-PKCS1-v1_5") {
-      // Try to get modulus length
+      // Use modulusLength if available (set by @peculiar/x509)
+      const modLen = (algo as RsaHashedKeyAlgorithm).modulusLength;
+      if (modLen) return `RSA-${modLen}`;
+      // Fallback: approximate from SPKI DER length
       const rawKey = cert.publicKey.rawData;
-      // Approximate RSA key size from SPKI length
       if (rawKey.byteLength > 400) return "RSA-4096";
       if (rawKey.byteLength > 250) return "RSA-2048";
       return "RSA";

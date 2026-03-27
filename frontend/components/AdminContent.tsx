@@ -1972,16 +1972,18 @@ export default function AdminContent() {
     <CaRegistrationModal
       open={caModalOpen}
       onClose={() => {
+        const entry = caModalEntry; // capture before clearing
+        const op = caModalOp;
         setCaModalOpen(false);
         setCaModalEntry(null);
         setCaModalTxFn(null);
         setCaModalCerts([]);
         refresh();
         fetchCaLeaves();
-        if (caModalEntry) {
-          setCaFiles((prev) => prev.filter((f) => f.hashHex !== caModalEntry.hashHex));
+        if (entry) {
+          setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
         }
-        if (caModalOp === "remove-ca") {
+        if (op === "remove-ca") {
           setRemoveCaTxMap({});
         }
       }}
@@ -1997,7 +1999,7 @@ export default function AdminContent() {
       } : caModalTxFn}
       certs={caModalEntry ? [{
         hashHex: caModalEntry.hashHex,
-        derBase64: btoa(String.fromCharCode(...caModalEntry.derBytes)),
+        derBase64: btoa(Array.from(caModalEntry.derBytes, (b) => String.fromCharCode(b)).join("")),
         guide: caModalEntry.guide,
       }] : caModalCerts}
       existingCas={svcCaGuides}

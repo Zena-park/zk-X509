@@ -64,7 +64,8 @@ export async function createCaRegistryPr(
   const mainSha = await getRef(token, UPSTREAM_OWNER, UPSTREAM_REPO, "heads/main");
 
   // 3. Create branch in fork
-  const branchName = `ca-update/${files.chainId}/${files.registryAddress.slice(0, 10)}/${Date.now()}`;
+  const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9-_.]/g, "-");
+  const branchName = `ca-update/${sanitize(files.chainId)}/${sanitize(files.registryAddress.slice(0, 10))}/${Date.now()}`;
   await createRef(token, user, UPSTREAM_REPO, branchName, mainSha);
 
   // 4. Commit files
@@ -134,9 +135,9 @@ async function ensureFork(token: string, user: string): Promise<void> {
     throw new Error(`Failed to fork: ${forkRes.status} ${await forkRes.text()}`);
   }
 
-  // Wait for fork to be ready (GitHub may take a few seconds)
-  for (let i = 0; i < 10; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
+  // Wait for fork to be ready with exponential backoff
+  for (let i = 0; i < 8; i++) {
+    await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** i, 5000)));
     const check = await fetch(`${API_BASE}/repos/${user}/${UPSTREAM_REPO}`, {
       headers: authHeaders(token),
     });
@@ -151,6 +152,7 @@ async function getRef(token: string, owner: string, repo: string, ref: string): 
   });
   if (!res.ok) throw new Error(`Failed to get ref: ${res.status}`);
   const data = await res.json();
+  if (!data?.object?.sha) throw new Error("Invalid ref response: missing SHA");
   return data.object.sha;
 }
 
@@ -208,5 +210,6 @@ async function createPullRequest(
   });
   if (!res.ok) throw new Error(`Failed to create PR: ${res.status} ${await res.text()}`);
   const data = await res.json();
+  if (!data?.html_url || !data?.number) throw new Error("Invalid PR response");
   return { prUrl: data.html_url, prNumber: data.number };
 }

@@ -6,7 +6,7 @@ import { ethers } from "ethers";
 import { createCaRegistryPr, getGitHubUser, type CaRegistryFiles } from "@/lib/github";
 import { type CaGuide } from "@/lib/platform";
 
-type Step = "tx" | "tx-done" | "sign" | "git" | "done" | "error";
+type Step = "tx" | "tx-done" | "sign" | "git" | "done" | "error" | "partial";
 
 interface Props {
   open: boolean;
@@ -100,8 +100,13 @@ export default function CaRegistrationModal({
       setSignature(sig);
       setStep("git");
 
-      // Auto-create PR
-      await createPr(sig, timestamp);
+      // Create PR — separate error handling so TX success is preserved
+      try {
+        await createPr(sig, timestamp);
+      } catch (prError: unknown) {
+        setErrorMsg(prError instanceof Error ? prError.message : "Failed to create PR");
+        setStep(txHash ? "partial" : "error");
+      }
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : "Signature rejected");
       setStep("error");
@@ -116,13 +121,15 @@ export default function CaRegistrationModal({
         allCas[cert.hashHex] = cert.guide;
       }
 
-      // Build service.json
+      // Build service.json — preserve existing metadata on update
+      const today = new Date().toISOString().split("T")[0];
+      const isNew = Object.keys(existingCas).length === 0;
       const serviceJson = JSON.stringify({
         name: serviceName || "Unnamed Service",
         description: "",
         admin: adminAddress.toLowerCase(),
-        created_at: new Date().toISOString().split("T")[0],
-        updated_at: new Date().toISOString().split("T")[0],
+        created_at: isNew ? today : undefined, // omit on update (keeps existing)
+        updated_at: today,
         cas: allCas,
       }, null, 2);
 
@@ -181,7 +188,7 @@ export default function CaRegistrationModal({
 
   if (!open) return null;
 
-  const canClose = step === "done" || step === "error";
+  const canClose = step === "done" || step === "error" || step === "partial";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -252,6 +259,21 @@ export default function CaRegistrationModal({
             >
               View PR <ExternalLink className="w-3 h-3" />
             </a>
+          </div>
+        )}
+
+        {/* Partial success: TX ok, PR failed */}
+        {step === "partial" && (
+          <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-4 space-y-2">
+            <p className="text-sm text-yellow-400 font-medium">On-chain TX succeeded, but PR creation failed</p>
+            <p className="text-xs text-yellow-300/80">{errorMsg}</p>
+            <p className="text-xs text-on-surface-variant">You can create the PR manually later.</p>
+            <button
+              onClick={onClose}
+              className="bg-surface-highest text-on-surface px-4 py-1.5 rounded-lg text-xs font-bold"
+            >
+              Close
+            </button>
           </div>
         )}
 
