@@ -58,10 +58,10 @@ pub fn merkle_root(leaves: &[Hash]) -> Result<Hash, String> {
 
 /// Generate Merkle root + proof in a single tree build.
 pub fn merkle_root_and_proof(leaves: &[Hash], leaf_index: usize) -> Result<(Hash, Vec<Hash>), String> {
+    let layers = build_tree(leaves)?;
     if leaf_index >= leaves.len() {
         return Err(format!("leaf_index {} out of range (len {})", leaf_index, leaves.len()));
     }
-    let layers = build_tree(leaves)?;
     let root = layers.last().unwrap()[0];
     let proof = extract_proof_from_layers(&layers, leaf_index);
     Ok((root, proof))
@@ -71,10 +71,10 @@ pub fn merkle_root_and_proof(leaves: &[Hash], leaf_index: usize) -> Result<(Hash
 /// For the zkVM, we only need the sibling hashes — direction is implicit
 /// from sorted-pair hashing.
 pub fn merkle_proof(leaves: &[Hash], leaf_index: usize) -> Result<Vec<Hash>, String> {
+    let layers = build_tree(leaves)?;
     if leaf_index >= leaves.len() {
         return Err(format!("leaf_index {} out of range (len {})", leaf_index, leaves.len()));
     }
-    let layers = build_tree(leaves)?;
     Ok(extract_proof_from_layers(&layers, leaf_index))
 }
 
@@ -129,6 +129,8 @@ mod tests {
     fn test_empty_leaves_returns_error() {
         assert!(build_tree(&[]).is_err());
         assert!(merkle_root(&[]).is_err());
+        assert!(merkle_proof(&[], 0).is_err());
+        assert!(merkle_root_and_proof(&[], 0).is_err());
     }
 
     #[test]
