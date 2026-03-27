@@ -119,6 +119,12 @@ contract RegistryFactoryTest is Test {
         registry.addCA(caHash);
     }
 
+    function test_RevertVerifierNotContract() public {
+        // EOA address (no code) should revert
+        vm.expectRevert(RegistryFactory.VerifierNotContract.selector);
+        new RegistryFactory(address(0xDEAD), PROGRAM_V_KEY, address(0), 0, address(0));
+    }
+
     function test_RevertZeroMaxWallets() public {
         vm.expectRevert(RegistryFactory.ZeroMaxWallets.selector);
         factory.createRegistry("Test", 0, 0, 3600);

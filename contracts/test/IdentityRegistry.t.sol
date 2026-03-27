@@ -442,6 +442,27 @@ contract IdentityRegistryTest is Test {
         new ERC1967Proxy(address(impl), initData);
     }
 
+    function test_Initialize_RevertVerifierNotContract() public {
+        // EOA (no code) as verifier should revert
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(0xDEAD), PROGRAM_V_KEY, 1, 0, 3600, address(this))
+        );
+        vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.VerifierNotContract.selector));
+        new ERC1967Proxy(address(impl), initData);
+    }
+
+    function test_Initialize_RevertZeroProgramVKey() public {
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this))
+        );
+        vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.ZeroProgramVKey.selector));
+        new ERC1967Proxy(address(impl), initData);
+    }
+
     // ============ Certificate expiry tests ============
 
     function test_CertExpiry_VerifiedBeforeExpiry() public {
