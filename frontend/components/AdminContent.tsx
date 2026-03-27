@@ -44,6 +44,17 @@ import { parseCaDer, generateCaGuide, type CaMetadata } from "@/lib/x509";
 import CaRegistrationModal from "./CaRegistrationModal";
 
 const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
+const MAX_DER_SIZE = 10 * 1024; // 10KB — typical CA DER is 1-2KB
+
+/** Sanitize URL input: block dangerous schemes like javascript: */
+function sanitizeUrl(value: string): string | null {
+  if (!value) return value;
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed.startsWith("javascript:") || trimmed.startsWith("data:") || trimmed.startsWith("vbscript:")) {
+    return null;
+  }
+  return value;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -343,6 +354,7 @@ export default function AdminContent() {
 
   const [caFiles, setCaFiles] = useState<CaFileEntry[]>([]);
   const [caFileProcessing, setCaFileProcessing] = useState(false);
+  const [caFileWarning, setCaFileWarning] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -499,8 +511,13 @@ export default function AdminContent() {
     setCaFileProcessing(true);
     try {
       const newEntries: CaFileEntry[] = [];
+      const skipped: string[] = [];
       for (const file of Array.from(files)) {
         if (!file.name.endsWith(".der")) continue;
+        if (file.size > MAX_DER_SIZE) {
+          skipped.push(`${file.name} (${(file.size / 1024).toFixed(1)}KB)`);
+          continue;
+        }
         const arrayBuffer = await file.arrayBuffer();
         const certDer = new Uint8Array(arrayBuffer);
         const hash = await computeCaLeafHash(certDer);
@@ -509,6 +526,9 @@ export default function AdminContent() {
         const metadata = parseCaDer(certDer);
         const guide = metadata ? generateCaGuide(metadata) : EMPTY_CA_GUIDE;
         newEntries.push({ name: file.name, hash, hashHex, derBytes: certDer, metadata, guide });
+      }
+      if (skipped.length > 0) {
+        setCaFileWarning(`Skipped ${skipped.length} file(s) exceeding ${MAX_DER_SIZE / 1024}KB: ${skipped.join(", ")}`);
       }
       setCaFiles((prev) => {
         const existing = new Set(prev.map((f) => f.hashHex));
@@ -1215,6 +1235,15 @@ export default function AdminContent() {
                   />
                 </div>
 
+                {/* File size warning */}
+                {caFileWarning && (
+                  <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-3 flex items-start gap-2">
+                    <span className="text-yellow-400 text-xs shrink-0">⚠</span>
+                    <p className="text-xs text-yellow-300/80">{caFileWarning}</p>
+                    <button onClick={() => setCaFileWarning("")} className="text-yellow-400/60 hover:text-yellow-400 ml-auto shrink-0 text-xs">✕</button>
+                  </div>
+                )}
+
                 {/* Pending files — ready to add on-chain */}
                 {caFiles.length > 0 && (
                   <div className="mt-6 space-y-2">
@@ -1300,10 +1329,13 @@ export default function AdminContent() {
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
                             <input
-                              type="text"
+                              type="url"
                               placeholder="Issue URL (e.g., https://www.yessign.or.kr)"
                               value={entry.guide.issue_url || ""}
-                              onChange={(e) => handleGuideChange(idx, "issue_url", e.target.value)}
+                              onChange={(e) => {
+                                const safe = sanitizeUrl(e.target.value);
+                                if (safe !== null) handleGuideChange(idx, "issue_url", safe);
+                              }}
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
                           </div>
@@ -1891,7 +1923,10 @@ export default function AdminContent() {
                                 className="w-full bg-surface border-none rounded-lg px-3 py-2 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
                                 placeholder="https://ca-provider.com/issue"
                                 value={edit.issue_url}
-                                onChange={(e) => updateGuideField(leaf, "issue_url", e.target.value)}
+                                onChange={(e) => {
+                                  const safe = sanitizeUrl(e.target.value);
+                                  if (safe !== null) updateGuideField(leaf, "issue_url", safe);
+                                }}
                                 disabled={disabled}
                               />
                             </div>
