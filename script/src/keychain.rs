@@ -435,11 +435,11 @@ pub mod windows_certstore {
             )
         };
 
-        if result != 0 && must_free != 0 && key_handle != 0 {
+        if result != 0 && key_handle != 0 && must_free != 0 {
             unsafe { NCryptFreeObject(key_handle); }
         }
 
-        result != 0
+        result != 0 && key_handle != 0
     }
 
     /// Get certificate thumbprint (SHA-1 hash) for later re-identification.
@@ -462,6 +462,32 @@ pub mod windows_certstore {
         }
         thumb.truncate(size as usize);
         Ok(thumb)
+    }
+
+    /// RAII guard for Windows certificate store resources.
+    /// Ensures store, cert context, and key handle are freed on drop.
+    struct StoreGuard {
+        store: *mut std::ffi::c_void,
+        cert_ctx: *const CERT_CONTEXT,
+        key_handle: usize,
+        must_free_key: bool,
+    }
+
+    impl Drop for StoreGuard {
+        fn drop(&mut self) {
+            use windows_sys::Win32::Security::Cryptography::*;
+            unsafe {
+                if self.must_free_key && self.key_handle != 0 {
+                    NCryptFreeObject(self.key_handle);
+                }
+                if !self.cert_ctx.is_null() {
+                    CertFreeCertificateContext(self.cert_ctx);
+                }
+                if !self.store.is_null() {
+                    CertCloseStore(self.store, 0);
+                }
+            }
+        }
     }
 
     /// Sign a prehash using the certificate's private key via CNG.
@@ -488,6 +514,13 @@ pub mod windows_certstore {
             return Err("Failed to open certificate store".to_string());
         }
 
+        let mut guard = StoreGuard {
+            store,
+            cert_ctx: ptr::null(),
+            key_handle: 0,
+            must_free_key: false,
+        };
+
         // Find certificate by thumbprint
         let hash_blob = CRYPT_INTEGER_BLOB {
             cbData: identity.thumbprint.len() as u32,
@@ -506,9 +539,9 @@ pub mod windows_certstore {
         };
 
         if cert_ctx.is_null() {
-            unsafe { CertCloseStore(store, 0); }
             return Err("Certificate not found in store".to_string());
         }
+        guard.cert_ctx = cert_ctx;
 
         // Acquire CNG private key handle
         let mut key_handle: usize = 0;
@@ -527,29 +560,16 @@ pub mod windows_certstore {
         };
 
         if result == 0 {
-            unsafe {
-                CertFreeCertificateContext(cert_ctx);
-                CertCloseStore(store, 0);
-            }
             return Err("Failed to acquire private key".to_string());
         }
+        guard.key_handle = key_handle;
+        guard.must_free_key = must_free != 0;
 
         // Detect algorithm from certificate
         let alg_info = detect_algorithm(&identity.cert_der)?;
 
-        // Sign using CNG
-        let signature = ncrypt_sign(key_handle, prehash, &alg_info)?;
-
-        // Cleanup
-        if must_free != 0 {
-            unsafe { NCryptFreeObject(key_handle); }
-        }
-        unsafe {
-            CertFreeCertificateContext(cert_ctx);
-            CertCloseStore(store, 0);
-        }
-
-        Ok(signature)
+        // Sign using CNG (guard handles cleanup on error)
+        ncrypt_sign(key_handle, prehash, &alg_info)
     }
 
     /// Algorithm info for CNG signing.
@@ -599,8 +619,9 @@ pub mod windows_certstore {
         match alg_info {
             AlgInfo::Rsa => {
                 // PKCS#1 v1.5 SHA-256
+                let alg_id = wide_string("SHA256");
                 let padding = BCRYPT_PKCS1_PADDING_INFO {
-                    pszAlgId: wide_string("SHA256").as_ptr(),
+                    pszAlgId: alg_id.as_ptr(),
                 };
 
                 // Query signature size
@@ -687,7 +708,7 @@ pub mod windows_certstore {
 
     /// Convert ECDSA P1363 signature (r || s) to DER-encoded ASN.1.
     fn p1363_to_der(p1363: &[u8]) -> Result<Vec<u8>, String> {
-        if p1363.len() % 2 != 0 {
+        if p1363.is_empty() || p1363.len() % 2 != 0 {
             return Err("Invalid P1363 signature length".to_string());
         }
         let half = p1363.len() / 2;
@@ -695,6 +716,9 @@ pub mod windows_certstore {
         let s = &p1363[half..];
 
         fn encode_integer(val: &[u8]) -> Vec<u8> {
+            if val.is_empty() {
+                return vec![0x02, 0x01, 0x00]; // INTEGER 0
+            }
             // Strip leading zeros but keep one if high bit is set
             let stripped = val.iter().position(|&b| b != 0).unwrap_or(val.len() - 1);
             let val = &val[stripped..];
