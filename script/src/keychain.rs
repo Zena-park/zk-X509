@@ -72,10 +72,11 @@ impl Clone for Box<dyn PlatformIdentity> {
     }
 }
 
-/// Scan the OS certificate store and return discovered identities.
+/// Scan the OS certificate store and return discovered certificate entries.
 ///
-/// Returns (CertEntry, identity_handle) pairs for each platform.
-/// The identity handle type varies by platform.
+/// Returns a flat list of `CertEntry` items from all supported platforms.
+/// Platform identity handles are discarded; use `scan_identities_boxed()`
+/// if you need the signing handle.
 pub fn scan_certs() -> Vec<CertEntry> {
     let mut entries = Vec::new();
 
@@ -295,6 +296,9 @@ pub mod macos_keychain {
 #[cfg(target_os = "windows")]
 pub mod windows_certstore {
     use super::*;
+    use windows_sys::Win32::Security::Cryptography::*;
+    use windows_sys::Win32::Foundation::GetLastError;
+    use std::ptr;
 
     /// Opaque handle to a Windows certificate store identity.
     /// Uses CNG (Cryptography Next Generation) for signing.
@@ -342,9 +346,6 @@ pub mod windows_certstore {
 
     /// Scan the Windows MY certificate store for identities with private keys.
     pub fn scan_identities() -> Result<Vec<(CertEntry, CertStoreIdentity)>, String> {
-        use windows_sys::Win32::Security::Cryptography::*;
-        use std::ptr;
-
         let mut entries = Vec::new();
 
         // Open the "MY" certificate store (personal certificates)
@@ -359,7 +360,8 @@ pub mod windows_certstore {
             )
         };
         if store.is_null() {
-            return Err("Failed to open MY certificate store".to_string());
+            let err = unsafe { GetLastError() };
+            return Err(format!("Failed to open MY certificate store (error code 0x{err:08X})"));
         }
         let _store_guard = StoreHandle(store);
 
@@ -429,7 +431,6 @@ pub mod windows_certstore {
 
     /// Check if a certificate context has an associated private key.
     fn has_private_key(cert_ctx: *const CERT_CONTEXT) -> bool {
-        use windows_sys::Win32::Security::Cryptography::*;
         let mut key_spec: u32 = 0;
         let mut must_free: i32 = 0;
         let mut key_handle: usize = 0;
@@ -454,7 +455,6 @@ pub mod windows_certstore {
 
     /// Get certificate thumbprint (SHA-1 hash) for later re-identification.
     fn get_thumbprint(cert_ctx: *const CERT_CONTEXT) -> Result<Vec<u8>, String> {
-        use windows_sys::Win32::Security::Cryptography::*;
         let mut size: u32 = 20; // SHA-1 hash size
         let mut thumb = vec![0u8; size as usize];
 
@@ -468,7 +468,8 @@ pub mod windows_certstore {
         };
 
         if result == 0 {
-            return Err("Failed to get certificate thumbprint".to_string());
+            let err = unsafe { GetLastError() };
+            return Err(format!("Failed to get certificate thumbprint (error code 0x{err:08X})"));
         }
         thumb.truncate(size as usize);
         Ok(thumb)
@@ -485,7 +486,6 @@ pub mod windows_certstore {
 
     impl Drop for StoreGuard {
         fn drop(&mut self) {
-            use windows_sys::Win32::Security::Cryptography::*;
             unsafe {
                 if self.must_free_key && self.key_handle != 0 {
                     NCryptFreeObject(self.key_handle);
@@ -506,9 +506,6 @@ pub mod windows_certstore {
         identity: &CertStoreIdentity,
         prehash: &[u8; 32],
     ) -> Result<Vec<u8>, String> {
-        use windows_sys::Win32::Security::Cryptography::*;
-        use std::ptr;
-
         // Re-open the certificate from the store using thumbprint
         let store_name = wide_string("MY");
         let store = unsafe {
@@ -521,7 +518,8 @@ pub mod windows_certstore {
             )
         };
         if store.is_null() {
-            return Err("Failed to open certificate store".to_string());
+            let err = unsafe { GetLastError() };
+            return Err(format!("Failed to open certificate store (error code 0x{err:08X})"));
         }
 
         let mut guard = StoreGuard {
@@ -532,11 +530,14 @@ pub mod windows_certstore {
         };
 
         // Find certificate by thumbprint
+        // Win32 CERT_FIND_SHA1_HASH expects a CRYPT_HASH_BLOB, which is a typedef
+        // for CRYPT_INTEGER_BLOB (same layout: cbData + pbData). windows-sys doesn't
+        // re-export the CRYPT_HASH_BLOB alias, so we use CRYPT_INTEGER_BLOB directly.
         // CRYPT_INTEGER_BLOB.pbData is *mut. Although CertFindCertificateInStore is a
         // find operation and not expected to write to this pointer, we use a mutable copy
         // to defensively prevent potential aliasing violations.
         let mut thumbprint_buf = identity.thumbprint.clone();
-        let hash_blob = CRYPT_INTEGER_BLOB {
+        let hash_blob = CRYPT_INTEGER_BLOB { // == CRYPT_HASH_BLOB
             cbData: thumbprint_buf.len() as u32,
             pbData: thumbprint_buf.as_mut_ptr(),
         };
@@ -553,7 +554,8 @@ pub mod windows_certstore {
         };
 
         if cert_ctx.is_null() {
-            return Err("Certificate not found in store".to_string());
+            let err = unsafe { GetLastError() };
+            return Err(format!("Certificate not found in store (error code 0x{err:08X})"));
         }
         guard.cert_ctx = cert_ctx;
 
@@ -574,7 +576,8 @@ pub mod windows_certstore {
         };
 
         if result == 0 {
-            return Err("Failed to acquire private key".to_string());
+            let err = unsafe { GetLastError() };
+            return Err(format!("Failed to acquire private key (error code 0x{err:08X})"));
         }
         guard.key_handle = key_handle;
         guard.must_free_key = must_free != 0;
@@ -627,9 +630,6 @@ pub mod windows_certstore {
         prehash: &[u8; 32],
         alg_info: &AlgInfo,
     ) -> Result<Vec<u8>, String> {
-        use windows_sys::Win32::Security::Cryptography::*;
-        use std::ptr;
-
         match alg_info {
             AlgInfo::Rsa => {
                 // PKCS#1 v1.5 SHA-256
