@@ -20,6 +20,9 @@ contract RegistryFactory {
     /// @notice Factory owner (can upgrade implementation and update settings).
     address public owner;
 
+    /// @notice Pending owner for 2-step ownership transfer.
+    address public pendingOwner;
+
     /// @notice The shared SP1 verifier contract.
     ISP1Verifier public immutable SP1_VERIFIER;
 
@@ -87,6 +90,10 @@ contract RegistryFactory {
 
     event FeeConfigUpdated(address feeToken, uint256 fee, address recipient);
 
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
     // ============ Errors ============
 
     error ZeroMaxWallets();
@@ -101,6 +108,7 @@ contract RegistryFactory {
     error FeeTransferFailed();
     error RefundFailed();
     error ZeroFeeRecipient();
+    error NotPendingOwner();
 
     // ============ Modifiers ============
 
@@ -224,6 +232,23 @@ contract RegistryFactory {
         registryCreationFee = _fee;
         feeRecipient = _recipient;
         emit FeeConfigUpdated(_feeToken, _fee, _recipient);
+    }
+
+    // ============ Ownership Transfer ============
+
+    /// @notice Start 2-step ownership transfer. New owner must call acceptOwnership().
+    /// @param newOwner The address to transfer ownership to.
+    function transferOwnership(address newOwner) external onlyOwner {
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /// @notice Accept ownership transfer. Must be called by the pending owner.
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotPendingOwner();
+        emit OwnershipTransferred(owner, msg.sender);
+        owner = msg.sender;
+        pendingOwner = address(0);
     }
 
     // ============ Internal Functions ============

@@ -430,16 +430,16 @@ contract IdentityRegistryTest is Test {
         assertTrue(multiReg.isVerified(bob));
     }
 
-    function test_MultiWallet_MaxZero_AllReverts() public {
-        IdentityRegistry zeroReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 0, 0, address(this));
-        zeroReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
-
-        // Any index reverts (0 >= 0)
-        vm.prank(alice);
-        vm.expectRevert(
-            abi.encodeWithSelector(IdentityRegistry.WalletIndexOutOfRange.selector, uint32(0), uint32(0))
+    function test_MultiWallet_MaxZero_InitializeReverts() public {
+        // maxWallets=0 should revert at initialization (fail-fast)
+        // Revert happens inside ERC1967Proxy constructor delegatecall
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), PROGRAM_V_KEY, 0, 0, 3600, address(this))
         );
-        zeroReg.register(hex"1234", _pvIdxFor(NULLIFIER, CA_MERKLE_ROOT, alice, 0, address(zeroReg)));
+        vm.expectRevert();
+        new ERC1967Proxy(address(impl), initData);
     }
 
     // ============ Certificate expiry tests ============
