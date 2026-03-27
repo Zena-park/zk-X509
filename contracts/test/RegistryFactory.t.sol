@@ -365,6 +365,40 @@ contract RegistryFactoryTest is Test {
         factory.createRegistry{value: 0.1 ether}("Free", 1, 0, 3600);
     }
 
+    // ============ Ownership Transfer Tests ============
+
+    function test_TransferOwnership_HappyPath() public {
+        // Step 1: Owner starts transfer to alice
+        factory.transferOwnership(alice);
+        assertEq(factory.pendingOwner(), alice);
+
+        // Step 2: Alice accepts ownership
+        vm.prank(alice);
+        factory.acceptOwnership();
+        assertEq(factory.owner(), alice);
+        assertEq(factory.pendingOwner(), address(0));
+    }
+
+    function test_TransferOwnership_RevertZeroAddress() public {
+        vm.expectRevert(RegistryFactory.ZeroAddress.selector);
+        factory.transferOwnership(address(0));
+    }
+
+    function test_TransferOwnership_OnlyOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(RegistryFactory.OnlyOwner.selector);
+        factory.transferOwnership(bob);
+    }
+
+    function test_AcceptOwnership_RevertNotPendingOwner() public {
+        factory.transferOwnership(alice);
+
+        // Bob (not pending owner) tries to accept
+        vm.prank(bob);
+        vm.expectRevert(RegistryFactory.NotPendingOwner.selector);
+        factory.acceptOwnership();
+    }
+
     function test_ERC20ModeRejectsValue() public {
         MockTON ton = new MockTON();
         RegistryFactory feeFactory = new RegistryFactory(
