@@ -134,7 +134,9 @@ fn decode_bytes32_array(hex_str: &str) -> Result<Vec<Hash>, String> {
     let count = u64::from_be_bytes(len_bytes) as usize;
 
     let data_start = 64;
-    let expected_len = data_start + count * 32;
+    let expected_len = count.checked_mul(32)
+        .and_then(|n| n.checked_add(data_start))
+        .ok_or_else(|| format!("Array length overflow: count={}", count))?;
     if raw.len() < expected_len {
         return Err(format!(
             "ABI data too short: expected {} bytes for {} elements, got {}",
