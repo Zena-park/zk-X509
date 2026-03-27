@@ -115,10 +115,16 @@ export default function CaRegistrationModal({
 
   const createPr = async (sig: string, timestamp: number) => {
     try {
-      // Merge existing CAs with new ones
+      // Merge existing CAs with new ones (or delete for remove-ca)
       const allCas: Record<string, CaGuide> = { ...existingCas };
-      for (const cert of certs) {
-        allCas[cert.hashHex] = cert.guide;
+      if (operation === "add-ca" || operation === "update") {
+        for (const cert of certs) {
+          allCas[cert.hashHex] = cert.guide;
+        }
+      } else if (operation === "remove-ca") {
+        for (const cert of certs) {
+          delete allCas[cert.hashHex];
+        }
       }
 
       // Build service.json — preserve existing metadata on update
@@ -152,6 +158,7 @@ export default function CaRegistrationModal({
       const files: CaRegistryFiles = {
         chainId,
         registryAddress: registryAddress.toLowerCase(),
+        operation,
         certs: certMap,
         serviceJson,
         signatureJson,

@@ -362,7 +362,7 @@ export default function AdminContent() {
   const [caModalTxFn, setCaModalTxFn] = useState<(() => Promise<string | null>) | null>(null);
   const [caModalCerts, setCaModalCerts] = useState<Array<{ hashHex: string; derBase64: string; guide: CaGuide }>>([]);
   const [githubToken, setGithubToken] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("zk-x509-github-token") || "" : ""
+    typeof window !== "undefined" ? sessionStorage.getItem("zk-x509-github-token") || "" : ""
   );
 
   // Transfer ownership
@@ -522,6 +522,15 @@ export default function AdminContent() {
 
   const removeCaFile = useCallback((index: number) => {
     setCaFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleGuideChange = useCallback((index: number, field: keyof CaGuide, value: string) => {
+    setCaFiles((prev) => {
+      const updated = [...prev];
+      const entry = updated[index];
+      updated[index] = { ...entry, guide: { ...entry.guide, [field]: value } };
+      return updated;
+    });
   }, []);
 
   const handleDrop = useCallback(
@@ -1161,7 +1170,7 @@ export default function AdminContent() {
                     value={githubToken}
                     onChange={(e) => {
                       setGithubToken(e.target.value);
-                      localStorage.setItem("zk-x509-github-token", e.target.value);
+                      sessionStorage.setItem("zk-x509-github-token", e.target.value);
                     }}
                     className="flex-1 bg-transparent text-xs text-on-surface placeholder:text-on-surface-variant/50 outline-none"
                   />
@@ -1280,33 +1289,21 @@ export default function AdminContent() {
                               type="text"
                               placeholder="CA Name"
                               value={entry.guide.name}
-                              onChange={(e) => {
-                                const updated = [...caFiles];
-                                updated[idx] = { ...entry, guide: { ...entry.guide, name: e.target.value } };
-                                setCaFiles(updated);
-                              }}
+                              onChange={(e) => handleGuideChange(idx, "name", e.target.value)}
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
                             <input
                               type="text"
                               placeholder="Description"
                               value={entry.guide.description || ""}
-                              onChange={(e) => {
-                                const updated = [...caFiles];
-                                updated[idx] = { ...entry, guide: { ...entry.guide, description: e.target.value } };
-                                setCaFiles(updated);
-                              }}
+                              onChange={(e) => handleGuideChange(idx, "description", e.target.value)}
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
                             <input
                               type="text"
                               placeholder="Issue URL (e.g., https://www.yessign.or.kr)"
                               value={entry.guide.issue_url || ""}
-                              onChange={(e) => {
-                                const updated = [...caFiles];
-                                updated[idx] = { ...entry, guide: { ...entry.guide, issue_url: e.target.value } };
-                                setCaFiles(updated);
-                              }}
+                              onChange={(e) => handleGuideChange(idx, "issue_url", e.target.value)}
                               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface"
                             />
                           </div>

@@ -17,6 +17,8 @@ export interface GitHubPrResult {
 export interface CaRegistryFiles {
   chainId: string;
   registryAddress: string;
+  /** Operation type */
+  operation: "add-ca" | "remove-ca" | "update";
   /** DER files to add: hash → base64-encoded DER bytes */
   certs: Record<string, string>;
   /** Updated service.json content */
@@ -71,14 +73,19 @@ export async function createCaRegistryPr(
   // 4. Commit files
   const serviceDir = `services/${files.chainId}/${files.registryAddress.toLowerCase()}`;
 
-  // Commit DER files
+  // Commit or delete DER files
   for (const [hash, base64Der] of Object.entries(files.certs)) {
-    await createOrUpdateFile(
-      token, user, UPSTREAM_REPO, branchName,
-      `${serviceDir}/certs/${hash}.der`,
-      base64Der,
-      `Add CA cert: ${hash.slice(0, 16)}...`,
-    );
+    const certPath = `${serviceDir}/certs/${hash}.der`;
+    if (files.operation === "remove-ca") {
+      await deleteFile(token, user, UPSTREAM_REPO, branchName, certPath, `Remove CA cert: ${hash.slice(0, 16)}...`);
+    } else {
+      await createOrUpdateFile(
+        token, user, UPSTREAM_REPO, branchName,
+        certPath,
+        base64Der,
+        `Add CA cert: ${hash.slice(0, 16)}...`,
+      );
+    }
   }
 
   // Commit service.json
@@ -193,6 +200,21 @@ async function createOrUpdateFile(
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to commit ${path}: ${res.status} ${await res.text()}`);
+}
+
+async function deleteFile(
+  token: string, owner: string, repo: string, branch: string,
+  path: string, message: string,
+): Promise<void> {
+  const sha = await getFileSha(token, owner, repo, branch, path);
+  if (!sha) return; // File doesn't exist, nothing to delete
+
+  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
+    method: "DELETE",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ message, sha, branch }),
+  });
+  if (!res.ok) throw new Error(`Failed to delete ${path}: ${res.status} ${await res.text()}`);
 }
 
 async function createPullRequest(

@@ -61,6 +61,7 @@ describe("createCaRegistryPr", () => {
   const mockFiles: CaRegistryFiles = {
     chainId: "31337",
     registryAddress: "0x1234567890abcdef1234567890abcdef12345678",
+    operation: "add-ca",
     certs: {
       "0xaabbccdd": btoa("mock-der-content"),
     },
@@ -277,5 +278,57 @@ describe("createCaRegistryPr", () => {
     const serviceUpdateCall = mockFetch.mock.calls[6]; // 7th call
     const body = JSON.parse(serviceUpdateCall[1].body);
     expect(body.sha).toBe("existing-sha-1");
+  });
+
+  it("should delete DER files for remove-ca operation", async () => {
+    const removeFiles: CaRegistryFiles = {
+      ...mockFiles,
+      operation: "remove-ca",
+    };
+
+    // getGitHubUser
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ login: "test-user" }),
+    });
+    // ensureFork
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    // getRef
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ object: { sha: "abc123" } }),
+    });
+    // createRef
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    // deleteFile: getFileSha for cert
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ sha: "cert-sha" }),
+    });
+    // deleteFile: DELETE call
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    // getFileSha service.json
+    mockFetch.mockResolvedValueOnce({ ok: false });
+    // createOrUpdateFile service.json
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    // getFileSha signature.json
+    mockFetch.mockResolvedValueOnce({ ok: false });
+    // createOrUpdateFile signature.json
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    // createPullRequest
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ html_url: "https://github.com/pr/4", number: 4 }),
+    });
+
+    const result = await createCaRegistryPr(
+      "ghp_token", removeFiles, "Remove CA", "body",
+    );
+
+    expect(result.prNumber).toBe(4);
+
+    // Verify DELETE was called (6th call)
+    const deleteCall = mockFetch.mock.calls[5];
+    expect(deleteCall[1].method).toBe("DELETE");
   });
 });
