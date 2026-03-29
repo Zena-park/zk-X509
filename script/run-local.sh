@@ -68,31 +68,53 @@ echo "  ✅ CA Merkle Root: $CA_MERKLE_ROOT"
 echo ""
 
 # ========================================
-# Step 3: Deploy contracts
+# Step 3a: Deploy RegistryFactory
 # ========================================
-echo "[3/5] Deploying IdentityRegistry..."
+echo "[3/5] Deploying RegistryFactory..."
 
 cd contracts
-DEPLOY_OUTPUT=$(CA_MERKLE_ROOT=$CA_MERKLE_ROOT forge script script/DeployLocal.s.sol --tc DeployLocalScript \
+DEPLOY_OUTPUT=$(forge script script/DeployLocal.s.sol --tc DeployLocalScript \
     --rpc-url http://localhost:8545 \
     --broadcast \
     --sender $DEPLOYER_ADDR \
     --private-key $DEPLOYER_KEY 2>&1)
 
-# Extract contract address from logs
-REGISTRY_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "IdentityRegistry:" | awk '{print $2}')
-if [ -z "$REGISTRY_ADDR" ]; then
+# Extract factory address from logs
+FACTORY_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "RegistryFactory:" | awk '{print $2}')
+if [ -z "$FACTORY_ADDR" ]; then
     echo "❌ Deploy failed:"
     echo "$DEPLOY_OUTPUT"
     kill $ANVIL_PID 2>/dev/null
     exit 1
 fi
-echo "  ✅ IdentityRegistry: $REGISTRY_ADDR"
+echo "  ✅ RegistryFactory: $FACTORY_ADDR"
+echo ""
+
+# ========================================
+# Step 3b: Seed local registry via SeedLocal
+# ========================================
+echo "  Creating IdentityRegistry via factory..."
+
+SEED_OUTPUT=$(FACTORY=$FACTORY_ADDR CA_MERKLE_ROOT=$CA_MERKLE_ROOT forge script script/SeedLocal.s.sol --tc SeedLocalScript \
+    --rpc-url http://localhost:8545 \
+    --broadcast \
+    --sender $DEPLOYER_ADDR \
+    --private-key $DEPLOYER_KEY 2>&1)
+
+# Extract registry proxy address from logs
+REGISTRY_ADDR=$(echo "$SEED_OUTPUT" | grep "IdentityRegistry (proxy):" | awk '{print $3}')
+if [ -z "$REGISTRY_ADDR" ]; then
+    echo "❌ Seed failed:"
+    echo "$SEED_OUTPUT"
+    kill $ANVIL_PID 2>/dev/null
+    exit 1
+fi
+echo "  ✅ IdentityRegistry (proxy): $REGISTRY_ADDR"
 echo ""
 cd ..
 
 # ========================================
-# Step 3: Verify deployment
+# Step 4: Verify deployment
 # ========================================
 echo "[4/5] Verifying deployment..."
 
@@ -106,7 +128,7 @@ echo "  ✅ Contract verified"
 echo ""
 
 # ========================================
-# Step 4: Print summary
+# Step 5: Print summary
 # ========================================
 echo "=== Environment Ready ==="
 echo ""

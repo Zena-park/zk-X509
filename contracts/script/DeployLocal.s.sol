@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import {Script, console} from "forge-std/Script.sol";
-import {IdentityRegistry} from "../src/IdentityRegistry.sol";
 import {RegistryFactory} from "../src/RegistryFactory.sol";
 import {SP1Verifier} from "sp1-contracts/v6.0.0/SP1VerifierGroth16.sol";
 
@@ -21,7 +20,7 @@ contract DeployLocalScript is Script {
         console.log("RegistryFactory:", address(factory));
         console.log("Beacon:", address(factory.beacon()));
 
-        // Registry is no longer auto-created. Use the frontend or CLI to create one via factory.createRegistry().
+        // Registry is no longer auto-created. Use SeedLocal.s.sol or the frontend to create one via factory.createRegistry().
 
         vm.stopBroadcast();
     }
