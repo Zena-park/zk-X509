@@ -341,7 +341,7 @@ function RegistryDetailContent() {
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.2 }}
           >
-            <AdminContent />
+            <AdminContent serviceName={info.name} />
           </motion.div>
         )}
 
