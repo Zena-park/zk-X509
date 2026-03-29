@@ -24,18 +24,6 @@ import { truncateHex } from "@/lib/utils";
 import { useReadProvider } from "@/lib/useReadProvider";
 
 /* ------------------------------------------------------------------ */
-/*  Trust Badge                                                        */
-/* ------------------------------------------------------------------ */
-
-function getTrustBadge(count: number): { emoji: string; label: string; color: string } {
-  if (count >= 10) return { emoji: "💎", label: "Diamond", color: "bg-purple-500/20 text-purple-300" };
-  if (count >= 5) return { emoji: "🥇", label: "Gold", color: "bg-yellow-500/20 text-yellow-300" };
-  if (count >= 3) return { emoji: "🥈", label: "Silver", color: "bg-slate-400/20 text-slate-300" };
-  if (count >= 1) return { emoji: "🥉", label: "Bronze", color: "bg-orange-500/20 text-orange-300" };
-  return { emoji: "🔒", label: "Unverified", color: "bg-surface-container text-on-surface-variant" };
-}
-
-/* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -62,15 +50,6 @@ function maskToLabels(mask: number): string {
   return labels.length > 0 ? labels.join(", ") : "None";
 }
 
-const CATEGORY_BADGES: Record<string, { label: string; color: string }> = {
-  dao: { label: "DAO", color: "text-tertiary bg-tertiary/10" },
-  defi: { label: "DeFi", color: "text-secondary bg-secondary/10" },
-  corporate: { label: "Corporate", color: "text-primary bg-primary/10" },
-  other: {
-    label: "Other",
-    color: "text-on-surface-variant bg-surface-container",
-  },
-};
 
 /* ------------------------------------------------------------------ */
 /*  Copyable Address                                                    */
@@ -348,9 +327,6 @@ export default function IdentityPage() {
       {!loading && !error && verified.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
           {verified.map((reg, i) => {
-            const badge =
-              CATEGORY_BADGES[reg.metadata?.category ?? "other"] ??
-              CATEGORY_BADGES.other;
 
             return (
               <motion.div

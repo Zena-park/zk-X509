@@ -15,7 +15,6 @@ import {
   Unlock,
   Database,
   Fingerprint,
-  Globe,
   Megaphone,
   BookOpen,
   ExternalLink,
@@ -258,10 +257,6 @@ function RegistryDetailContent() {
     { key: "info", label: "Info", icon: <Info className="w-4 h-4" /> },
   ];
 
-  const visibleTabs = tabs;
-
-  const effectiveTab = activeTab;
-
   /* ================================================================ */
   /*  Render                                                           */
   /* ================================================================ */
@@ -317,12 +312,12 @@ function RegistryDetailContent() {
         className="mb-6"
       >
         <div className="flex bg-surface-container-low rounded-full p-1 border border-outline-variant/20 self-start w-fit">
-          {visibleTabs.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-6 py-2 font-headline text-sm rounded-full transition-all ${
-                effectiveTab === tab.key
+                activeTab === tab.key
                   ? "bg-surface-container-highest text-primary shadow-sm"
                   : "text-on-surface-variant hover:text-primary"
               }`}
@@ -337,7 +332,7 @@ function RegistryDetailContent() {
       {/* Tab Content */}
       <AnimatePresence mode="wait">
         {/* ==================== REGISTER TAB ==================== */}
-        {effectiveTab === "register" && (
+        {activeTab === "register" && (
           <motion.div
             key="register"
             initial={{ opacity: 0, y: 12 }}
@@ -350,7 +345,7 @@ function RegistryDetailContent() {
         )}
 
         {/* ==================== MANAGE TAB ==================== */}
-        {effectiveTab === "manage" && (
+        {activeTab === "manage" && (
           <motion.div
             key="manage"
             initial={{ opacity: 0, y: 12 }}
@@ -363,7 +358,7 @@ function RegistryDetailContent() {
         )}
 
         {/* ==================== INFO TAB ==================== */}
-        {effectiveTab === "info" && (
+        {activeTab === "info" && (
           <motion.div
             key="info"
             initial={{ opacity: 0, y: 12 }}

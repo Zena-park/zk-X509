@@ -23,9 +23,9 @@ export function isValidHex(v: string): boolean {
 /** Known contract error names/selectors → human-readable messages. */
 const ERROR_MESSAGES: Array<{ match: string[]; message: string }> = [
   { match: ["AlreadyRegistered", "0x77caf672"], message: "This certificate is already registered to another wallet. Use Re-Register to transfer it to your current wallet." },
-  { match: ["UserAlreadyVerified", "0x3d98a9e6"], message: "Your wallet is already verified on this service." },
-  { match: ["RegistrantMismatch", "0x4ca88867"], message: "The proof was generated for a different wallet address. Make sure you use the same wallet in the app and MetaMask." },
-  { match: ["ProofTooOld", "0x43d29a40"], message: "The proof has expired. Please generate a new proof with the app." },
+  { match: ["UserAlreadyVerified", "0x474c4446"], message: "Your wallet is already verified on this service." },
+  { match: ["RegistrantMismatch", "0x961f88f4"], message: "The proof was generated for a different wallet address. Make sure you use the same wallet in the app and MetaMask." },
+  { match: ["ProofTooOld", "0xfc4bdfcb"], message: "The proof has expired. Please generate a new proof with the app." },
   { match: ["ProofInFuture", "0xee294a62"], message: "The proof timestamp is in the future. Check your system clock." },
   { match: ["InvalidCaMerkleRoot", "0xe2c1516a"], message: "The CA certificate used is not trusted by this service. Check that your CA is in the Trusted CAs list." },
   { match: ["NullifierRevoked", "0xae8601ef"], message: "This certificate has been permanently revoked by the service admin." },

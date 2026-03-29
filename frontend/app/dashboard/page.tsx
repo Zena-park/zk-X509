@@ -30,14 +30,6 @@ import { useReadProvider } from "@/lib/useReadProvider";
 /*  Trust Badge                                                        */
 /* ------------------------------------------------------------------ */
 
-function getTrustBadge(verifiedCount: number): { emoji: string; label: string; color: string } {
-  if (verifiedCount >= 10) return { emoji: "💎", label: "Diamond", color: "bg-purple-500/20 text-purple-300" };
-  if (verifiedCount >= 5) return { emoji: "🥇", label: "Gold", color: "bg-yellow-500/20 text-yellow-300" };
-  if (verifiedCount >= 3) return { emoji: "🥈", label: "Silver", color: "bg-slate-400/20 text-slate-300" };
-  if (verifiedCount >= 1) return { emoji: "🥉", label: "Bronze", color: "bg-orange-500/20 text-orange-300" };
-  return { emoji: "🔒", label: "Unverified", color: "bg-surface-container text-on-surface-variant" };
-}
-
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
@@ -68,17 +60,6 @@ function maskToLabels(mask: number): string {
   return labels.length > 0 ? labels.join(", ") : "Full";
 }
 
-const CATEGORY_BADGES: Record<string, { label: string; color: string; glow: string; accent: string }> = {
-  dao: { label: "DAO", color: "text-tertiary bg-tertiary/10", glow: "bg-tertiary/10", accent: "from-tertiary/20 to-transparent" },
-  defi: { label: "DeFi", color: "text-secondary bg-secondary/10", glow: "bg-secondary/10", accent: "from-secondary/20 to-transparent" },
-  corporate: { label: "Corporate", color: "text-primary bg-primary/10", glow: "bg-primary/10", accent: "from-primary/20 to-transparent" },
-  other: {
-    label: "Other",
-    color: "text-on-surface-variant bg-surface-container",
-    glow: "bg-tertiary/5",
-    accent: "from-tertiary/10 to-transparent",
-  },
-};
 
 function DeployedOnInfo({ chainName, chainId, rpcUrl, walletChainId }: { chainName: string; chainId: string; rpcUrl: string; walletChainId?: string }) {
   const mismatch = walletChainId && walletChainId !== chainId;
@@ -504,10 +485,6 @@ function RegistrySection({
 
       <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
         {registries.map((reg, i) => {
-          const badge =
-            CATEGORY_BADGES[reg.metadata?.category ?? "other"] ??
-            CATEGORY_BADGES.other;
-
           return (
             <motion.div
               key={reg.address}

@@ -2034,7 +2034,7 @@ export default function AdminContent() {
           const allCerts = entry ? [{ hashHex: entry.hashHex, guide: entry.guide }] : certs;
           for (const c of allCerts) {
             if (c.guide?.name) {
-              putCaGuide(registryAddr, c.hashHex, c.guide);
+              putCaGuide(registryAddr, c.hashHex, c.guide).catch(console.error);
             }
           }
         }

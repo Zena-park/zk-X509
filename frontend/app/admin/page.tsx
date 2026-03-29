@@ -52,12 +52,6 @@ function maskToLabels(mask: number): string {
   return labels.length > 0 ? labels.join(", ") : "None";
 }
 
-const CATEGORY_BADGES: Record<string, { label: string; color: string }> = {
-  dao: { label: "DAO", color: "text-tertiary bg-tertiary/10" },
-  defi: { label: "DeFi", color: "text-secondary bg-secondary/10" },
-  corporate: { label: "Corporate", color: "text-primary bg-primary/10" },
-  other: { label: "Other", color: "text-on-surface-variant bg-surface-container" },
-};
 
 /* ================================================================== */
 /*  Admin Dashboard — "My Services"                                    */
@@ -280,10 +274,6 @@ export default function AdminPage() {
       {!loading && !error && registries.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
           {registries.map((reg, i) => {
-            const badge =
-              CATEGORY_BADGES[reg.metadata?.category ?? "other"] ??
-              CATEGORY_BADGES.other;
-
             return (
               <motion.div
                 key={reg.address}

@@ -68,13 +68,10 @@ router.post("/pr", async (req, res) => {
       name: serviceName || "Unnamed Service",
       description: serviceName || `Service for ${registryAddress.toLowerCase()}`,
       admin: adminAddress.toLowerCase(),
-      created_at: today,
+      ...(isNew ? { created_at: today } : {}),
       updated_at: today,
       cas: allCas,
     };
-    // On updates, created_at is immutable — omit so we don't overwrite
-    // But for the file content we must include it; the existing value is preserved
-    // by the Git commit (we only update changed fields)
     const serviceJson = JSON.stringify(serviceObj, null, 2);
 
     // Build signature.json (format required by validate.py)

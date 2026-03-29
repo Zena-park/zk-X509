@@ -5,7 +5,7 @@ import { Loader2, Check, X, ExternalLink } from "lucide-react";
 import { ethers } from "ethers";
 import { createCaRegistryPrViaServer, type CaGuide } from "@/lib/platform";
 
-type Step = "tx" | "tx-done" | "sign" | "git" | "done" | "error" | "partial";
+type Step = "tx" | "sign" | "git" | "done" | "error" | "partial";
 
 interface Props {
   open: boolean;
