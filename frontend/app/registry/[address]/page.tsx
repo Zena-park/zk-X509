@@ -392,6 +392,28 @@ function RegistryDetailContent() {
               </div>
             </div>
 
+            {/* Use Cases */}
+            {metadata?.tags && metadata.tags.length > 0 && (
+              <div className="glass-panel rounded-2xl p-5 mb-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <Tag className="w-4 h-4 text-tertiary" />
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                    Service Use Cases
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {metadata.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-3 py-1.5 bg-tertiary/10 text-tertiary text-sm font-headline font-bold rounded-full border border-tertiary/20"
+                    >
+                      {tag.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Announcements */}
             {announcements.length > 0 && (
               <div className="glass-panel rounded-2xl p-5 mb-8">

@@ -16,6 +16,17 @@ import {
 import { useWallet } from "@/lib/wallet";
 import { REGISTRY_FACTORY_ABI, getFactoryAddress } from "@/lib/contract";
 import { useReadProvider } from "@/lib/useReadProvider";
+import { updateRegistryMetadata } from "@/lib/platform";
+import {
+  Shield,
+  Vote,
+  Gift,
+  Smartphone,
+  KeyRound,
+  Building,
+  UserCheck,
+  Repeat,
+} from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -28,6 +39,17 @@ const DISCLOSURE_FIELDS = [
   { bit: 1, label: "Organization", description: "O" },
   { bit: 2, label: "Org Unit", description: "OU" },
   { bit: 3, label: "Common Name", description: "CN" },
+] as const;
+
+const USE_CASES = [
+  { id: "defi-kyc", label: "DeFi KYC", icon: Shield, description: "Regulatory-compliant identity verification", minWallets: 1, requiresDisclosure: [] as number[] },
+  { id: "dao-voting", label: "DAO Voting", icon: Vote, description: "One person, one vote — Sybil resistance", minWallets: 1, requiresDisclosure: [] },
+  { id: "airdrop", label: "Airdrop Guard", icon: Gift, description: "Prevent bot farming with real identity proof", minWallets: 1, requiresDisclosure: [] },
+  { id: "multi-device", label: "Multi Device", icon: Smartphone, description: "Connect multiple wallets from different devices", minWallets: 3, requiresDisclosure: [] },
+  { id: "account-recovery", label: "Account Recovery", icon: KeyRound, description: "Register backup wallets for recovery", minWallets: 2, requiresDisclosure: [] },
+  { id: "org-membership", label: "Organization Membership", icon: Building, description: "Prove membership in an organization", minWallets: 1, requiresDisclosure: [1, 2] },
+  { id: "age-verification", label: "Age Verification", icon: UserCheck, description: "Prove certificate ownership (adult verification)", minWallets: 1, requiresDisclosure: [] },
+  { id: "cross-chain", label: "Cross-chain Identity", icon: Repeat, description: "Unified identity across multiple chains", minWallets: 1, requiresDisclosure: [] },
 ] as const;
 
 const ERC20_ABI = [
@@ -109,6 +131,7 @@ export default function CreateRegistryPage() {
   const [maxWalletsOption, setMaxWalletsOption] = useState<"1" | "3" | "custom">("1");
   const [customMaxWallets, setCustomMaxWallets] = useState("");
   const [disclosureBits, setDisclosureBits] = useState<boolean[]>([false, false, false, false]);
+  const [selectedUseCases, setSelectedUseCases] = useState<Set<string>>(new Set());
 
   /* ---------- tx state ---------- */
   const [txStatus, setTxStatus] = useState<TxStatus>("idle");
@@ -197,6 +220,18 @@ export default function CreateRegistryPage() {
 
       setNewRegistryAddress(registryAddress);
       setTxStatus("success");
+
+      // Save use case tags to backend metadata
+      if (registryAddress && selectedUseCases.size > 0) {
+        try {
+          await updateRegistryMetadata(registryAddress, {
+            tags: Array.from(selectedUseCases),
+          });
+        } catch {
+          // metadata save is best-effort, don't fail the deploy
+          console.error("Failed to save use case metadata");
+        }
+      }
     } catch (err: unknown) {
       const e = err as { code?: string | number; message?: string };
       if (e?.code === "ACTION_REJECTED" || e?.code === 4001) {
@@ -352,6 +387,55 @@ export default function CreateRegistryPage() {
           </p>
         </div>
 
+        {/* Use Cases */}
+        <div className="space-y-3">
+          <label className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest px-1">
+            Service Use Cases
+          </label>
+          <p className="text-on-surface-variant text-xs px-1">
+            Select the use cases this service supports. Shown to users on the service info page.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {USE_CASES.map((uc) => {
+              const isSelected = selectedUseCases.has(uc.id);
+              const meetsWallets = maxWallets >= uc.minWallets;
+              const Icon = uc.icon;
+
+              return (
+                <button
+                  key={uc.id}
+                  onClick={() => {
+                    const next = new Set(selectedUseCases);
+                    if (isSelected) next.delete(uc.id);
+                    else next.add(uc.id);
+                    setSelectedUseCases(next);
+                  }}
+                  className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all text-left ${
+                    isSelected
+                      ? "bg-tertiary/10 border border-tertiary/30 text-tertiary"
+                      : "bg-surface-container-low border border-outline-variant/20 text-on-surface-variant hover:text-on-surface"
+                  }`}
+                >
+                  <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${isSelected ? "bg-tertiary/20" : "bg-surface-container"}`}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-headline font-bold">{uc.label}</span>
+                      {!meetsWallets && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-mono shrink-0">
+                          {uc.minWallets}+ wallets
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-on-surface-variant mt-0.5 line-clamp-1">{uc.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Summary */}
         <div className="bg-surface-container-low/50 rounded-xl p-4 space-y-2 border border-outline-variant/10">
           <p className="text-[10px] text-on-surface-variant uppercase tracking-widest font-label">Deploy Summary</p>
@@ -396,6 +480,21 @@ export default function CreateRegistryPage() {
               </p>
             </div>
           </div>
+          {selectedUseCases.size > 0 && (
+            <div className="pt-2 border-t border-outline-variant/10">
+              <p className="text-on-surface-variant text-xs mb-1.5">Use Cases</p>
+              <div className="flex flex-wrap gap-1.5">
+                {Array.from(selectedUseCases).map((id) => {
+                  const uc = USE_CASES.find((u) => u.id === id);
+                  return uc ? (
+                    <span key={id} className="px-2 py-0.5 bg-tertiary/10 text-tertiary text-xs font-headline rounded-full">
+                      {uc.label}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Transaction status */}
