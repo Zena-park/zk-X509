@@ -20,8 +20,6 @@ import {
   ExternalLink,
   Tag,
   Info,
-  Copy,
-  Check,
   AlertTriangle,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
@@ -37,6 +35,7 @@ import {
 import { useWallet, getChainName } from "@/lib/wallet";
 import DashboardContent from "@/components/DashboardContent";
 import AdminContent from "@/components/AdminContent";
+import CopyButton from "@/components/CopyButton";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -63,24 +62,6 @@ function decodeMask(mask: number): string[] {
   return fields;
 }
 
-function CopyBtn({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch { /* clipboard not available */ }
-  };
-  return (
-    <button
-      className="ml-2 shrink-0 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-      onClick={handleCopy}
-    >
-      {copied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5 text-on-surface-variant" />}
-    </button>
-  );
-}
 
 /* ================================================================== */
 /*  Registry Detail Page                                               */
@@ -435,21 +416,21 @@ function RegistryDetailContent() {
                   <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Owner</p>
                   <p className="font-mono text-sm text-tertiary truncate">{info.owner}</p>
                 </div>
-                <CopyBtn text={info.owner} />
+                <CopyButton text={info.owner} />
               </div>
               <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
                 <div className="min-w-0">
                   <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Registry Address</p>
                   <p className="font-mono text-sm text-tertiary truncate">{address}</p>
                 </div>
-                {address && <CopyBtn text={address} />}
+                {address && <CopyButton text={address} />}
               </div>
               <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
                 <div className="min-w-0">
                   <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">SP1 Verifier</p>
                   <p className="font-mono text-sm text-tertiary truncate">{sp1Verifier || "—"}</p>
                 </div>
-                {sp1Verifier && <CopyBtn text={sp1Verifier} />}
+                {sp1Verifier && <CopyButton text={sp1Verifier} />}
               </div>
             </div>
 

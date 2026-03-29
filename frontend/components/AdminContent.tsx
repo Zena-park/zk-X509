@@ -44,6 +44,7 @@ import {
 
 import { parseCaDer, generateCaGuide, type CaMetadata } from "@/lib/x509";
 import CaRegistrationModal from "./CaRegistrationModal";
+import CopyButton from "./CopyButton";
 
 const EMPTY_CA_GUIDE: CaGuide = { name: "", description: "", issue_url: "", instructions: "" };
 const MAX_DER_SIZE = 10 * 1024; // 10KB — typical CA DER is 1-2KB
@@ -235,18 +236,6 @@ async function computeCaLeafHash(certDer: Uint8Array): Promise<Uint8Array> {
 /*  Tx Status Badge                                                    */
 /* ------------------------------------------------------------------ */
 
-function CopyButton({ text, title = "Copy to clipboard" }: { text: string; title?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="ml-1 text-[10px] text-on-surface-variant hover:text-primary transition-colors"
-      title={title}
-    >
-      {copied ? "✓" : "📋"}
-    </button>
-  );
-}
 
 function TxBadge({ status }: { status: TxStatus }) {
   if (status.kind === "idle") return null;
