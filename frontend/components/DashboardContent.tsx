@@ -149,7 +149,7 @@ export default function DashboardContent() {
             {verified && expiryDate ? (
               <p className="text-on-surface-variant text-xs">
                 Expires:{" "}
-                {expiryDate.toLocaleString(undefined, {
+                {expiryDate.toLocaleString("en-US", {
                   year: "numeric",
                   month: "short",
                   day: "numeric",
@@ -229,71 +229,67 @@ export default function DashboardContent() {
           transition={{ delay: 0.3 }}
           className="md:col-span-12 glass-panel rounded-2xl p-5 space-y-3"
         >
-          {/* How to generate proof */}
+          {/* Proof Generation Guide */}
           <details className="bg-surface-container-low/50 rounded-xl border border-outline-variant/10">
             <summary className="px-4 py-3 text-sm font-headline font-medium text-tertiary cursor-pointer hover:text-primary transition-colors">
-              How to generate a proof?
+              How to Generate Proof
             </summary>
-            <div className="px-4 pb-4 text-on-surface-variant space-y-4">
-              <div>
-                <p className="text-sm font-headline font-medium text-primary mb-2">Step 1: Clone & Build</p>
-                <pre className="bg-surface-container p-3 rounded-lg overflow-x-auto text-xs font-mono text-tertiary leading-relaxed">
-{`git clone https://github.com/tokamak-network/zk-X509.git
-cd zk-X509
-cargo build --release --workspace`}</pre>
+            <div className="px-4 pb-4 space-y-3">
+            <div>
+              <div className="space-y-2.5 text-xs text-on-surface-variant">
+                <p>
+                  <span className="text-secondary font-bold">Step 1.</span> Download and open the <span className="text-primary font-bold">zk-X509</span> app.
+                  <a
+                    href="https://github.com/tokamak-network/zk-X509/releases/latest"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-2 inline-flex items-center gap-1 px-2.5 py-1 bg-secondary/10 text-secondary text-[10px] font-headline font-bold rounded-md hover:bg-secondary/20 transition-colors border border-secondary/20"
+                  >
+                    Download &darr;
+                  </a>
+                </p>
+                <p><span className="text-secondary font-bold">Step 2.</span> Enter the connection info when prompted:</p>
+                <div className="ml-6 grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                  <div className="bg-surface-container rounded-lg p-2.5">
+                    <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-0.5">RPC URL</p>
+                    <p className="font-mono text-xs text-tertiary break-all">{process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545"}</p>
+                  </div>
+                  <div className="bg-surface-container rounded-lg p-2.5">
+                    <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-0.5">Registry Address</p>
+                    <p className="font-mono text-xs text-tertiary break-all">{registryAddr}</p>
+                  </div>
+                  <div className="bg-surface-container rounded-lg p-2.5">
+                    <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-0.5">Chain ID</p>
+                    <p className="font-mono text-xs text-tertiary">{process.env.NEXT_PUBLIC_CHAIN_ID || "31337"}</p>
+                  </div>
+                  <div className="bg-surface-container rounded-lg p-2.5">
+                    <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-0.5">Your Wallet</p>
+                    <p className="font-mono text-xs text-tertiary break-all">{account || "Connect wallet"}</p>
+                  </div>
+                </div>
+                <p><span className="text-secondary font-bold">Step 3.</span> The app scans your <span className="text-primary">macOS Keychain</span> for X.509 certificates and lets you select one.</p>
+                <p><span className="text-secondary font-bold">Step 4.</span> A ZK proof is generated (requires <span className="text-tertiary">Docker</span> for Groth16).</p>
+                <p><span className="text-secondary font-bold">Step 5.</span> Copy the <span className="text-tertiary font-mono font-bold">Proof</span> and <span className="text-tertiary font-mono font-bold">Public Values</span> from the app output and paste into the fields below.</p>
               </div>
-
-              <div>
-                <p className="text-sm font-headline font-medium text-primary mb-2">Step 2: Generate Groth16 Proof</p>
+            </div>
+            <details className="pt-1">
+              <summary className="text-xs font-headline text-tertiary cursor-pointer hover:text-primary transition-colors">
+                Advanced: CLI usage
+              </summary>
+              <div className="mt-2 space-y-2">
                 <pre className="bg-surface-container p-3 rounded-lg overflow-x-auto text-xs font-mono text-tertiary leading-relaxed">
 {`cargo run --release --bin evm -- --system groth16 \\
-  --cert <your_cert.der> \\
-  --key <your_key.key> \\
-  --ca-cert <ca_pub.der> \\
   --registrant ${account} \\
   --wallet-index 0 \\
   --max-wallets ${contractState?.MAX_WALLETS_PER_CERT ?? 1} \\
   --chain-id ${chainId ?? 31337} \\
   --registry-address ${registryAddr}`}</pre>
-                <p className="text-xs text-on-surface-variant mt-2 space-y-1">
-                  <span className="block"><span className="text-secondary">--registrant</span> — Your MetaMask wallet address (<span className="font-mono text-tertiary">{account}</span>). The proof is bound to this address.</span>
-                  <span className="block"><span className="text-secondary">--wallet-index</span> — Slot number (0–{(contractState?.MAX_WALLETS_PER_CERT ?? 1) - 1}). Use a different index to register additional wallets with the same certificate.</span>
-                </p>
+                <div className="bg-tertiary/5 border border-tertiary/20 rounded-lg p-3">
+                  <p className="text-xs text-on-surface-variant">Docker must be running for Groth16 proof generation.</p>
+                </div>
               </div>
-
-              <div>
-                <p className="text-sm font-headline font-medium text-primary mb-2">Step 3: Submit</p>
-                <p className="text-sm">
-                  Copy the <span className="text-secondary font-mono font-bold">Proof</span> and <span className="text-secondary font-mono font-bold">Public Values</span> from the output and paste into the fields below.
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <a
-                  href="https://github.com/tokamak-network/zk-X509/blob/main/docs/local-setup.md"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-headline text-tertiary hover:text-primary transition-colors flex items-center gap-1"
-                >
-                  Full Setup Guide &rarr;
-                </a>
-                <a
-                  href="https://github.com/tokamak-network/zk-X509/blob/main/docs/testing-guide.md"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-headline text-tertiary hover:text-primary transition-colors flex items-center gap-1"
-                >
-                  Testing Guide &rarr;
-                </a>
-              </div>
-
-              <div className="bg-tertiary/5 border border-tertiary/20 rounded-lg p-3">
-                <p className="text-xs font-headline font-medium text-tertiary mb-1">Prerequisites</p>
-                <p className="text-xs text-on-surface-variant">Docker must be running for Groth16 proof generation.</p>
-                <p className="text-xs text-on-surface-variant mt-1">Apple Silicon (M1/M2/M3) — run this first:</p>
-                <pre className="bg-surface-container p-2 rounded mt-1 text-[10px] font-mono text-tertiary overflow-x-auto">docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark:v6.0.0</pre>
-              </div>
-            </div>
+            </details>
+          </div>
           </details>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

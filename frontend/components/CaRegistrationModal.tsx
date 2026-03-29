@@ -3,40 +3,28 @@
 import React, { useState, useEffect } from "react";
 import { Loader2, Check, X, ExternalLink } from "lucide-react";
 import { ethers } from "ethers";
-import { createCaRegistryPr, getGitHubUser, type CaRegistryFiles } from "@/lib/github";
-import { type CaGuide } from "@/lib/platform";
+import { createCaRegistryPrViaServer, type CaGuide } from "@/lib/platform";
 
-type Step = "tx" | "tx-done" | "sign" | "git" | "done" | "error" | "partial";
+type Step = "tx" | "sign" | "git" | "done" | "error" | "partial";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Operation type */
   operation: "add-ca" | "remove-ca" | "update";
-  /** Chain ID */
   chainId: string;
-  /** Registry address */
   registryAddress: string;
-  /** Admin address */
   adminAddress: string;
-  /** Service name */
   serviceName: string;
-  /** Execute the on-chain transaction. Return TX hash. Null if no on-chain TX needed. */
   executeTx: (() => Promise<string | null>) | null;
-  /** CA entries to commit to Git */
   certs: Array<{ hashHex: string; derBase64: string; guide: CaGuide }>;
-  /** Existing service.json cas (for merging) */
   existingCas: Record<string, CaGuide>;
-  /** GitHub PAT token */
-  githubToken: string;
-  /** Wallet signer for message signing */
   signer: ethers.Signer | null;
 }
 
 export default function CaRegistrationModal({
   open, onClose, operation, chainId, registryAddress,
   adminAddress, serviceName, executeTx, certs, existingCas,
-  githubToken, signer,
+  signer,
 }: Props) {
   const [step, setStep] = useState<Step>("tx");
   const [txHash, setTxHash] = useState("");
@@ -65,9 +53,7 @@ export default function CaRegistrationModal({
         const hash = await executeTx();
         if (cancelled) return;
         setTxHash(hash || "");
-        setStep("tx-done");
-        // Auto-advance to sign after 1s
-        setTimeout(() => { if (!cancelled) setStep("sign"); }, 1000);
+        setStep("sign");
       } catch (e: unknown) {
         if (cancelled) return;
         setErrorMsg(e instanceof Error ? e.message : "Transaction failed");
@@ -90,7 +76,7 @@ export default function CaRegistrationModal({
       const message = [
         "zk-x509-ca-registry",
         `Chain ID: ${chainId}`,
-        `Service Address: ${registryAddress.toLowerCase()}`,
+        `Registry: ${registryAddress.toLowerCase()}`,
         `Admin: ${adminAddress.toLowerCase()}`,
         `Operation: ${operation}`,
         `Timestamp: ${timestamp}`,
@@ -102,7 +88,7 @@ export default function CaRegistrationModal({
 
       // Create PR — separate error handling so TX success is preserved
       try {
-        await createPr(sig, timestamp);
+        await createPr(sig, timestamp, message);
       } catch (prError: unknown) {
         setErrorMsg(prError instanceof Error ? prError.message : "Failed to create PR");
         setStep(txHash ? "partial" : "error");
@@ -113,83 +99,25 @@ export default function CaRegistrationModal({
     }
   };
 
-  const createPr = async (sig: string, timestamp: number) => {
+  const createPr = async (sig: string, timestamp: number, msg: string) => {
     try {
-      // Merge existing CAs with new ones (or delete for remove-ca)
-      const allCas: Record<string, CaGuide> = { ...existingCas };
-      if (operation === "add-ca" || operation === "update") {
-        for (const cert of certs) {
-          allCas[cert.hashHex] = cert.guide;
-        }
-      } else if (operation === "remove-ca") {
-        for (const cert of certs) {
-          delete allCas[cert.hashHex];
-        }
-      }
-
-      // Build service.json — preserve existing metadata on update
-      const today = new Date().toISOString().split("T")[0];
-      const isNew = Object.keys(existingCas).length === 0;
-      const serviceJson = JSON.stringify({
-        name: serviceName || "Unnamed Service",
-        description: "",
-        admin: adminAddress.toLowerCase(),
-        created_at: isNew ? today : undefined, // omit on update (keeps existing)
-        updated_at: today,
-        cas: allCas,
-      }, null, 2);
-
-      // Build signature.json
-      const signatureJson = JSON.stringify({
-        admin: adminAddress.toLowerCase(),
-        operation,
-        timestamp,
-        signature: sig,
-        chain_id: chainId,
-        registry: registryAddress.toLowerCase(),
-      }, null, 2);
-
-      // Build cert map
-      const certMap: Record<string, string> = {};
-      for (const cert of certs) {
-        certMap[cert.hashHex] = cert.derBase64;
-      }
-
-      const files: CaRegistryFiles = {
+      const result = await createCaRegistryPrViaServer({
         chainId,
-        registryAddress: registryAddress.toLowerCase(),
+        registryAddress,
+        adminAddress,
+        serviceName,
         operation,
-        certs: certMap,
-        serviceJson,
-        signatureJson,
-      };
-
-      const caNames = certs.map((c) => c.guide.name || c.hashHex.slice(0, 16)).join(", ");
-      const prTitle = operation === "add-ca"
-        ? `Add CA: ${caNames} for ${serviceName || registryAddress.slice(0, 10)}`
-        : operation === "remove-ca"
-          ? `Remove CA: ${caNames}`
-          : `Update CA guide: ${caNames}`;
-
-      const prBody = [
-        `## ${operation === "add-ca" ? "Add" : operation === "remove-ca" ? "Remove" : "Update"} CA`,
-        "",
-        `- **Service**: \`${registryAddress}\``,
-        `- **Chain ID**: ${chainId}`,
-        `- **Admin**: \`${adminAddress}\``,
-        "",
-        "### CA Certificates",
-        ...certs.map((c) => `- \`${c.hashHex.slice(0, 20)}...\` — ${c.guide.name}`),
-        "",
-        `Signed by admin at timestamp ${timestamp}.`,
-      ].join("\n");
-
-      const result = await createCaRegistryPr(githubToken, files, prTitle, prBody);
+        certs,
+        existingCas,
+        signature: sig,
+        signatureTimestamp: timestamp,
+        signatureMessage: msg,
+      });
       setPrUrl(result.prUrl);
       setStep("done");
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : "Failed to create PR");
-      setStep("error");
+      setStep(txHash ? "partial" : "error");
     }
   };
 
@@ -204,6 +132,9 @@ export default function CaRegistrationModal({
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-headline font-bold text-on-surface">
             {operation === "add-ca" ? "Register CA" : operation === "remove-ca" ? "Remove CA" : "Update Guide"}
+            {certs.length > 1 && (
+              <span className="ml-2 text-sm text-on-surface-variant font-normal">({certs.length} CAs)</span>
+            )}
           </h3>
           {canClose && (
             <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface">
@@ -212,14 +143,29 @@ export default function CaRegistrationModal({
           )}
         </div>
 
+        {/* CA list */}
+        <div className="bg-surface-highest/50 rounded-xl p-3 space-y-1 max-h-32 overflow-y-auto">
+          {certs.map((c) => (
+            <div key={c.hashHex} className="flex items-center gap-2 text-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-tertiary shrink-0" />
+              <span className="text-on-surface font-medium truncate">{c.guide?.name || "Unknown"}</span>
+              <span className="text-on-surface-variant/50 font-mono text-[10px] truncate">{c.hashHex.slice(0, 14)}...</span>
+            </div>
+          ))}
+        </div>
+
         {/* Steps */}
         <div className="space-y-3">
           {/* Step 1: On-chain TX */}
           {executeTx && (
             <StepRow
-              label="On-chain transaction"
+              label={`On-chain ${operation === "add-ca" ? "registration" : "removal"}`}
               status={step === "tx" ? "pending" : step === "error" && !txHash ? "error" : "done"}
-              detail={txHash ? `TX: ${txHash.slice(0, 16)}...` : step === "tx" ? "Please confirm in your wallet" : ""}
+              detail={
+                txHash ? `TX: ${txHash.slice(0, 16)}...`
+                : step === "tx" ? `Please confirm ${certs.length > 1 ? `${certs.length} CAs` : "CA"} in your wallet`
+                : ""
+              }
             />
           )}
 
@@ -240,7 +186,7 @@ export default function CaRegistrationModal({
           {step === "sign" && (
             <button
               onClick={handleSign}
-              className="w-full bg-primary text-on-primary py-2.5 rounded-xl font-label font-bold text-sm hover:opacity-90 transition-all"
+              className="w-full bg-tertiary text-background py-2.5 rounded-xl font-label font-bold text-sm hover:opacity-90 transition-all"
             >
               Sign with Wallet
             </button>

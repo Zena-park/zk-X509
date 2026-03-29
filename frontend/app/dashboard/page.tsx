@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   Copy,
   Check,
+  AlertTriangle,
 } from "lucide-react";
 import { useWallet } from "@/lib/wallet";
 import {
@@ -28,14 +29,6 @@ import { useReadProvider } from "@/lib/useReadProvider";
 /* ------------------------------------------------------------------ */
 /*  Trust Badge                                                        */
 /* ------------------------------------------------------------------ */
-
-function getTrustBadge(verifiedCount: number): { emoji: string; label: string; color: string } {
-  if (verifiedCount >= 10) return { emoji: "💎", label: "Diamond", color: "bg-purple-500/20 text-purple-300" };
-  if (verifiedCount >= 5) return { emoji: "🥇", label: "Gold", color: "bg-yellow-500/20 text-yellow-300" };
-  if (verifiedCount >= 3) return { emoji: "🥈", label: "Silver", color: "bg-slate-400/20 text-slate-300" };
-  if (verifiedCount >= 1) return { emoji: "🥉", label: "Bronze", color: "bg-orange-500/20 text-orange-300" };
-  return { emoji: "🔒", label: "Unverified", color: "bg-surface-container text-on-surface-variant" };
-}
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -67,27 +60,25 @@ function maskToLabels(mask: number): string {
   return labels.length > 0 ? labels.join(", ") : "Full";
 }
 
-const CATEGORY_BADGES: Record<string, { label: string; color: string; glow: string; accent: string }> = {
-  dao: { label: "DAO", color: "text-tertiary bg-tertiary/10", glow: "bg-tertiary/10", accent: "from-tertiary/20 to-transparent" },
-  defi: { label: "DeFi", color: "text-secondary bg-secondary/10", glow: "bg-secondary/10", accent: "from-secondary/20 to-transparent" },
-  corporate: { label: "Corporate", color: "text-primary bg-primary/10", glow: "bg-primary/10", accent: "from-primary/20 to-transparent" },
-  other: {
-    label: "Other",
-    color: "text-on-surface-variant bg-surface-container",
-    glow: "bg-tertiary/5",
-    accent: "from-tertiary/10 to-transparent",
-  },
-};
 
-function DeployedOnInfo({ chainName, chainId, rpcUrl }: { chainName: string; chainId: string; rpcUrl: string }) {
+function DeployedOnInfo({ chainName, chainId, rpcUrl, walletChainId }: { chainName: string; chainId: string; rpcUrl: string; walletChainId?: string }) {
+  const mismatch = walletChainId && walletChainId !== chainId;
   return (
-    <div className="flex items-center gap-3 mt-3 text-xs text-on-surface-variant">
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10">
-        Deployed on <span className="font-bold text-on-surface">{chainName} ({chainId})</span>
-      </span>
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10 font-mono truncate max-w-xs">
-        {rpcUrl}
-      </span>
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center gap-3 text-xs text-on-surface-variant">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10">
+          Deployed on <span className="font-bold text-on-surface">{chainName} ({chainId})</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10 font-mono truncate max-w-xs">
+          {rpcUrl}
+        </span>
+      </div>
+      {mismatch && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-error/20 bg-error/5 text-sm text-error">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          Your wallet is on Chain {walletChainId}. Please switch to <span className="font-bold">{chainName} ({chainId})</span>.
+        </div>
+      )}
     </div>
   );
 }
@@ -266,8 +257,8 @@ export default function DashboardPage() {
   const verifiedRegistries = registries.filter((r) => r.verified);
   const availableRegistries = registries.filter((r) => !r.verified);
   const rpcUrl = getRpcUrl();
-  const currentChainId = chainId || "31337";
-  const currentChainName = getChainName(currentChainId);
+  const serviceChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+  const currentChainName = getChainName(serviceChainId);
 
   /* ---------- not connected ---------- */
   if (!account) {
@@ -291,7 +282,7 @@ export default function DashboardPage() {
             Grant your wallet the trust that services require. Each service defines its own trust level
             — from basic identity verification to full regulatory compliance. Choose a service and prove your qualifications with zero privacy exposure.
           </p>
-          <DeployedOnInfo chainName={currentChainName} chainId={currentChainId} rpcUrl={rpcUrl} />
+          <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} rpcUrl={rpcUrl} walletChainId={chainId || undefined} />
         </motion.header>
 
         {/* Connect prompt */}
@@ -393,49 +384,9 @@ export default function DashboardPage() {
           Grant your wallet the trust that services require. Each service defines its own trust level
           — from basic identity verification to full regulatory compliance.
         </p>
-        <DeployedOnInfo chainName={currentChainName} chainId={currentChainId} rpcUrl={rpcUrl} />
+        <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} rpcUrl={rpcUrl} walletChainId={chainId || undefined} />
       </motion.header>
 
-      {/* Trust Score Banner */}
-      {!loading && verifiedRegistries.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass-panel rounded-2xl p-6 mb-8"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="text-4xl">{getTrustBadge(verifiedRegistries.length).emoji}</span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-headline font-bold text-on-surface">
-                    Trust Score
-                  </h2>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getTrustBadge(verifiedRegistries.length).color}`}>
-                    {getTrustBadge(verifiedRegistries.length).label}
-                  </span>
-                </div>
-                <p className="text-on-surface-variant text-sm">
-                  Verified on {verifiedRegistries.length} of {registries.length} services
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-2xl font-headline font-bold text-tertiary">
-                {registries.length > 0 ? Math.round((verifiedRegistries.length / registries.length) * 100) : 0}%
-              </span>
-            </div>
-          </div>
-          {/* Progress bar */}
-          <div className="mt-3 h-2 bg-surface-container rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-tertiary to-secondary rounded-full transition-all duration-500"
-              style={{ width: `${registries.length > 0 ? (verifiedRegistries.length / registries.length) * 100 : 0}%` }}
-            />
-          </div>
-        </motion.div>
-      )}
 
       {/* Loading */}
       {loading && (
@@ -534,10 +485,6 @@ function RegistrySection({
 
       <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
         {registries.map((reg, i) => {
-          const badge =
-            CATEGORY_BADGES[reg.metadata?.category ?? "other"] ??
-            CATEGORY_BADGES.other;
-
           return (
             <motion.div
               key={reg.address}
@@ -545,29 +492,22 @@ function RegistrySection({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * i }}
               whileHover={{ y: -4, transition: { duration: 0.2 } }}
-              className="relative glass-panel rounded-2xl p-5 transition-all group flex flex-col overflow-hidden shadow-lg hover:shadow-2xl"
+              className={`relative rounded-2xl p-5 transition-all group flex flex-col overflow-hidden shadow-lg hover:shadow-2xl border ${
+                reg.verified
+                  ? "bg-[#0e1f1a] border-secondary/25"
+                  : "bg-surface-container border-outline-variant/15"
+              }`}
             >
-              {/* Background glow */}
-              <div className={`absolute -top-12 -right-12 w-40 h-40 ${badge.glow} rounded-full blur-3xl group-hover:scale-150 transition-transform duration-500`} />
-              <div className={`absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r ${badge.accent} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+              {/* Background glow — verified only */}
+              {reg.verified && (
+                <div className="absolute -top-12 -right-12 w-40 h-40 bg-secondary/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-500" />
+              )}
 
-              {/* Header: badge + name */}
+              {/* Header: name */}
               <div className="relative flex items-center gap-2.5 mb-2">
-                {reg.metadata?.category && (
-                  <span
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-headline font-bold uppercase tracking-widest shrink-0 ${badge.color} shadow-sm`}
-                  >
-                    {badge.label}
-                  </span>
-                )}
                 <h3 className="text-lg font-headline font-bold text-on-surface truncate">
                   {reg.name}
                 </h3>
-              </div>
-
-              {/* Address */}
-              <div className="relative mb-3">
-                <CopyableAddress address={reg.address} />
               </div>
 
               {/* Description */}
@@ -580,7 +520,7 @@ function RegistrySection({
               {/* Stats row — card style */}
               <div className="relative grid grid-cols-3 gap-2 mb-4">
                 <div className="bg-surface-container-low/60 backdrop-blur-sm rounded-xl p-2.5 text-center border border-outline-variant/5">
-                  <p className="text-on-surface-variant text-[9px] uppercase tracking-wider mb-0.5">Wallets</p>
+                  <p className="text-on-surface-variant text-[9px] uppercase tracking-wider mb-0.5">Wallets / Cert</p>
                   <p className="text-lg font-headline font-bold text-on-surface">{reg.maxWallets}</p>
                 </div>
                 <div className="bg-surface-container-low/60 backdrop-blur-sm rounded-xl p-2.5 text-center border border-outline-variant/5">
@@ -588,7 +528,7 @@ function RegistrySection({
                   <p className="text-xs font-bold text-on-surface font-mono mt-1">{maskToLabels(reg.minDisclosureMask)}</p>
                 </div>
                 <div className="bg-surface-container-low/60 backdrop-blur-sm rounded-xl p-2.5 text-center border border-outline-variant/5">
-                  <p className="text-on-surface-variant text-[9px] uppercase tracking-wider mb-0.5">CAs</p>
+                  <p className="text-on-surface-variant text-[9px] uppercase tracking-wider mb-0.5">Trusted CAs</p>
                   <p className="text-lg font-headline font-bold text-on-surface">{reg.caCount}</p>
                 </div>
               </div>
@@ -599,17 +539,17 @@ function RegistrySection({
                   reg.verified ? (
                     <span className="inline-flex items-center gap-1.5 text-secondary text-xs font-headline font-bold">
                       <ShieldCheck className="w-4 h-4" />
-                      Verified
+                      You: Verified
                       {reg.verifiedUntil && (
                         <span className="text-on-surface-variant font-normal">
-                          &middot; {reg.verifiedUntil.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          &middot; {reg.verifiedUntil.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         </span>
                       )}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 text-on-surface-variant text-xs font-headline">
                       <Shield className="w-4 h-4" />
-                      Not Registered
+                      You: Not Verified
                     </span>
                   )
                 ) : (

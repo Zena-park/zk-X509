@@ -12,7 +12,7 @@ const DB_PATH = path.join(__dirname, "../../db/registries.json");
 interface CaGuide {
   name: string;
   description: string;
-  issueUrl: string;
+  issue_url: string;
   instructions: string;
 }
 
@@ -177,7 +177,7 @@ router.put("/:address/ca-guides/:caHash", (req, res) => {
     return;
   }
 
-  const { name, description, issueUrl, instructions } = req.body;
+  const { name, description, issue_url, instructions } = req.body;
   if (!name) {
     res.status(400).json({ error: "name is required" });
     return;
@@ -186,7 +186,7 @@ router.put("/:address/ca-guides/:caHash", (req, res) => {
   db[addr].caGuides[caHash] = {
     name,
     description: description || "",
-    issueUrl: issueUrl || "",
+    issue_url: issue_url || "",
     instructions: instructions || "",
   };
 

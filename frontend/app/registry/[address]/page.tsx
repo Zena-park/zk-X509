@@ -15,12 +15,14 @@ import {
   Unlock,
   Database,
   Fingerprint,
-  Globe,
   Megaphone,
   BookOpen,
   ExternalLink,
   Tag,
   Info,
+  Copy,
+  Check,
+  AlertTriangle,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
 import { truncateHex } from "@/lib/utils";
@@ -61,6 +63,25 @@ function decodeMask(mask: number): string[] {
   return fields;
 }
 
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard not available */ }
+  };
+  return (
+    <button
+      className="ml-2 shrink-0 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+      onClick={handleCopy}
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5 text-on-surface-variant" />}
+    </button>
+  );
+}
+
 /* ================================================================== */
 /*  Registry Detail Page                                               */
 /* ================================================================== */
@@ -85,7 +106,7 @@ function RegistryDetailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const address = params.address;
-  const { isOwner } = useWallet();
+  const { isOwner, chainId: walletChainId } = useWallet();
 
   const validTabs: PageTab[] = ["register", "manage", "info"];
   const raw = searchParams.get("tab");
@@ -101,6 +122,10 @@ function RegistryDetailContent() {
   const [info, setInfo] = useState<RegistryInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Contract addresses
+  const [sp1Verifier, setSp1Verifier] = useState<string>("");
+  const serviceChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
 
   // Platform backend data
   const [metadata, setMetadata] = useState<RegistryMetadata | null>(null);
@@ -135,8 +160,12 @@ function RegistryDetailContent() {
           const factoryAddr = getFactoryAddress(detectedChainId);
           if (factoryAddr) {
             const factory = new ethers.Contract(factoryAddr, REGISTRY_FACTORY_ABI, provider);
-            const fInfo = await factory.registryInfo(address);
+            const [fInfo, verifier] = await Promise.all([
+              factory.registryInfo(address),
+              factory.SP1_VERIFIER(),
+            ]);
             serviceName = fInfo.name ?? fInfo[1] ?? "";
+            setSp1Verifier(verifier);
           }
         } catch {
           // factory may not be available
@@ -229,16 +258,11 @@ function RegistryDetailContent() {
   const disclosureFields = decodeMask(info.minDisclosureMask);
 
   /* ---------- Tab definitions ---------- */
-  const tabs: { key: PageTab; label: string; icon: React.ReactNode; ownerOnly?: boolean }[] = [
+  const tabs: { key: PageTab; label: string; icon: React.ReactNode }[] = [
     { key: "register", label: "Register", icon: <Users className="w-4 h-4" /> },
-    { key: "manage", label: "Manage", icon: <Settings className="w-4 h-4" />, ownerOnly: true },
+    { key: "manage", label: "Manage", icon: <Settings className="w-4 h-4" /> },
     { key: "info", label: "Info", icon: <Info className="w-4 h-4" /> },
   ];
-
-  const visibleTabs = tabs.filter((t) => !t.ownerOnly || isOwner);
-
-  // If active tab is "manage" but user is not owner, fall back to "register"
-  const effectiveTab = activeTab === "manage" && !isOwner ? "register" : activeTab;
 
   /* ================================================================ */
   /*  Render                                                           */
@@ -261,11 +285,6 @@ function RegistryDetailContent() {
           <h1 className="text-2xl font-headline font-bold tracking-tight text-primary">
             {info.name || "Service"}
           </h1>
-          {metadata?.category && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-label font-bold uppercase tracking-widest bg-tertiary/10 text-tertiary">
-              {metadata.category}
-            </span>
-          )}
           {info.paused && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400">
               PAUSED
@@ -273,6 +292,24 @@ function RegistryDetailContent() {
           )}
         </div>
       </motion.div>
+
+      {/* Chain mismatch warning */}
+      {walletChainId && walletChainId !== serviceChainId && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 flex items-center gap-3 p-3 rounded-xl border border-error/20 bg-error/5"
+        >
+          <AlertTriangle className="w-5 h-5 text-error shrink-0" />
+          <p className="text-sm text-error">
+            Your wallet is connected to Chain {walletChainId}. This service runs on{" "}
+            <span className="font-bold">
+              {serviceChainId === "1" ? "Ethereum" : serviceChainId === "11155111" ? "Sepolia" : serviceChainId === "31337" ? "Localhost" : `Chain ${serviceChainId}`}
+            </span>
+            . Please switch your network.
+          </p>
+        </motion.div>
+      )}
 
       {/* Tab Bar */}
       <motion.div
@@ -282,12 +319,12 @@ function RegistryDetailContent() {
         className="mb-6"
       >
         <div className="flex bg-surface-container-low rounded-full p-1 border border-outline-variant/20 self-start w-fit">
-          {visibleTabs.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-6 py-2 font-headline text-sm rounded-full transition-all ${
-                effectiveTab === tab.key
+                activeTab === tab.key
                   ? "bg-surface-container-highest text-primary shadow-sm"
                   : "text-on-surface-variant hover:text-primary"
               }`}
@@ -302,7 +339,7 @@ function RegistryDetailContent() {
       {/* Tab Content */}
       <AnimatePresence mode="wait">
         {/* ==================== REGISTER TAB ==================== */}
-        {effectiveTab === "register" && (
+        {activeTab === "register" && (
           <motion.div
             key="register"
             initial={{ opacity: 0, y: 12 }}
@@ -315,7 +352,7 @@ function RegistryDetailContent() {
         )}
 
         {/* ==================== MANAGE TAB ==================== */}
-        {effectiveTab === "manage" && isOwner && (
+        {activeTab === "manage" && (
           <motion.div
             key="manage"
             initial={{ opacity: 0, y: 12 }}
@@ -328,7 +365,7 @@ function RegistryDetailContent() {
         )}
 
         {/* ==================== INFO TAB ==================== */}
-        {effectiveTab === "info" && (
+        {activeTab === "info" && (
           <motion.div
             key="info"
             initial={{ opacity: 0, y: 12 }}
@@ -382,15 +419,61 @@ function RegistryDetailContent() {
               </div>
             </div>
 
-            {/* Owner */}
-            <div className="glass-panel rounded-2xl p-5 mb-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Owner</p>
-                  <p className="font-mono text-sm text-tertiary">{info.owner}</p>
+            {/* Contract Info */}
+            <div className="glass-panel rounded-2xl p-5 mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Network</p>
+                  <p className="font-mono text-sm text-tertiary">
+                    {serviceChainId === "1" ? "Ethereum" : serviceChainId === "11155111" ? "Sepolia" : serviceChainId === "31337" ? "Localhost" : `Chain ${serviceChainId}`}
+                    <span className="text-on-surface-variant ml-1.5 text-xs">(ID: {serviceChainId})</span>
+                  </p>
                 </div>
               </div>
+              <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Owner</p>
+                  <p className="font-mono text-sm text-tertiary truncate">{info.owner}</p>
+                </div>
+                <CopyBtn text={info.owner} />
+              </div>
+              <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Registry Address</p>
+                  <p className="font-mono text-sm text-tertiary truncate">{address}</p>
+                </div>
+                {address && <CopyBtn text={address} />}
+              </div>
+              <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">SP1 Verifier</p>
+                  <p className="font-mono text-sm text-tertiary truncate">{sp1Verifier || "—"}</p>
+                </div>
+                {sp1Verifier && <CopyBtn text={sp1Verifier} />}
+              </div>
             </div>
+
+            {/* Use Cases */}
+            {metadata?.tags && metadata.tags.length > 0 && (
+              <div className="glass-panel rounded-2xl p-5 mb-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <Tag className="w-4 h-4 text-tertiary" />
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                    Service Use Cases
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {metadata.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-3 py-1.5 bg-tertiary/10 text-tertiary text-sm font-headline font-bold rounded-full border border-tertiary/20"
+                    >
+                      {tag.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Announcements */}
             {announcements.length > 0 && (
@@ -410,7 +493,7 @@ function RegistryDetailContent() {
                       <div className="flex items-center justify-between mb-1">
                         <h4 className="text-sm font-headline font-bold text-primary">{a.title}</h4>
                         <span className="text-[10px] font-mono text-on-surface-variant">
-                          {new Date(a.createdAt).toLocaleDateString()}
+                          {new Date(a.createdAt).toLocaleDateString("en-US")}
                         </span>
                       </div>
                       <p className="text-sm text-on-surface-variant leading-relaxed">{a.body}</p>
@@ -470,14 +553,11 @@ function RegistryDetailContent() {
                         ) : (
                           <div>
                             <p className="text-sm font-headline font-bold text-on-surface-variant mb-1">
-                              Unknown CA
+                              Trusted CA
                             </p>
                             <span className="text-[10px] font-mono text-on-surface-variant/60 truncate block">
                               {hash}
                             </span>
-                            <p className="text-xs text-on-surface-variant/50 mt-1">
-                              Contact the service admin to add CA details.
-                            </p>
                           </div>
                         )}
                       </div>
