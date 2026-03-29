@@ -404,16 +404,20 @@ export default function CreateRegistryPage() {
               return (
                 <button
                   key={uc.id}
+                  disabled={!meetsWallets && !isSelected}
                   onClick={() => {
+                    if (!meetsWallets && !isSelected) return;
                     const next = new Set(selectedUseCases);
                     if (isSelected) next.delete(uc.id);
                     else next.add(uc.id);
                     setSelectedUseCases(next);
                   }}
                   className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all text-left ${
-                    isSelected
-                      ? "bg-tertiary/10 border border-tertiary/30 text-tertiary"
-                      : "bg-surface-container-low border border-outline-variant/20 text-on-surface-variant hover:text-on-surface"
+                    !meetsWallets && !isSelected
+                      ? "bg-surface-container-low border border-outline-variant/10 text-on-surface-variant/40 cursor-not-allowed"
+                      : isSelected
+                        ? "bg-tertiary/10 border border-tertiary/30 text-tertiary"
+                        : "bg-surface-container-low border border-outline-variant/20 text-on-surface-variant hover:text-on-surface"
                   }`}
                 >
                   <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${isSelected ? "bg-tertiary/20" : "bg-surface-container"}`}>

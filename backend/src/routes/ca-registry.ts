@@ -35,6 +35,30 @@ router.post("/pr", async (req, res) => {
     return;
   }
 
+  // Validate input formats to prevent path traversal
+  if (!/^\d+$/.test(chainId)) {
+    res.status(400).json({ error: "Invalid chainId: must be numeric" });
+    return;
+  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(registryAddress)) {
+    res.status(400).json({ error: "Invalid registryAddress" });
+    return;
+  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(adminAddress)) {
+    res.status(400).json({ error: "Invalid adminAddress" });
+    return;
+  }
+  if (!["add-ca", "remove-ca", "update"].includes(operation)) {
+    res.status(400).json({ error: "Invalid operation" });
+    return;
+  }
+  for (const cert of (certs || [])) {
+    if (!/^0x[0-9a-f]{64}$/.test(cert.hashHex)) {
+      res.status(400).json({ error: `Invalid cert hash: ${cert.hashHex}` });
+      return;
+    }
+  }
+
   if (!process.env.CA_REGISTRY_GITHUB_TOKEN) {
     res.status(503).json({ error: "GitHub integration not configured on server" });
     return;

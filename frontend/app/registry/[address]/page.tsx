@@ -65,10 +65,17 @@ function decodeMask(mask: number): string[] {
 
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard not available */ }
+  };
   return (
     <button
       className="ml-2 shrink-0 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+      onClick={handleCopy}
     >
       {copied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5 text-on-surface-variant" />}
     </button>

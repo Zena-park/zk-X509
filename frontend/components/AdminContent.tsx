@@ -1237,16 +1237,13 @@ export default function AdminContent() {
                       <p className="text-xs font-label text-on-surface-variant uppercase tracking-widest">
                         Pending CA Certificates ({caFiles.length})
                       </p>
-                      <div className="flex items-center gap-2">
-                        <TxBadge status={addAllTx} />
-                        <button
-                          onClick={handleAddAllCas}
-                          disabled={disabled || isBusy(addAllTx)}
-                          className="bg-tertiary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all"
-                        >
-                          {isBusy(addAllTx) ? "..." : `ADD ${caFiles.length > 1 ? `ALL (${caFiles.length}) ` : ""}TO REGISTRY`}
-                        </button>
-                      </div>
+                      <button
+                        onClick={handleAddAllCas}
+                        disabled={disabled}
+                        className="bg-tertiary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all"
+                      >
+                        {`ADD ${caFiles.length > 1 ? `ALL (${caFiles.length}) ` : ""}TO REGISTRY`}
+                      </button>
                     </div>
                     {caFiles.map((entry, idx) => {
                       const txStatus = addCaTxMap[entry.hashHex] ?? IDLE;
