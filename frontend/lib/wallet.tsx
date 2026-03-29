@@ -55,7 +55,7 @@ export function useWallet() {
   return useContext(WalletCtx);
 }
 
-function getChainName(id: string): string {
+export function getChainName(id: string): string {
   switch (id) {
     case "1": return "Ethereum";
     case "11155111": return "Sepolia";

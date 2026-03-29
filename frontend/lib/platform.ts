@@ -94,8 +94,16 @@ export async function getCaGuides(
       } catch { return {}; }
     })(),
     (async () => {
-      const svc = await getServiceJson(chainId, registryAddr);
-      return svc?.cas ?? {};
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2000);
+        const url = serviceJsonUrl(chainId, registryAddr);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) return {};
+        const svc = await res.json();
+        return svc?.cas ?? {};
+      } catch { return {}; }
     })(),
   ]);
   // Git repo as base, backend DB overrides
