@@ -15,7 +15,7 @@ import {
   Check,
   AlertTriangle,
 } from "lucide-react";
-import { useWallet } from "@/lib/wallet";
+import { useWallet, getChainName } from "@/lib/wallet";
 import {
   REGISTRY_FACTORY_ABI,
   IDENTITY_REGISTRY_ABI,
@@ -81,19 +81,6 @@ function DeployedOnInfo({ chainName, chainId, rpcUrl, walletChainId }: { chainNa
       )}
     </div>
   );
-}
-
-function getChainName(id: string): string {
-  switch (id) {
-    case "1":
-      return "Ethereum";
-    case "11155111":
-      return "Sepolia";
-    case "31337":
-      return "Localhost";
-    default:
-      return `Chain ${id}`;
-  }
 }
 
 /* ------------------------------------------------------------------ */

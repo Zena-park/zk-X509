@@ -64,21 +64,6 @@ function serviceJsonUrl(chainId: string, registryAddr: string): string {
   return `${CA_REGISTRY_BASE}/services/${chainId}/${registryAddr.toLowerCase()}/service.json`;
 }
 
-/// Fetch the full service.json from the ca-registry Git repo.
-export async function getServiceJson(
-  chainId: string,
-  registryAddr: string,
-): Promise<ServiceJson | null> {
-  try {
-    const url = serviceJsonUrl(chainId, registryAddr);
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
 /// Fetch CA guides: backend DB first, then Git repo fallback, merged.
 export async function getCaGuides(
   chainId: string,
@@ -94,8 +79,15 @@ export async function getCaGuides(
       } catch { return {}; }
     })(),
     (async () => {
-      const svc = await getServiceJson(chainId, registryAddr);
-      return svc?.cas ?? {};
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      try {
+        const url = serviceJsonUrl(chainId, registryAddr);
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) return {};
+        const svc = await res.json();
+        return svc?.cas ?? {};
+      } catch { return {}; } finally { clearTimeout(timeout); }
     })(),
   ]);
   // Git repo as base, backend DB overrides

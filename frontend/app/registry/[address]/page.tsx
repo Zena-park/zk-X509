@@ -34,7 +34,7 @@ import {
   type Announcement,
   type CaGuide,
 } from "@/lib/platform";
-import { useWallet } from "@/lib/wallet";
+import { useWallet, getChainName } from "@/lib/wallet";
 import DashboardContent from "@/components/DashboardContent";
 import AdminContent from "@/components/AdminContent";
 
@@ -304,7 +304,7 @@ function RegistryDetailContent() {
           <p className="text-sm text-error">
             Your wallet is connected to Chain {walletChainId}. This service runs on{" "}
             <span className="font-bold">
-              {serviceChainId === "1" ? "Ethereum" : serviceChainId === "11155111" ? "Sepolia" : serviceChainId === "31337" ? "Localhost" : `Chain ${serviceChainId}`}
+              {getChainName(serviceChainId)}
             </span>
             . Please switch your network.
           </p>
@@ -425,7 +425,7 @@ function RegistryDetailContent() {
                 <div className="min-w-0">
                   <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Network</p>
                   <p className="font-mono text-sm text-tertiary">
-                    {serviceChainId === "1" ? "Ethereum" : serviceChainId === "11155111" ? "Sepolia" : serviceChainId === "31337" ? "Localhost" : `Chain ${serviceChainId}`}
+                    {getChainName(serviceChainId)}
                     <span className="text-on-surface-variant ml-1.5 text-xs">(ID: {serviceChainId})</span>
                   </p>
                 </div>
