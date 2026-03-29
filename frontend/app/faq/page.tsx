@@ -67,12 +67,12 @@ const faqItems = [
   {
     question: "What is zk-X509?",
     answer:
-      "zk-X509 is a system that lets you prove your identity on the blockchain using existing X.509 certificates (e.g. government eID, corporate PKI, TLS/SSL) without revealing any personal information. Using Zero-Knowledge Proofs, the blockchain only learns that you hold a valid certificate — your name, ID number, and other details remain completely private.",
+      "zk-X509 is a system that lets you prove your identity on the blockchain using existing X.509 certificates (e.g. government eID, banking certificates, corporate PKI) without revealing any personal information. Using Zero-Knowledge Proofs, the blockchain only learns that you hold a valid certificate — your name, ID number, and other details remain completely private.",
   },
   {
     question: "How does the identity verification process work?",
     answer:
-      "The process has 3 steps: (1) Connect your wallet and select a certificate from your computer. (2) A local prover program generates a Zero-Knowledge Proof on your machine — this cryptographically proves your certificate is valid without exposing its contents. (3) Submit the proof to the smart contract on-chain. The contract verifies the proof and registers your wallet as a verified identity. The entire certificate verification (signature chain, expiry, revocation check) happens inside the ZK circuit, so nothing sensitive ever touches the blockchain.",
+      "The process has 3 steps: (1) Download and run the zk-X509 app — it scans your OS keychain for X.509 certificates and lets you select one. (2) The app generates a Zero-Knowledge Proof locally — this cryptographically proves your certificate is valid without exposing its contents. (3) Copy the proof into the web dashboard and submit it on-chain. The smart contract verifies the proof and registers your wallet as a verified identity. The entire certificate verification (signature chain, expiry, revocation check) happens inside the ZK circuit, so nothing sensitive ever touches the blockchain.",
   },
   {
     question: "What personal information is stored on the blockchain?",
@@ -82,7 +82,7 @@ const faqItems = [
   {
     question: "What types of certificates are supported?",
     answer:
-      "zk-X509 supports standard X.509 certificates with RSA (2048/4096-bit) and ECDSA (P-256, P-384) signatures. This includes government-issued certificates (e.g. Korean NPKI, European eID), corporate PKI, TLS/SSL, IoT device certificates, and any CA-signed X.509 certificate. The system verifies the full certificate chain from your certificate up to the trusted root CA.",
+      "zk-X509 supports standard X.509 certificates with RSA (2048/4096-bit) and ECDSA (P-256, P-384) signatures. This includes government-issued certificates (e.g. Korean banking certificates, European eID), corporate PKI, and any CA-signed X.509 certificate stored in your OS keychain. The system verifies the full certificate chain from your certificate up to the trusted root CA.",
   },
   {
     question: "Can I register the same certificate on multiple wallets?",
@@ -102,7 +102,7 @@ const faqItems = [
   {
     question: "How long does proof generation take?",
     answer:
-      "Proof generation typically takes 1-2 minutes on a cloud GPU, or up to 10 minutes on a local CPU. The ZK circuit performs full certificate chain verification, signature validation, and revocation checking — all within a single proof. On-chain verification of the resulting proof costs approximately 300,000 gas and completes within one transaction.",
+      "Proof generation typically takes 3-5 minutes using Docker (Groth16 mode). The ZK circuit performs full certificate chain verification, signature validation, and revocation checking — all within a single proof. On-chain verification of the resulting proof costs approximately 300,000 gas and completes within one transaction.",
   },
   {
     question: "Can different blockchain apps link my identities across services?",
@@ -122,17 +122,17 @@ const faqItems = [
   {
     question: "Is my private key safe during the proof generation?",
     answer:
-      "Yes. Your certificate's private key never leaves your local machine and is never included in the ZK proof. The local prover uses your OS keychain to generate a one-time signature that proves key ownership. This signature is verified inside the ZK circuit, but the private key itself is never exposed — not even to the prover's process memory. After proof generation, only the ZK proof (which reveals nothing about the key) is sent on-chain.",
+      "Yes. Your certificate's private key never leaves your OS keychain and is never included in the ZK proof. The zk-X509 app delegates signing to the OS keychain (macOS Security.framework) — the private key is never loaded into process memory. The resulting one-time signature is verified inside the ZK circuit, and only the ZK proof (which reveals nothing about the key) is submitted on-chain.",
   },
   {
     question: "Does my certificate contain personal information like my name or ID number?",
     answer:
-      "Yes — X.509 certificates contain personal information. Korean NPKI certificates, for example, include your real name and a unique identifier in the Common Name (CN) field (e.g., 'Hong Gildong(0003041200...)'), and separate Organization (O) / Organizational Unit (OU) fields that identify the issuing institution. However, zk-X509 ensures that none of this information is included in the data published on-chain. Your certificate is used locally as a private witness inside the ZK circuit. No certificate PII is included in the on-chain public values — only the nullifier, expiry timestamp, and other non-PII metadata (wallet address, chain ID, CA Merkle root) are public. Your name, identifier, organization, and all other personal details are never stored on-chain. With Selective Disclosure, you can optionally reveal specific attributes off-chain (e.g., 'Country: KR'). The on-chain record commits only a salted hash of each disclosed attribute — anyone you share the plaintext with can verify consistency, while everything else remains private.",
+      "Yes — X.509 certificates contain personal information such as your name, organization, and identifiers. However, zk-X509 ensures that none of this information is included in the data published on-chain. Your certificate is used locally as a private witness inside the ZK circuit. No certificate PII is included in the on-chain public values — only the nullifier, expiry timestamp, and other non-PII metadata (wallet address, chain ID, CA Merkle root) are public. Your name, identifier, organization, and all other personal details are never stored on-chain. With Selective Disclosure, you can optionally reveal specific attributes (e.g., country or organization). The on-chain record commits only a salted hash of each disclosed attribute — anyone you share the plaintext with can verify consistency, while everything else remains private.",
   },
   {
     question: "Is Delegated Proving (cloud-based proof generation) safe even if my certificate is leaked?",
     answer:
-      "Yes, it is safe by design. There are three layers of defense: (1) Certificate vs. Private Key separation — the certificate file (.der) contains your public key and identity details. Without the private key (which is password-encrypted for file-based NPKI keys, or stored in your OS keychain for keychain-backed identities), no one can generate the required signature. (2) Wallet-bound signatures — the ownership signature includes your specific wallet address, timestamp, and chain ID. Even if an attacker obtains your signature, they cannot redirect it to their own wallet — the ZK circuit will reject the mismatch. (3) Front-running protection — the smart contract verifies that the proof's embedded wallet address matches the transaction sender (msg.sender). An intercepted proof is useless to any other address. In Delegated Proving, you only send a one-time signature (not your private key) to the cloud prover. The prover generates the ZK proof but cannot forge your identity or register a different wallet.",
+      "Yes, it is safe by design. There are three layers of defense: (1) Certificate vs. Private Key separation — the certificate contains your public key and identity details. Without the private key (stored securely in your OS keychain), no one can generate the required signature. (2) Wallet-bound signatures — the ownership signature includes your specific wallet address, timestamp, and chain ID. Even if an attacker obtains your signature, they cannot redirect it to their own wallet — the ZK circuit will reject the mismatch. (3) Front-running protection — the smart contract verifies that the proof's embedded wallet address matches the transaction sender (msg.sender). An intercepted proof is useless to any other address. In Delegated Proving, you only send a one-time signature (not your private key) to the cloud prover. The prover generates the ZK proof but cannot forge your identity or register a different wallet.",
   },
 ];
 

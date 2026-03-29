@@ -23,6 +23,7 @@ import {
   Info,
   Copy,
   Check,
+  AlertTriangle,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
 import { truncateHex } from "@/lib/utils";
@@ -99,7 +100,7 @@ function RegistryDetailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const address = params.address;
-  const { isOwner } = useWallet();
+  const { isOwner, chainId: walletChainId } = useWallet();
 
   const validTabs: PageTab[] = ["register", "manage", "info"];
   const raw = searchParams.get("tab");
@@ -118,6 +119,7 @@ function RegistryDetailContent() {
 
   // Contract addresses
   const [sp1Verifier, setSp1Verifier] = useState<string>("");
+  const serviceChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
 
   // Platform backend data
   const [metadata, setMetadata] = useState<RegistryMetadata | null>(null);
@@ -281,11 +283,6 @@ function RegistryDetailContent() {
           <h1 className="text-2xl font-headline font-bold tracking-tight text-primary">
             {info.name || "Service"}
           </h1>
-          {metadata?.category && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-label font-bold uppercase tracking-widest bg-tertiary/10 text-tertiary">
-              {metadata.category}
-            </span>
-          )}
           {info.paused && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400">
               PAUSED
@@ -293,6 +290,24 @@ function RegistryDetailContent() {
           )}
         </div>
       </motion.div>
+
+      {/* Chain mismatch warning */}
+      {walletChainId && walletChainId !== serviceChainId && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 flex items-center gap-3 p-3 rounded-xl border border-error/20 bg-error/5"
+        >
+          <AlertTriangle className="w-5 h-5 text-error shrink-0" />
+          <p className="text-sm text-error">
+            Your wallet is connected to Chain {walletChainId}. This service runs on{" "}
+            <span className="font-bold">
+              {serviceChainId === "1" ? "Ethereum" : serviceChainId === "11155111" ? "Sepolia" : serviceChainId === "31337" ? "Localhost" : `Chain ${serviceChainId}`}
+            </span>
+            . Please switch your network.
+          </p>
+        </motion.div>
+      )}
 
       {/* Tab Bar */}
       <motion.div
@@ -402,11 +417,27 @@ function RegistryDetailContent() {
               </div>
             </div>
 
-            {/* Contract Addresses */}
+            {/* Contract Info */}
             <div className="glass-panel rounded-2xl p-5 mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
                 <div className="min-w-0">
-                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Service Contract</p>
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Network</p>
+                  <p className="font-mono text-sm text-tertiary">
+                    {serviceChainId === "1" ? "Ethereum" : serviceChainId === "11155111" ? "Sepolia" : serviceChainId === "31337" ? "Localhost" : `Chain ${serviceChainId}`}
+                    <span className="text-on-surface-variant ml-1.5 text-xs">(ID: {serviceChainId})</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Owner</p>
+                  <p className="font-mono text-sm text-tertiary truncate">{info.owner}</p>
+                </div>
+                <CopyBtn text={info.owner} />
+              </div>
+              <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Registry Address</p>
                   <p className="font-mono text-sm text-tertiary truncate">{address}</p>
                 </div>
                 {address && <CopyBtn text={address} />}
@@ -417,16 +448,6 @@ function RegistryDetailContent() {
                   <p className="font-mono text-sm text-tertiary truncate">{sp1Verifier || "—"}</p>
                 </div>
                 {sp1Verifier && <CopyBtn text={sp1Verifier} />}
-              </div>
-            </div>
-
-            {/* Owner */}
-            <div className="glass-panel rounded-2xl p-5 mb-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Owner</p>
-                  <p className="font-mono text-sm text-tertiary">{info.owner}</p>
-                </div>
               </div>
             </div>
 
@@ -470,7 +491,7 @@ function RegistryDetailContent() {
                       <div className="flex items-center justify-between mb-1">
                         <h4 className="text-sm font-headline font-bold text-primary">{a.title}</h4>
                         <span className="text-[10px] font-mono text-on-surface-variant">
-                          {new Date(a.createdAt).toLocaleDateString()}
+                          {new Date(a.createdAt).toLocaleDateString("en-US")}
                         </span>
                       </div>
                       <p className="text-sm text-on-surface-variant leading-relaxed">{a.body}</p>
@@ -530,14 +551,11 @@ function RegistryDetailContent() {
                         ) : (
                           <div>
                             <p className="text-sm font-headline font-bold text-on-surface-variant mb-1">
-                              Unknown CA
+                              Trusted CA
                             </p>
                             <span className="text-[10px] font-mono text-on-surface-variant/60 truncate block">
                               {hash}
                             </span>
-                            <p className="text-xs text-on-surface-variant/50 mt-1">
-                              Contact the service admin to add CA details.
-                            </p>
                           </div>
                         )}
                       </div>

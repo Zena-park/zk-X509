@@ -278,26 +278,17 @@ export default function IdentityPage() {
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <span className="text-4xl">{getTrustBadge(verified.length).emoji}</span>
+              <ShieldCheck className="w-8 h-8 text-secondary" />
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getTrustBadge(verified.length).color}`}>
-                    {getTrustBadge(verified.length).label}
-                  </span>
-                </div>
-                <p className="font-mono text-sm text-tertiary">{truncateHex(account, 10, 8)}</p>
-              </div>
-            </div>
-            <div className="flex gap-6 text-center">
-              <div>
-                <p className="text-2xl font-headline font-bold text-primary">{verified.length}</p>
-                <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Total</p>
-              </div>
-              <div>
-                <p className="text-2xl font-headline font-bold text-on-surface-variant">
-                  {verified.filter(r => r.verifiedUntil && r.verifiedUntil > new Date()).length}
+                <p className="text-sm text-on-surface-variant">
+                  Verified on <span className="font-bold text-on-surface">{verified.length}</span> service{verified.length !== 1 ? "s" : ""}
+                  {verified.length > 0 && (
+                    <span className="ml-1">
+                      ({verified.filter(r => r.verifiedUntil && r.verifiedUntil > new Date()).length} valid)
+                    </span>
+                  )}
                 </p>
-                <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Valid</p>
+                <p className="font-mono text-sm text-tertiary mt-1">{account}</p>
               </div>
             </div>
           </div>
@@ -371,16 +362,9 @@ export default function IdentityPage() {
               >
                 {/* Top row: name + verified badge */}
                 <div className="flex items-start justify-between mb-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-headline font-bold uppercase tracking-widest shrink-0 ${badge.color}`}
-                    >
-                      {badge.label}
-                    </span>
-                    <h3 className="text-lg font-headline font-bold text-on-surface truncate">
-                      {reg.name}
-                    </h3>
-                  </div>
+                  <h3 className="text-lg font-headline font-bold text-on-surface truncate">
+                    {reg.name}
+                  </h3>
                   <span className="inline-flex items-center gap-1.5 text-secondary text-xs font-headline font-bold shrink-0 mt-1">
                     <ShieldCheck className="w-4 h-4" />
                     VERIFIED
@@ -400,7 +384,7 @@ export default function IdentityPage() {
                     </span>
                     <p className="text-on-surface font-headline font-bold text-sm">
                       {reg.verifiedUntil
-                        ? reg.verifiedUntil.toLocaleDateString(undefined, {
+                        ? reg.verifiedUntil.toLocaleDateString("en-US", {
                             year: "numeric",
                             month: "long",
                             day: "numeric",

@@ -6,22 +6,22 @@
   --font-label: var(--font-inter), "Inter", sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
 
-  --color-surface: #0e0e10;
-  --color-surface-container: #19191c;
-  --color-surface-container-low: #131315;
-  --color-surface-container-high: #1f1f22;
-  --color-surface-container-highest: #262528;
-  --color-surface-low: #131315;
-  --color-surface-high: #1f1f22;
-  --color-surface-highest: #262528;
+  --color-surface: #0a0d12;
+  --color-surface-container: #0f1820;
+  --color-surface-container-low: #0c141c;
+  --color-surface-container-high: #13202a;
+  --color-surface-container-highest: #182832;
+  --color-surface-low: #0c141c;
+  --color-surface-high: #13202a;
+  --color-surface-highest: #182832;
   --color-on-surface: #f9f5f8;
-  --color-on-surface-variant: #adaaad;
+  --color-on-surface-variant: #b8b5ba;
   --color-primary: #f7f9fb;
   --color-secondary: #6bff8f;
   --color-tertiary: #8ce7ff;
   --color-error: #ff716c;
-  --color-outline-variant: #48474a;
-  --color-background: #0e0e10;
+  --color-outline-variant: #3a5868;
+  --color-background: #0a0d12;
 }
 
 @layer base {
@@ -31,9 +31,9 @@
 }
 
 .glass-panel {
-  background: rgba(25, 25, 28, 0.7);
+  background: rgba(12, 22, 32, 0.85);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(72, 71, 74, 0.15);
+  border: 1px solid rgba(45, 90, 120, 0.2);
 }
 
 /* Custom scrollbar */

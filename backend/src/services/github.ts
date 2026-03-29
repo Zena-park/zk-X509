@@ -163,7 +163,8 @@ export async function createCaRegistryPr(
     if (files.operation === "remove-ca") {
       await deleteFile(token, user, UPSTREAM_REPO, branchName, certPath, `Remove CA cert: ${hash.slice(0, 16)}...`);
     } else {
-      await createOrUpdateFile(token, user, UPSTREAM_REPO, branchName, certPath, base64Der, `Add CA cert: ${hash.slice(0, 16)}...`);
+      const certSha = await getFileSha(token, user, UPSTREAM_REPO, branchName, certPath);
+      await createOrUpdateFile(token, user, UPSTREAM_REPO, branchName, certPath, base64Der, `Add CA cert: ${hash.slice(0, 16)}...`, certSha);
     }
   }
 

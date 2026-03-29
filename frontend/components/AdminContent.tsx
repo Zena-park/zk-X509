@@ -837,7 +837,11 @@ export default function AdminContent() {
   const handleSaveCaGuide = async (caHash: string) => {
     if (!registryAddr) return;
     const guide = svcGuideEdits[caHash] || EMPTY_CA_GUIDE;
+    setSvcGuideSaving((prev) => ({ ...prev, [caHash]: true }));
+    setSvcGuideMsg((prev) => ({ ...prev, [caHash]: "" }));
     const ok = await putCaGuide(registryAddr, caHash, guide);
+    setSvcGuideSaving((prev) => ({ ...prev, [caHash]: false }));
+    setSvcGuideMsg((prev) => ({ ...prev, [caHash]: ok ? "Saved" : "Failed" }));
     if (ok) {
       setSvcCaGuides((prev) => ({ ...prev, [caHash]: guide }));
     }
@@ -1104,7 +1108,7 @@ export default function AdminContent() {
               <div className="bg-surface p-5 rounded-2xl border border-outline-variant/10 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
                   <div>
-                    <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Service Contract</p>
+                    <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Registry Address</p>
                     <p className="font-mono text-sm text-tertiary">{registryAddr || "—"}</p>
                   </div>
                   {registryAddr && (
@@ -1826,7 +1830,7 @@ export default function AdminContent() {
                           <div className="flex items-center gap-2 mb-1">
                             <h4 className="text-sm font-headline font-bold text-primary truncate">{a.title}</h4>
                             <span className="text-[10px] font-mono text-on-surface-variant shrink-0">
-                              {new Date(a.createdAt).toLocaleDateString()}
+                              {new Date(a.createdAt).toLocaleDateString("en-US")}
                             </span>
                           </div>
                           <p className="text-xs text-on-surface-variant truncate">{a.body}</p>

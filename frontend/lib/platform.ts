@@ -79,19 +79,27 @@ export async function getServiceJson(
   }
 }
 
-/// Fetch CA guides from backend DB.
+/// Fetch CA guides: backend DB first, then Git repo fallback, merged.
 export async function getCaGuides(
-  _chainId: string,
+  chainId: string,
   registryAddr: string,
 ): Promise<Record<string, CaGuide>> {
-  try {
-    validateAddress(registryAddr);
-    const res = await fetch(`${BACKEND_URL}/api/registries/${registryAddr.toLowerCase()}/ca-guides`);
-    if (!res.ok) return {};
-    return await res.json();
-  } catch {
-    return {};
-  }
+  const [backendGuides, gitGuides] = await Promise.all([
+    (async () => {
+      try {
+        validateAddress(registryAddr);
+        const res = await fetch(`${BACKEND_URL}/api/registries/${registryAddr.toLowerCase()}/ca-guides`);
+        if (!res.ok) return {};
+        return await res.json() as Record<string, CaGuide>;
+      } catch { return {}; }
+    })(),
+    (async () => {
+      const svc = await getServiceJson(chainId, registryAddr);
+      return svc?.cas ?? {};
+    })(),
+  ]);
+  // Git repo as base, backend DB overrides
+  return { ...gitGuides, ...backendGuides };
 }
 
 /// Get the ca-registry repo URL for admins to submit PRs.

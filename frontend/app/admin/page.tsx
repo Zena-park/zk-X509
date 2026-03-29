@@ -295,31 +295,26 @@ export default function AdminPage() {
                   href={`/registry/${reg.address}/admin`}
                   className="block glass-panel rounded-2xl p-6 hover:ring-2 hover:ring-tertiary/30 transition-all group"
                 >
-                  {/* Top row: badge + name */}
-                  <div className="flex items-start justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-headline font-bold uppercase tracking-widest ${badge.color}`}
-                      >
-                        {badge.label}
-                      </span>
-                      <h3 className="text-lg font-headline font-bold text-on-surface truncate">
-                        {reg.name}
-                      </h3>
-                    </div>
+                  {/* Top row: name */}
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-lg font-headline font-bold text-on-surface truncate">
+                      {reg.name}
+                    </h3>
                     <ArrowRight className="w-4 h-4 text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
                   </div>
 
-                  {/* Address */}
-                  <p className="font-mono text-xs text-on-surface-variant mb-4">
-                    {truncateHex(reg.address, 8, 6)}
-                  </p>
+                  {/* Description */}
+                  {reg.metadata?.description && (
+                    <p className="text-on-surface-variant text-xs mb-3 line-clamp-1">
+                      {reg.metadata.description}
+                    </p>
+                  )}
 
                   {/* Stats row */}
                   <div className="flex items-center gap-6 text-sm">
                     <div>
                       <span className="text-on-surface-variant text-xs">
-                        Wallets
+                        Wallets / Cert
                       </span>
                       <p className="text-on-surface font-headline font-bold">
                         {reg.maxWallets}
@@ -327,7 +322,7 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <span className="text-on-surface-variant text-xs">
-                        Disclosure
+                        Privacy
                       </span>
                       <p className="text-on-surface font-mono text-xs font-bold">
                         {maskToLabels(reg.minDisclosureMask)}
@@ -335,7 +330,7 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <span className="text-on-surface-variant text-xs">
-                        CAs
+                        Trusted CAs
                       </span>
                       <p className="text-on-surface font-headline font-bold">
                         {reg.caCount}

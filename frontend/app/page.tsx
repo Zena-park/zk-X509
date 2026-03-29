@@ -68,7 +68,7 @@ function TrustAnimationSection() {
           </div>
           <div className="flex items-center gap-2 text-sm text-on-surface">
             <Globe className="w-4 h-4 text-secondary shrink-0" />
-            <span>2. Korean Citizen</span>
+            <span>2. Jurisdiction Verified</span>
           </div>
         </div>
       ),
@@ -80,7 +80,7 @@ function TrustAnimationSection() {
         <div className="flex flex-col items-center justify-center h-24 gap-2">
           <div className="flex items-center gap-3">
             <FileCheck className="w-5 h-5 text-tertiary" />
-            <span className="text-sm text-on-surface">NPKI Certificate</span>
+            <span className="text-sm text-on-surface">X.509 Certificate</span>
           </div>
           <motion.div
             animate={{ opacity: [0.3, 1, 0.3] }}
@@ -107,7 +107,7 @@ function TrustAnimationSection() {
             </span>
             <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-tertiary/10 border border-tertiary/20 rounded-full text-xs text-tertiary w-fit mx-auto">
               <Globe className="w-3.5 h-3.5" />
-              KR Citizen
+              Jurisdiction Verified
             </span>
           </div>
         </div>
@@ -228,7 +228,7 @@ export default function LandingPage() {
 
             <p className="text-base md:text-lg text-on-surface-variant max-w-2xl mx-auto leading-relaxed mb-12">
               From DeFi compliance to DAO&apos;s one-person-one-vote. Leverage
-              existing X.509 certificates (e.g. government eID, corporate PKI, TLS) to prove on-chain trust —
+              existing X.509 certificates (e.g. government eID, banking certificates, corporate PKI) to prove on-chain trust —
               with zero privacy exposure.
             </p>
 
@@ -408,17 +408,17 @@ export default function LandingPage() {
             {[
               {
                 value: "4B+",
-                label: "X.509 certificates worldwide",
+                label: "X.509 certificates in use globally",
                 color: "tertiary",
               },
               {
                 value: "~300K",
-                label: "Gas per verification",
+                label: "Gas per on-chain verification",
                 color: "secondary",
               },
               {
-                value: "~$0.08",
-                label: "Per verification on L2",
+                value: "< $0.01",
+                label: "Per verification on L2 (est.)",
                 color: "tertiary",
               },
             ].map((stat, i) => (
