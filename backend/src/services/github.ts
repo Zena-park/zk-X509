@@ -116,8 +116,9 @@ async function createBlob(token: string, owner: string, repo: string, content: s
 /** Get the tree SHA for a commit */
 async function getCommitTreeSha(token: string, owner: string, repo: string, commitSha: string): Promise<string> {
   const res = await ghGet(token, `/repos/${owner}/${repo}/git/commits/${commitSha}`);
-  if (!res.ok) throw new Error(`Failed to get commit: ${res.status}`);
+  if (!res.ok) throw new Error(`Failed to get commit: ${res.status} ${await res.text()}`);
   const data = await res.json();
+  if (!data?.tree?.sha) throw new Error("Invalid commit response: missing tree SHA");
   return data.tree.sha;
 }
 
@@ -176,7 +177,7 @@ async function getExistingServiceJson(
   const path = `services/${chainId}/${registryAddress.toLowerCase()}/service.json`;
   const res = await ghGet(token, `/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/contents/${path}?ref=main`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Failed to check upstream service.json: ${res.status}`);
+  if (!res.ok) throw new Error(`Failed to check upstream service.json: ${res.status} ${await res.text()}`);
   const data = await res.json();
   const content = Buffer.from(data.content, "base64").toString("utf-8");
   return JSON.parse(content);
@@ -192,10 +193,11 @@ export async function createCaRegistryPr(
   const token = getToken();
   const user = await getGitHubUser(token);
 
-  // Check upstream and prepare fork in parallel
-  const [existingService] = await Promise.all([
+  // Check upstream, prepare fork, and get main ref — all in parallel
+  const [existingService, , mainSha] = await Promise.all([
     getExistingServiceJson(token, files.chainId, files.registryAddress),
     ensureFork(token, user),
+    getRef(token, UPSTREAM_OWNER, UPSTREAM_REPO, "heads/main"),
   ]);
   const isNew = existingService === null;
 
@@ -206,22 +208,21 @@ export async function createCaRegistryPr(
     files.serviceJson = JSON.stringify(serviceObj, null, 2);
   }
 
-  const mainSha = await getRef(token, UPSTREAM_OWNER, UPSTREAM_REPO, "heads/main");
-
   const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9-_.]/g, "-");
   const branchName = `ca-update/${sanitize(files.chainId)}/${sanitize(files.registryAddress.slice(0, 10))}/${Date.now()}`;
-  await createRef(token, user, UPSTREAM_REPO, branchName, mainSha);
+
+  // Create branch and get base tree in parallel
+  const [, baseTreeSha] = await Promise.all([
+    createRef(token, user, UPSTREAM_REPO, branchName, mainSha),
+    getCommitTreeSha(token, user, UPSTREAM_REPO, mainSha),
+  ]);
 
   const serviceDir = `services/${files.chainId}/${files.registryAddress.toLowerCase()}`;
 
-  // Get the base tree from the branch head
-  const baseTreeSha = await getCommitTreeSha(token, user, UPSTREAM_REPO, mainSha);
-
-  // Create all blobs in parallel
+  // Build tree entries — all blobs created in a single parallel batch
   const treeEntries: Array<{ path: string; mode: string; type: string; sha: string | null }> = [];
 
   if (files.operation === "remove-ca") {
-    // For deletions: set sha to null to remove files from tree
     for (const hash of Object.keys(files.certs)) {
       treeEntries.push({
         path: `${serviceDir}/certs/${hash}.der`,
@@ -230,29 +231,23 @@ export async function createCaRegistryPr(
         sha: null,
       });
     }
-  } else {
-    // For add/update: create blobs in parallel
-    const certEntries = Object.entries(files.certs);
-    const blobShas = await Promise.all(
-      certEntries.map(([, base64Der]) =>
-        createBlob(token, user, UPSTREAM_REPO, base64Der, "base64"),
-      ),
-    );
-    certEntries.forEach(([hash], i) => {
-      treeEntries.push({
-        path: `${serviceDir}/certs/${hash}.der`,
-        mode: "100644",
-        type: "blob",
-        sha: blobShas[i],
-      });
-    });
   }
 
-  // Create service.json and signature.json blobs in parallel
-  const [serviceJsonSha, signatureJsonSha] = await Promise.all([
+  // Create all blobs in one Promise.all (certs + service.json + signature.json)
+  const certEntries = files.operation !== "remove-ca" ? Object.entries(files.certs) : [];
+  const blobPromises = [
+    ...certEntries.map(([, base64Der]) => createBlob(token, user, UPSTREAM_REPO, base64Der, "base64")),
     createBlob(token, user, UPSTREAM_REPO, Buffer.from(files.serviceJson).toString("base64"), "base64"),
     createBlob(token, user, UPSTREAM_REPO, Buffer.from(files.signatureJson).toString("base64"), "base64"),
-  ]);
+  ];
+  const blobShas = await Promise.all(blobPromises);
+
+  // Map blob SHAs to tree entries
+  certEntries.forEach(([hash], i) => {
+    treeEntries.push({ path: `${serviceDir}/certs/${hash}.der`, mode: "100644", type: "blob", sha: blobShas[i] });
+  });
+  const serviceJsonSha = blobShas[certEntries.length];
+  const signatureJsonSha = blobShas[certEntries.length + 1];
 
   treeEntries.push(
     { path: `${serviceDir}/service.json`, mode: "100644", type: "blob", sha: serviceJsonSha },
