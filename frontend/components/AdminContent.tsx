@@ -36,6 +36,7 @@ import {
   postAnnouncement,
   deleteAnnouncement,
   getCaGuides,
+  putCaGuide,
   type RegistryMetadata,
   type Announcement,
   type CaGuide,
@@ -834,12 +835,12 @@ export default function AdminContent() {
   };
 
   const handleSaveCaGuide = async (caHash: string) => {
+    if (!registryAddr) return;
     const guide = svcGuideEdits[caHash] || EMPTY_CA_GUIDE;
-    setCaModalOp("update");
-    setCaModalTxFn(null);
-    setCaModalCerts([{ hashHex: caHash, derBase64: "", guide }]);
-    setCaModalEntry(null);
-    setCaModalOpen(true);
+    const ok = await putCaGuide(registryAddr, caHash, guide);
+    if (ok) {
+      setSvcCaGuides((prev) => ({ ...prev, [caHash]: guide }));
+    }
   };
 
   const updateGuideField = (caHash: string, field: keyof CaGuide, value: string) => {
@@ -2023,6 +2024,15 @@ export default function AdminContent() {
         }
         if (op === "remove-ca") {
           setRemoveCaTxMap({});
+        }
+        // Save CA guides to backend DB
+        if (registryAddr && (op === "add-ca" || op === "update")) {
+          const allCerts = entry ? [{ hashHex: entry.hashHex, guide: entry.guide }] : certs;
+          for (const c of allCerts) {
+            if (c.guide?.name) {
+              putCaGuide(registryAddr, c.hashHex, c.guide);
+            }
+          }
         }
       }}
       operation={caModalOp}

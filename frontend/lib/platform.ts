@@ -79,14 +79,19 @@ export async function getServiceJson(
   }
 }
 
-/// Fetch CA guides from the ca-registry's service.json.
-/// Returns the `cas` field mapped to CaGuide records.
+/// Fetch CA guides from backend DB.
 export async function getCaGuides(
-  chainId: string,
+  _chainId: string,
   registryAddr: string,
 ): Promise<Record<string, CaGuide>> {
-  const svc = await getServiceJson(chainId, registryAddr);
-  return svc?.cas ?? {};
+  try {
+    validateAddress(registryAddr);
+    const res = await fetch(`${BACKEND_URL}/api/registries/${registryAddr.toLowerCase()}/ca-guides`);
+    if (!res.ok) return {};
+    return await res.json();
+  } catch {
+    return {};
+  }
 }
 
 /// Get the ca-registry repo URL for admins to submit PRs.

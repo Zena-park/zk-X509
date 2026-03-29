@@ -41,14 +41,17 @@ router.post("/pr", async (req, res) => {
   }
 
   try {
-    // Build merged CAs — keys must be lowercase hex
-    const allCas: Record<string, CaGuide> = {};
+    // Build merged CAs — keys must be lowercase hex, name + description only
+    const allCas: Record<string, { name: string; description?: string }> = {};
     for (const [k, v] of Object.entries(existingCas)) {
-      allCas[k.toLowerCase()] = v;
+      allCas[k.toLowerCase()] = { name: v.name, ...(v.description ? { description: v.description } : {}) };
     }
     if (operation === "add-ca" || operation === "update") {
       for (const cert of certs) {
-        allCas[cert.hashHex.toLowerCase()] = cert.guide;
+        allCas[cert.hashHex.toLowerCase()] = {
+          name: cert.guide?.name || "Unknown CA",
+          ...(cert.guide?.description ? { description: cert.guide.description } : {}),
+        };
       }
     } else if (operation === "remove-ca") {
       for (const cert of certs) {
