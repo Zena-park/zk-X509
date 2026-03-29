@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, Suspense, useCallback } from "react";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { ethers } from "ethers";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -66,14 +66,41 @@ function decodeMask(mask: number): string[] {
 /* ================================================================== */
 
 export default function RegistryDetailPage() {
+  return (
+    <Suspense fallback={
+      <main className="max-w-6xl mx-auto pt-24 px-8 pb-12 flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 text-tertiary animate-spin" />
+          <p className="text-on-surface-variant text-sm">Loading service...</p>
+        </div>
+      </main>
+    }>
+      <RegistryDetailContent />
+    </Suspense>
+  );
+}
+
+function RegistryDetailContent() {
   const params = useParams<{ address: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const address = params.address;
   const { isOwner } = useWallet();
+
+  const validTabs: PageTab[] = ["register", "manage", "info"];
+  const raw = searchParams.get("tab");
+  const activeTab: PageTab = raw && validTabs.includes(raw as PageTab) ? (raw as PageTab) : "register";
+
+  const setActiveTab = useCallback(
+    (tab: PageTab) => {
+      router.replace(`/registry/${address}?tab=${tab}`, { scroll: false });
+    },
+    [router, address],
+  );
 
   const [info, setInfo] = useState<RegistryInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<PageTab>("register");
 
   // Platform backend data
   const [metadata, setMetadata] = useState<RegistryMetadata | null>(null);
@@ -83,7 +110,7 @@ export default function RegistryDetailPage() {
 
   useEffect(() => {
     if (!address || !ethers.isAddress(address)) {
-      setError("Invalid registry address.");
+      setError("Invalid service address.");
       setLoading(false);
       return;
     }
@@ -150,8 +177,8 @@ export default function RegistryDetailPage() {
         setAnnouncements(anncs);
         setCaGuides(guides);
       } catch (e) {
-        console.error("Failed to load registry:", e);
-        setError("Failed to load registry data. Check that the address is valid and the RPC is reachable.");
+        console.error("Failed to load service:", e);
+        setError("Failed to load service data. Check that the address is valid and the RPC is reachable.");
       } finally {
         setLoading(false);
       }
@@ -168,7 +195,7 @@ export default function RegistryDetailPage() {
           className="flex flex-col items-center gap-4"
         >
           <Loader2 className="w-8 h-8 text-tertiary animate-spin" />
-          <p className="text-on-surface-variant text-sm">Loading registry...</p>
+          <p className="text-on-surface-variant text-sm">Loading service...</p>
         </motion.div>
       </main>
     );
@@ -185,7 +212,7 @@ export default function RegistryDetailPage() {
         >
           <ShieldCheck className="w-12 h-12 text-red-400 mx-auto mb-4" />
           <h2 className="text-2xl font-headline font-bold text-on-surface mb-2">
-            Registry Not Found
+            Service Not Found
           </h2>
           <p className="text-on-surface-variant mb-6">{error || "Unknown error"}</p>
           <Link
