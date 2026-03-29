@@ -157,6 +157,29 @@ export async function postAnnouncement(
   }
 }
 
+// ── CA Guides (backend-based) ─────────────────
+
+export async function putCaGuide(
+  address: string,
+  caHash: string,
+  guide: { name: string; description?: string; issueUrl?: string; instructions?: string },
+): Promise<boolean> {
+  try {
+    validateAddress(address);
+    const res = await fetch(
+      `${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${encodeURIComponent(caHash)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(guide),
+      },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteAnnouncement(address: string, id: string): Promise<boolean> {
   try {
     validateAddress(address);
@@ -167,4 +190,30 @@ export async function deleteAnnouncement(address: string, id: string): Promise<b
   } catch {
     return false;
   }
+}
+
+// ── CA Registry PR (server-side GitHub) ───────
+
+export async function createCaRegistryPrViaServer(params: {
+  chainId: string;
+  registryAddress: string;
+  adminAddress: string;
+  serviceName: string;
+  operation: "add-ca" | "remove-ca" | "update";
+  certs: Array<{ hashHex: string; derBase64: string; guide: CaGuide }>;
+  existingCas: Record<string, CaGuide>;
+  signature: string;
+  signatureTimestamp: number;
+  signatureMessage: string;
+}): Promise<{ prUrl: string; prNumber: number }> {
+  const res = await fetch(`${BACKEND_URL}/api/ca-registry/pr`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "PR creation failed" }));
+    throw new Error(err.error || `Server error: ${res.status}`);
+  }
+  return res.json();
 }

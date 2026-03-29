@@ -26,7 +26,9 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { ethers } from "ethers";
 import { useWallet } from "@/lib/wallet";
+import { useReadProvider } from "@/lib/useReadProvider";
 import { truncateHex } from "@/lib/utils";
+import { REGISTRY_FACTORY_ABI, getFactoryAddress } from "@/lib/contract";
 import {
   getRegistryMetadata,
   updateRegistryMetadata,
@@ -34,7 +36,6 @@ import {
   postAnnouncement,
   deleteAnnouncement,
   getCaGuides,
-  getCaRegistryRepoUrl,
   type RegistryMetadata,
   type Announcement,
   type CaGuide,
@@ -356,6 +357,23 @@ export default function AdminContent() {
     refresh,
   } = useWallet();
 
+  const provider = useReadProvider();
+
+  /* ---------- on-chain service name ---------- */
+  const [onChainServiceName, setOnChainServiceName] = useState("");
+  useEffect(() => {
+    const cid = chainId || "31337";
+    const factoryAddr = getFactoryAddress(cid);
+    if (!factoryAddr || !registryAddr) return;
+    (async () => {
+      try {
+        const factory = new ethers.Contract(factoryAddr, REGISTRY_FACTORY_ABI, provider);
+        const info = await factory.registryInfo(registryAddr);
+        setOnChainServiceName(info.name ?? info[1] ?? "");
+      } catch { /* ignore */ }
+    })();
+  }, [registryAddr, chainId, provider]);
+
   /* ---------- tab state ---------- */
   const [activeTab, setActiveTab] = useState<AdminTab>("status");
 
@@ -392,12 +410,6 @@ export default function AdminContent() {
   const [caModalOp, setCaModalOp] = useState<"add-ca" | "remove-ca" | "update">("add-ca");
   const [caModalTxFn, setCaModalTxFn] = useState<(() => Promise<string | null>) | null>(null);
   const [caModalCerts, setCaModalCerts] = useState<Array<{ hashHex: string; derBase64: string; guide: CaGuide }>>([]);
-  // Security: keep token in memory only — never persist to sessionStorage/localStorage
-  const [githubToken, setGithubToken] = useState("");
-  // One-time cleanup of legacy sessionStorage key
-  useEffect(() => {
-    try { sessionStorage.removeItem("zk-x509-github-token"); } catch { /* ignore */ }
-  }, []);
 
   // Transfer ownership
   const [newOwnerInput, setNewOwnerInput] = useState("");
@@ -547,6 +559,11 @@ export default function AdminContent() {
         const hashHex = ethers.hexlify(hash);
         // Parse X.509 metadata and auto-generate guide
         const metadata = parseCaDer(certDer);
+        // Skip expired certificates
+        if (metadata?.expires && new Date(metadata.expires) < new Date()) {
+          skipped.push(`${file.name} (expired ${metadata.expires})`);
+          continue;
+        }
         const guide = metadata ? generateCaGuide(metadata) : EMPTY_CA_GUIDE;
         newEntries.push({ name: file.name, hash, hashHex, derBytes: certDer, metadata, guide });
       }
@@ -602,63 +619,45 @@ export default function AdminContent() {
     if (!writeContract || caFiles.length === 0) return;
     // Deduplicate by hash and exclude already-registered CAs
     const seen = new Set<string>(onChainCaLeaves);
-    const uniqueHashes: string[] = [];
-    for (const f of caFiles) {
-      if (!seen.has(f.hashHex)) {
-        seen.add(f.hashHex);
-        uniqueHashes.push(f.hashHex);
-      }
-    }
-    if (uniqueHashes.length === 0) {
+    const uniqueFiles = caFiles.filter((f) => {
+      if (seen.has(f.hashHex)) return false;
+      seen.add(f.hashHex);
+      return true;
+    });
+    if (uniqueFiles.length === 0) {
       setAddAllTx({ kind: "error", message: "All CAs are duplicates or already registered" });
       return;
     }
-    execTx(
-      setAddAllTx,
-      () => uniqueHashes.length === 1
-        ? writeContract.addCA(uniqueHashes[0])
-        : writeContract.addCAs(uniqueHashes),
-      () => {
-        refresh();
-        fetchCaLeaves();
-        setCaFiles([]);
-        setAddAllTx(IDLE);
-      },
-    );
+    const uniqueHashes = uniqueFiles.map((f) => f.hashHex);
+    // Open modal with all CAs bundled
+    setCaModalOp("add-ca");
+    setCaModalTxFn(() => async () => {
+      const tx = uniqueHashes.length === 1
+        ? await writeContract.addCA(uniqueHashes[0])
+        : await writeContract.addCAs(uniqueHashes);
+      const receipt = await tx.wait();
+      return receipt?.hash || tx.hash;
+    });
+    setCaModalCerts(uniqueFiles.map((f) => ({
+      hashHex: f.hashHex,
+      derBase64: btoa(Array.from(f.derBytes, (b) => String.fromCharCode(b)).join("")),
+      guide: f.guide,
+    })));
+    setCaModalEntry(null);
+    setCaModalOpen(true);
   };
 
   const handleAddCa = (entry: CaFileEntry) => {
     if (!writeContract) return;
 
-    if (githubToken) {
-      // Open modal for unified on-chain + Git flow
-      setCaModalEntry(entry);
-      setCaModalOpen(true);
-    } else {
-      // Fallback: on-chain only (no Git token)
-      const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
-        setAddCaTxMap((prev) => ({
-          ...prev,
-          [entry.hashHex]: typeof s === "function" ? s(prev[entry.hashHex] ?? IDLE) : s,
-        }));
-      };
-      execTx(
-        setStatus,
-        () => writeContract.addCA(entry.hashHex),
-        () => {
-          refresh();
-          fetchCaLeaves();
-          setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
-        },
-      );
-    }
+    setCaModalEntry(entry);
+    setCaModalOpen(true);
   };
 
   const handleRemoveCa = (index: number, leafHash: string) => {
     if (!writeContract) return;
 
-    if (githubToken) {
-      // Open modal for unified on-chain + Git flow
+    {
       setCaModalOp("remove-ca");
       setCaModalTxFn(() => async () => {
         const tx = await writeContract.removeCA(index);
@@ -666,25 +665,8 @@ export default function AdminContent() {
         return receipt?.hash || tx.hash;
       });
       setCaModalCerts([{ hashHex: leafHash, derBase64: "", guide: svcCaGuides[leafHash] || EMPTY_CA_GUIDE }]);
-      setCaModalEntry(null); // not a file entry
+      setCaModalEntry(null);
       setCaModalOpen(true);
-    } else {
-      // Fallback: on-chain only
-      const setStatus = (s: TxStatus | ((prev: TxStatus) => TxStatus)) => {
-        setRemoveCaTxMap((prev) => ({
-          ...prev,
-          [leafHash]: typeof s === "function" ? s(prev[leafHash] ?? IDLE) : s,
-        }));
-      };
-      execTx(
-        setStatus,
-        () => writeContract.removeCA(index),
-        () => {
-          refresh();
-          fetchCaLeaves();
-          setRemoveCaTxMap({});
-        },
-      );
     }
   };
 
@@ -852,18 +834,12 @@ export default function AdminContent() {
   };
 
   const handleSaveCaGuide = async (caHash: string) => {
-    if (githubToken) {
-      // Open modal for Git PR (no on-chain TX for guide edit)
-      const guide = svcGuideEdits[caHash] || EMPTY_CA_GUIDE;
-      setCaModalOp("update");
-      setCaModalTxFn(null); // no on-chain TX
-      setCaModalCerts([{ hashHex: caHash, derBase64: "", guide }]);
-      setCaModalEntry(null);
-      setCaModalOpen(true);
-    } else {
-      // Fallback: open Git repo
-      window.open(getCaRegistryRepoUrl(), "_blank");
-    }
+    const guide = svcGuideEdits[caHash] || EMPTY_CA_GUIDE;
+    setCaModalOp("update");
+    setCaModalTxFn(null);
+    setCaModalCerts([{ hashHex: caHash, derBase64: "", guide }]);
+    setCaModalEntry(null);
+    setCaModalOpen(true);
   };
 
   const updateGuideField = (caHash: string, field: keyof CaGuide, value: string) => {
@@ -1204,25 +1180,6 @@ export default function AdminContent() {
                   contract.
                 </p>
 
-                {/* GitHub Token for Git integration */}
-                <div className="flex items-center gap-3 mb-4 p-3 bg-surface-highest rounded-xl">
-                  <Globe className="w-4 h-4 text-on-surface-variant shrink-0" />
-                  <input
-                    type="password"
-                    placeholder="GitHub Token (optional — enables auto PR to CA repository)"
-                    value={githubToken}
-                    onChange={(e) => setGithubToken(e.target.value)}
-                    autoComplete="off"
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="flex-1 bg-transparent text-xs text-on-surface placeholder:text-on-surface-variant/50 outline-none"
-                  />
-                  {githubToken && (
-                    <span className="text-[10px] text-green-400 font-mono">Connected</span>
-                  )}
-                </div>
-
                 {/* Drop zone */}
                 <div
                   onDrop={handleDrop}
@@ -1275,18 +1232,16 @@ export default function AdminContent() {
                       <p className="text-xs font-label text-on-surface-variant uppercase tracking-widest">
                         Pending CA Certificates ({caFiles.length})
                       </p>
-                      {caFiles.length >= 2 && (
-                        <div className="flex items-center gap-2">
-                          <TxBadge status={addAllTx} />
-                          <button
-                            onClick={handleAddAllCas}
-                            disabled={disabled || isBusy(addAllTx)}
-                            className="bg-tertiary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all"
-                          >
-                            {isBusy(addAllTx) ? "..." : `ADD ALL (${caFiles.length}) TO REGISTRY`}
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <TxBadge status={addAllTx} />
+                        <button
+                          onClick={handleAddAllCas}
+                          disabled={disabled || isBusy(addAllTx)}
+                          className="bg-tertiary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all"
+                        >
+                          {isBusy(addAllTx) ? "..." : `ADD ${caFiles.length > 1 ? `ALL (${caFiles.length}) ` : ""}TO REGISTRY`}
+                        </button>
+                      </div>
                     </div>
                     {caFiles.map((entry, idx) => {
                       const txStatus = addCaTxMap[entry.hashHex] ?? IDLE;
@@ -1305,14 +1260,6 @@ export default function AdminContent() {
                             <span className="text-[10px] font-mono text-on-surface-variant truncate flex-1">
                               {truncateHex(entry.hashHex, 10, 8)}
                             </span>
-                            <TxBadge status={txStatus} />
-                            <button
-                              onClick={() => handleAddCa(entry)}
-                              disabled={disabled || isBusy(txStatus)}
-                              className="bg-primary text-background px-4 py-1.5 rounded-lg font-label font-bold text-[10px] hover:opacity-90 disabled:opacity-50 transition-all shrink-0"
-                            >
-                              {isBusy(txStatus) ? "..." : "ADD TO REGISTRY"}
-                            </button>
                             <button
                               onClick={() => removeCaFile(idx)}
                               className="text-on-surface-variant/50 hover:text-error transition-colors shrink-0"
@@ -2059,7 +2006,8 @@ export default function AdminContent() {
     <CaRegistrationModal
       open={caModalOpen}
       onClose={() => {
-        const entry = caModalEntry; // capture before clearing
+        const entry = caModalEntry;
+        const certs = caModalCerts;
         const op = caModalOp;
         setCaModalOpen(false);
         setCaModalEntry(null);
@@ -2069,6 +2017,9 @@ export default function AdminContent() {
         fetchCaLeaves();
         if (entry) {
           setCaFiles((prev) => prev.filter((f) => f.hashHex !== entry.hashHex));
+        } else if (certs.length > 0 && op === "add-ca") {
+          const hashes = new Set(certs.map((c) => c.hashHex));
+          setCaFiles((prev) => prev.filter((f) => !hashes.has(f.hashHex)));
         }
         if (op === "remove-ca") {
           setRemoveCaTxMap({});
@@ -2078,7 +2029,7 @@ export default function AdminContent() {
       chainId={chainId || "31337"}
       registryAddress={registryAddr}
       adminAddress={account || ""}
-      serviceName={svcMetadata?.description || registryAddr}
+      serviceName={onChainServiceName || registryAddr}
       executeTx={caModalEntry && writeContract ? async () => {
         const tx = await writeContract.addCA(caModalEntry.hashHex);
         const receipt = await tx.wait();
@@ -2090,7 +2041,6 @@ export default function AdminContent() {
         guide: caModalEntry.guide,
       }] : caModalCerts}
       existingCas={svcCaGuides}
-      githubToken={githubToken}
       signer={writeContract?.runner as ethers.Signer || null}
     />
     </>

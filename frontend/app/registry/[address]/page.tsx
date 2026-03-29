@@ -21,6 +21,8 @@ import {
   ExternalLink,
   Tag,
   Info,
+  Copy,
+  Check,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
 import { truncateHex } from "@/lib/utils";
@@ -59,6 +61,18 @@ function decodeMask(mask: number): string[] {
     if (mask & (1 << i)) fields.push(DISCLOSURE_LABELS[i]);
   }
   return fields;
+}
+
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="ml-2 shrink-0 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5 text-on-surface-variant" />}
+    </button>
+  );
 }
 
 /* ================================================================== */
@@ -102,6 +116,9 @@ function RegistryDetailContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Contract addresses
+  const [sp1Verifier, setSp1Verifier] = useState<string>("");
+
   // Platform backend data
   const [metadata, setMetadata] = useState<RegistryMetadata | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -135,8 +152,12 @@ function RegistryDetailContent() {
           const factoryAddr = getFactoryAddress(detectedChainId);
           if (factoryAddr) {
             const factory = new ethers.Contract(factoryAddr, REGISTRY_FACTORY_ABI, provider);
-            const fInfo = await factory.registryInfo(address);
+            const [fInfo, verifier] = await Promise.all([
+              factory.registryInfo(address),
+              factory.SP1_VERIFIER(),
+            ]);
             serviceName = fInfo.name ?? fInfo[1] ?? "";
+            setSp1Verifier(verifier);
           }
         } catch {
           // factory may not be available
@@ -229,16 +250,15 @@ function RegistryDetailContent() {
   const disclosureFields = decodeMask(info.minDisclosureMask);
 
   /* ---------- Tab definitions ---------- */
-  const tabs: { key: PageTab; label: string; icon: React.ReactNode; ownerOnly?: boolean }[] = [
+  const tabs: { key: PageTab; label: string; icon: React.ReactNode }[] = [
     { key: "register", label: "Register", icon: <Users className="w-4 h-4" /> },
-    { key: "manage", label: "Manage", icon: <Settings className="w-4 h-4" />, ownerOnly: true },
+    { key: "manage", label: "Manage", icon: <Settings className="w-4 h-4" /> },
     { key: "info", label: "Info", icon: <Info className="w-4 h-4" /> },
   ];
 
-  const visibleTabs = tabs.filter((t) => !t.ownerOnly || isOwner);
+  const visibleTabs = tabs;
 
-  // If active tab is "manage" but user is not owner, fall back to "register"
-  const effectiveTab = activeTab === "manage" && !isOwner ? "register" : activeTab;
+  const effectiveTab = activeTab;
 
   /* ================================================================ */
   /*  Render                                                           */
@@ -315,7 +335,7 @@ function RegistryDetailContent() {
         )}
 
         {/* ==================== MANAGE TAB ==================== */}
-        {effectiveTab === "manage" && isOwner && (
+        {effectiveTab === "manage" && (
           <motion.div
             key="manage"
             initial={{ opacity: 0, y: 12 }}
@@ -379,6 +399,24 @@ function RegistryDetailContent() {
                 <p className={`text-lg font-headline font-bold ${info.paused ? "text-red-400" : "text-secondary"}`}>
                   {info.paused ? "Paused" : "Active"}
                 </p>
+              </div>
+            </div>
+
+            {/* Contract Addresses */}
+            <div className="glass-panel rounded-2xl p-5 mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">Service Contract</p>
+                  <p className="font-mono text-sm text-tertiary truncate">{address}</p>
+                </div>
+                {address && <CopyBtn text={address} />}
+              </div>
+              <div className="flex items-center justify-between bg-surface-container-low/50 rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-1">SP1 Verifier</p>
+                  <p className="font-mono text-sm text-tertiary truncate">{sp1Verifier || "—"}</p>
+                </div>
+                {sp1Verifier && <CopyBtn text={sp1Verifier} />}
               </div>
             </div>
 
