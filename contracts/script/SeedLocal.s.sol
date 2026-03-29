@@ -20,7 +20,10 @@ contract SeedLocalScript is Script {
 
         // Registry parameters (configurable via env)
         string memory name = vm.envOr("SERVICE_NAME", string("Default"));
-        uint32 maxWallets = uint32(vm.envOr("MAX_WALLETS_PER_CERT", uint256(1)));
+        uint256 rawMaxWallets = vm.envOr("MAX_WALLETS_PER_CERT", uint256(1));
+        require(rawMaxWallets <= type(uint32).max, "MAX_WALLETS_PER_CERT must fit in uint32");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint32 maxWallets = uint32(rawMaxWallets);
         uint256 rawMask = vm.envOr("MIN_DISCLOSURE_MASK", uint256(0));
         require(rawMask <= 0x0F, "MIN_DISCLOSURE_MASK must be <= 0x0F");
         // forge-lint: disable-next-line(unsafe-typecast)

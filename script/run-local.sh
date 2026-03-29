@@ -23,7 +23,7 @@ echo ""
 # ========================================
 # Step 1: Start Anvil (background)
 # ========================================
-echo "[1/4] Starting Anvil (local Ethereum)..."
+echo "[1/6] Starting Anvil (local Ethereum)..."
 
 # Kill any existing anvil
 pkill -f "anvil" 2>/dev/null || true
@@ -49,7 +49,7 @@ DEPLOYER_ADDR="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 # ========================================
 # Step 2: Compute CA Merkle Root from current certs
 # ========================================
-echo "[2/5] Computing CA Merkle Root from certs/ca_pub.der..."
+echo "[2/6] Computing CA Merkle Root from certs/ca_pub.der..."
 
 if [ ! -f certs/ca_pub.der ]; then
     echo "  ⚠️  certs/ca_pub.der not found. Generating test certs..."
@@ -70,7 +70,7 @@ echo ""
 # ========================================
 # Step 3a: Deploy RegistryFactory
 # ========================================
-echo "[3/5] Deploying RegistryFactory..."
+echo "[3/6] Deploying RegistryFactory..."
 
 cd contracts
 DEPLOY_OUTPUT=$(forge script script/DeployLocal.s.sol --tc DeployLocalScript \
@@ -80,7 +80,7 @@ DEPLOY_OUTPUT=$(forge script script/DeployLocal.s.sol --tc DeployLocalScript \
     --private-key $DEPLOYER_KEY 2>&1)
 
 # Extract factory address from logs
-FACTORY_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "RegistryFactory:" | awk '{print $2}')
+FACTORY_ADDR=$(echo "$DEPLOY_OUTPUT" | awk '/RegistryFactory:/ {print $2; exit}')
 if [ -z "$FACTORY_ADDR" ]; then
     echo "❌ Deploy failed:"
     echo "$DEPLOY_OUTPUT"
@@ -91,18 +91,18 @@ echo "  ✅ RegistryFactory: $FACTORY_ADDR"
 echo ""
 
 # ========================================
-# Step 3b: Seed local registry via SeedLocal
+# Step 4: Seed local registry via SeedLocal
 # ========================================
-echo "  Creating IdentityRegistry via factory..."
+echo "[4/6] Creating IdentityRegistry via factory..."
 
 SEED_OUTPUT=$(FACTORY=$FACTORY_ADDR CA_MERKLE_ROOT=$CA_MERKLE_ROOT forge script script/SeedLocal.s.sol --tc SeedLocalScript \
     --rpc-url http://localhost:8545 \
     --broadcast \
     --sender $DEPLOYER_ADDR \
-    --private-key $DEPLOYER_KEY 2>&1)
+    --private-key $DEPLOYER_KEY 2>&1) || true
 
 # Extract registry proxy address from logs
-REGISTRY_ADDR=$(echo "$SEED_OUTPUT" | grep "IdentityRegistry (proxy):" | awk '{print $3}')
+REGISTRY_ADDR=$(echo "$SEED_OUTPUT" | awk '/IdentityRegistry \(proxy\):/ {print $3; exit}')
 if [ -z "$REGISTRY_ADDR" ]; then
     echo "❌ Seed failed:"
     echo "$SEED_OUTPUT"
@@ -116,7 +116,7 @@ cd ..
 # ========================================
 # Step 4: Verify deployment
 # ========================================
-echo "[4/5] Verifying deployment..."
+echo "[5/6] Verifying deployment..."
 
 CA_ROOT=$(cast call $REGISTRY_ADDR "caMerkleRoot()(bytes32)" --rpc-url http://localhost:8545 2>/dev/null)
 echo "  CA Merkle Root: $CA_ROOT"
@@ -171,9 +171,9 @@ EOF
 echo "  Environment saved to .env.local"
 echo ""
 # ========================================
-# Step 5/5: Start prover server + frontend
+# Step 6/6: Start prover server + frontend
 # ========================================
-echo "[5/5] Starting services..."
+echo "[6/6] Starting services..."
 
 # Start prover server (background)
 echo "  Starting prover server on :8080..."
