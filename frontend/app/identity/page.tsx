@@ -204,9 +204,9 @@ export default function IdentityPage() {
           setLoading(false);
         }
       } catch (e) {
-        console.error("Failed to load registries:", e);
+        console.error("Failed to load services:", e);
         if (!cancelled) {
-          setError("Failed to load registries from factory contract.");
+          setError("Failed to load services from factory contract.");
           setLoading(false);
         }
       }
@@ -260,11 +260,11 @@ export default function IdentityPage() {
             <ShieldCheck className="w-6 h-6 text-secondary" />
           </div>
           <h1 className="text-3xl font-headline font-bold tracking-tight text-primary">
-            My Trust
+            My Verifications
           </h1>
         </div>
         <p className="text-on-surface-variant text-sm">
-          Your on-chain trust profile.
+          Your on-chain identity verification status across services.
         </p>
       </motion.header>
 
@@ -291,13 +291,13 @@ export default function IdentityPage() {
             <div className="flex gap-6 text-center">
               <div>
                 <p className="text-2xl font-headline font-bold text-primary">{verified.length}</p>
-                <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Verified</p>
+                <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Total</p>
               </div>
               <div>
                 <p className="text-2xl font-headline font-bold text-on-surface-variant">
                   {verified.filter(r => r.verifiedUntil && r.verifiedUntil > new Date()).length}
                 </p>
-                <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Active</p>
+                <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">Valid</p>
               </div>
             </div>
           </div>
@@ -353,7 +353,7 @@ export default function IdentityPage() {
         </motion.div>
       )}
 
-      {/* Verified registry cards */}
+      {/* Verified service cards */}
       {!loading && !error && verified.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
           {verified.map((reg, i) => {

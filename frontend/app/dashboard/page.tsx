@@ -239,7 +239,7 @@ export default function DashboardPage() {
                 verifiedUntil,
               });
             } catch (e) {
-              console.error(`Failed to load registry ${addr}:`, e);
+              console.error(`Failed to load service ${addr}:`, e);
             }
           }),
         );
@@ -353,7 +353,7 @@ export default function DashboardPage() {
               No services available
             </h2>
             <p className="text-on-surface-variant">
-              No identity verification services have been deployed on this network yet.
+              No services have been deployed on this network yet.
             </p>
           </motion.div>
         )}
@@ -474,12 +474,12 @@ export default function DashboardPage() {
             No services available
           </h2>
           <p className="text-on-surface-variant">
-            No identity verification services have been deployed on this network yet.
+            No services have been deployed on this network yet.
           </p>
         </motion.div>
       )}
 
-      {/* Registry cards — verified first */}
+      {/* Service cards — verified first */}
       {!loading && !error && registries.length > 0 && (
         <>
           {verifiedRegistries.length > 0 && (
