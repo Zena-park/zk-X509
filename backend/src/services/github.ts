@@ -140,15 +140,46 @@ async function createPullRequest(
   return { prUrl: data.html_url, prNumber: data.number };
 }
 
+/** Fetch existing service.json content from upstream main (returns null if not found) */
+async function getExistingServiceJson(
+  token: string, chainId: string, registryAddress: string,
+): Promise<Record<string, unknown> | null> {
+  const path = `services/${chainId}/${registryAddress.toLowerCase()}/service.json`;
+  const res = await fetch(`${API_BASE}/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/contents/${path}?ref=main`, {
+    headers: authHeaders(token),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to check upstream service.json: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  const content = Buffer.from(data.content, "base64").toString("utf-8");
+  return JSON.parse(content);
+}
+
+export interface CaRegistryPrResult extends GitHubPrResult {
+  isNew: boolean;
+}
+
 export async function createCaRegistryPr(
   files: CaRegistryFiles,
-  title: string,
-  body: string,
-): Promise<GitHubPrResult> {
+  buildTitle: (isNew: boolean) => string,
+  buildBody: (isNew: boolean) => string,
+): Promise<CaRegistryPrResult> {
   const token = getToken();
   const user = await getGitHubUser(token);
 
-  await ensureFork(token, user);
+  // Check upstream and prepare fork in parallel
+  const [existingService] = await Promise.all([
+    getExistingServiceJson(token, files.chainId, files.registryAddress),
+    ensureFork(token, user),
+  ]);
+  const isNew = existingService === null;
+
+  // Preserve created_at from existing service.json on updates
+  if (!isNew && existingService?.created_at) {
+    const serviceObj = JSON.parse(files.serviceJson);
+    serviceObj.created_at = existingService.created_at;
+    files.serviceJson = JSON.stringify(serviceObj, null, 2);
+  }
 
   const mainSha = await getRef(token, UPSTREAM_OWNER, UPSTREAM_REPO, "heads/main");
 
@@ -186,5 +217,8 @@ export async function createCaRegistryPr(
     sigSha,
   );
 
-  return createPullRequest(token, user, branchName, title, body);
+  const title = buildTitle(isNew);
+  const body = buildBody(isNew);
+  const pr = await createPullRequest(token, user, branchName, title, body);
+  return { ...pr, isNew };
 }
