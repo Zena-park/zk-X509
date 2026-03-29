@@ -14,7 +14,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useWallet, getChainName } from "@/lib/wallet";
-import CopyButton from "@/components/CopyButton";
 import {
   REGISTRY_FACTORY_ABI,
   IDENTITY_REGISTRY_ABI,
@@ -22,7 +21,6 @@ import {
   getRpcUrl,
 } from "@/lib/contract";
 import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
-import { truncateHex } from "@/lib/utils";
 import { useReadProvider } from "@/lib/useReadProvider";
 
 /* ------------------------------------------------------------------ */
@@ -79,25 +77,6 @@ function DeployedOnInfo({ chainName, chainId, rpcUrl, walletChainId }: { chainNa
         </div>
       )}
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Copyable Address                                                    */
-/* ------------------------------------------------------------------ */
-
-function CopyableAddress({
-  address,
-  className,
-}: {
-  address: string;
-  className?: string;
-}) {
-  return (
-    <span className={`inline-flex items-center gap-1 font-mono text-xs text-on-surface-variant ${className ?? ""}`}>
-      {truncateHex(address, 8, 6)}
-      <CopyButton text={address} className="p-0.5 hover:bg-white/5 rounded transition-colors" iconSize="w-3 h-3" />
-    </span>
   );
 }
 
