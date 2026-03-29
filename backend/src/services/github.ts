@@ -237,8 +237,8 @@ export async function createCaRegistryPr(
   const certEntries = files.operation !== "remove-ca" ? Object.entries(files.certs) : [];
   const blobPromises = [
     ...certEntries.map(([, base64Der]) => createBlob(token, user, UPSTREAM_REPO, base64Der, "base64")),
-    createBlob(token, user, UPSTREAM_REPO, Buffer.from(files.serviceJson).toString("base64"), "base64"),
-    createBlob(token, user, UPSTREAM_REPO, Buffer.from(files.signatureJson).toString("base64"), "base64"),
+    createBlob(token, user, UPSTREAM_REPO, files.serviceJson, "utf-8"),
+    createBlob(token, user, UPSTREAM_REPO, files.signatureJson, "utf-8"),
   ];
   const blobShas = await Promise.all(blobPromises);
 
