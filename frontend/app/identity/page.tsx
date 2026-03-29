@@ -10,10 +10,9 @@ import {
   ArrowRight,
   Shield,
   ShieldCheck,
-  Copy,
-  Check,
 } from "lucide-react";
 import { useWallet } from "@/lib/wallet";
+import CopyButton from "@/components/CopyButton";
 import {
   REGISTRY_FACTORY_ABI,
   IDENTITY_REGISTRY_ABI,
@@ -62,29 +61,11 @@ function CopyableAddress({
   address: string;
   className?: string;
 }) {
-  const [copied, setCopied] = useState(false);
-
-  function handleCopy(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    navigator.clipboard.writeText(address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
   return (
-    <button
-      onClick={handleCopy}
-      className={`inline-flex items-center gap-1 font-mono text-xs text-on-surface-variant hover:text-tertiary transition-colors ${className ?? ""}`}
-      title="Copy address"
-    >
+    <span className={`inline-flex items-center gap-1 font-mono text-xs text-on-surface-variant ${className ?? ""}`}>
       {truncateHex(address, 8, 6)}
-      {copied ? (
-        <Check className="w-3 h-3 text-secondary" />
-      ) : (
-        <Copy className="w-3 h-3 opacity-50" />
-      )}
-    </button>
+      <CopyButton text={address} className="p-0.5 hover:bg-white/5 rounded transition-colors" iconSize="w-3 h-3" />
+    </span>
   );
 }
 
