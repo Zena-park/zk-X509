@@ -39,7 +39,7 @@ function createGitHubClient(token: string) {
   async function get<T = unknown>(path: string): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`, { headers });
     if (!res.ok) throw new Error(`GET ${path}: ${res.status} ${await res.text()}`);
-    return res.json() as Promise<T>;
+    return await res.json() as T;
   }
 
   async function getRaw(path: string): Promise<Response> {
@@ -51,7 +51,7 @@ function createGitHubClient(token: string) {
       method: "POST", headers: jsonHeaders, body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`POST ${path}: ${res.status} ${await res.text()}`);
-    return res.json() as Promise<T>;
+    return await res.json() as T;
   }
 
   async function patch(path: string, body: unknown): Promise<void> {
@@ -129,6 +129,9 @@ function repoApi(gh: GitHubClient, owner: string, repo: string) {
 async function ensureFork(gh: GitHubClient, user: string): Promise<void> {
   const res = await gh.getRaw(`/repos/${user}/${UPSTREAM_REPO}`);
   if (res.ok) return;
+  if (res.status !== 404) {
+    throw new Error(`Failed to check fork: ${res.status} ${await res.text()}`);
+  }
 
   await gh.post(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/forks`, {});
 
