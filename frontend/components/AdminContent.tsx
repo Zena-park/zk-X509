@@ -26,9 +26,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { ethers } from "ethers";
 import { useWallet } from "@/lib/wallet";
-import { useReadProvider } from "@/lib/useReadProvider";
 import { truncateHex } from "@/lib/utils";
-import { REGISTRY_FACTORY_ABI, getFactoryAddress } from "@/lib/contract";
 import {
   getRegistryMetadata,
   updateRegistryMetadata,
@@ -334,7 +332,7 @@ interface CaFileEntry {
 /*  Admin Page                                                         */
 /* ================================================================== */
 
-export default function AdminContent() {
+export default function AdminContent({ serviceName: serviceNameProp }: { serviceName?: string } = {}) {
   const {
     account,
     isOwner,
@@ -346,23 +344,6 @@ export default function AdminContent() {
     chainName,
     refresh,
   } = useWallet();
-
-  const provider = useReadProvider();
-
-  /* ---------- on-chain service name ---------- */
-  const [onChainServiceName, setOnChainServiceName] = useState("");
-  useEffect(() => {
-    const cid = chainId || "31337";
-    const factoryAddr = getFactoryAddress(cid);
-    if (!factoryAddr || !registryAddr) return;
-    (async () => {
-      try {
-        const factory = new ethers.Contract(factoryAddr, REGISTRY_FACTORY_ABI, provider);
-        const info = await factory.registryInfo(registryAddr);
-        setOnChainServiceName(info.name ?? info[1] ?? "");
-      } catch { /* ignore */ }
-    })();
-  }, [registryAddr, chainId, provider]);
 
   /* ---------- tab state ---------- */
   const [activeTab, setActiveTab] = useState<AdminTab>("status");
@@ -2029,7 +2010,7 @@ export default function AdminContent() {
       chainId={chainId || "31337"}
       registryAddress={registryAddr}
       adminAddress={account || ""}
-      serviceName={onChainServiceName || registryAddr}
+      serviceName={serviceNameProp || registryAddr}
       executeTx={caModalEntry && writeContract ? async () => {
         const tx = await writeContract.addCA(caModalEntry.hashHex);
         const receipt = await tx.wait();

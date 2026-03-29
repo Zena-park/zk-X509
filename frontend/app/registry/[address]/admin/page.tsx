@@ -48,7 +48,7 @@ export default function ScopedAdminPage() {
           </h1>
         )}
       </div>
-      <AdminContent />
+      <AdminContent serviceName={serviceName} />
     </>
   );
 }
