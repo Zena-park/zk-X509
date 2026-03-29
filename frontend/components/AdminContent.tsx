@@ -332,7 +332,7 @@ interface CaFileEntry {
 /*  Admin Page                                                         */
 /* ================================================================== */
 
-export default function AdminContent({ serviceName: serviceNameProp }: { serviceName?: string } = {}) {
+export default function AdminContent({ serviceName }: { serviceName?: string } = {}) {
   const {
     account,
     isOwner,
@@ -2010,7 +2010,7 @@ export default function AdminContent({ serviceName: serviceNameProp }: { service
       chainId={chainId || "31337"}
       registryAddress={registryAddr}
       adminAddress={account || ""}
-      serviceName={serviceNameProp || registryAddr}
+      serviceName={serviceName || registryAddr}
       executeTx={caModalEntry && writeContract ? async () => {
         const tx = await writeContract.addCA(caModalEntry.hashHex);
         const receipt = await tx.wait();
