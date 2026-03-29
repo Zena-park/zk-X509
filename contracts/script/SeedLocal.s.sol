@@ -23,7 +23,8 @@ contract SeedLocalScript is Script {
         uint32 maxWallets = uint32(vm.envOr("MAX_WALLETS_PER_CERT", uint256(1)));
         uint256 rawMask = vm.envOr("MIN_DISCLOSURE_MASK", uint256(0));
         require(rawMask <= 0x0F, "MIN_DISCLOSURE_MASK must be <= 0x0F");
-        // forge-lint: disable-next-line(unsafe-typecast)        uint8 minDisclosureMask = uint8(rawMask);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint8 minDisclosureMask = uint8(rawMask);
         uint256 maxProofAge = vm.envOr("MAX_PROOF_AGE", uint256(3600));
 
         vm.startBroadcast();
