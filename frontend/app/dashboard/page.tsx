@@ -20,7 +20,7 @@ import {
   getFactoryAddress,
   getRpcUrl,
 } from "@/lib/contract";
-import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
+import { getRegistryMetadata, getListedRegistries, type RegistryMetadata } from "@/lib/platform";
 import { useReadProvider } from "@/lib/useReadProvider";
 
 /* ------------------------------------------------------------------ */
@@ -115,12 +115,24 @@ export default function DashboardPage() {
           provider,
         );
 
-        const allAddresses: string[] = await factory.getRegistries();
+        const [allAddresses, listedAddresses]: [string[], string[] | null] = await Promise.all([
+          factory.getRegistries(),
+          getListedRegistries(),
+        ]);
+
+        // null  = backend unreachable → show all on-chain registries
+        // []    = backend ok, nothing listed → show none
+        // [...] = filter to only listed
+        let visibleAddresses = allAddresses;
+        if (listedAddresses !== null) {
+          const listedSet = new Set(listedAddresses.map((l: string) => l.toLowerCase()));
+          visibleAddresses = allAddresses.filter((a: string) => listedSet.has(a.toLowerCase()));
+        }
 
         const cards: RegistryCard[] = [];
 
         await Promise.all(
-          allAddresses.map(async (addr) => {
+          visibleAddresses.map(async (addr) => {
             try {
               const info = await factory.registryInfo(addr);
 

@@ -35,6 +35,7 @@ export interface RegistryMetadata {
   category: "dao" | "defi" | "corporate" | "other";
   website: string;
   tags: string[];
+  listed?: boolean;
 }
 
 export interface Announcement {
@@ -97,6 +98,19 @@ export async function getCaGuides(
 /// Get the ca-registry repo URL for admins to submit PRs.
 export function getCaRegistryRepoUrl(): string {
   return "https://github.com/tokamak-network/zk-x509-ca-registry/pulls";
+}
+
+// ── Registry Listing ──────────────────────────────
+
+/// Fetch listed registry addresses from backend. Returns null if backend is unreachable.
+export async function getListedRegistries(): Promise<string[] | null> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/registries`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 // ── Backend Server (announcements, metadata not in Git) ─────────

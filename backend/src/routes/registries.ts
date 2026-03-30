@@ -29,6 +29,7 @@ interface RegistryEntry {
   category: string;
   website: string;
   tags: string[];
+  listed?: boolean;
   announcements: Announcement[];
   caGuides: Record<string, CaGuide>;
 }
@@ -36,6 +37,10 @@ interface RegistryEntry {
 type DB = Record<string, RegistryEntry>;
 
 function readDB(): DB {
+  if (!fs.existsSync(DB_PATH)) {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    fs.writeFileSync(DB_PATH, "{}", "utf-8");
+  }
   const raw = fs.readFileSync(DB_PATH, "utf-8");
   return JSON.parse(raw);
 }
@@ -51,12 +56,22 @@ function makeDefaultEntry(): RegistryEntry {
     category: "other",
     website: "",
     tags: [],
+    listed: true,
     announcements: [],
     caGuides: {},
   };
 }
 
 // --- Routes ---
+
+// GET /api/registries — list all listed registry addresses
+router.get("/", (req, res) => {
+  const db = readDB();
+  const listed = Object.entries(db)
+    .filter(([, entry]) => entry.listed !== false)
+    .map(([addr]) => addr);
+  res.json(listed);
+});
 
 // GET /api/registries/:address
 router.get("/:address", (req, res) => {
@@ -80,7 +95,7 @@ router.put("/:address", (req, res) => {
   }
 
   const entry = db[addr];
-  const { description, logoUrl, category, website, tags } = req.body;
+  const { description, logoUrl, category, website, tags, listed } = req.body;
   if (description !== undefined) entry.description = String(description);
   if (logoUrl !== undefined) entry.logoUrl = String(logoUrl);
   if (category !== undefined && ["dao", "defi", "corporate", "other"].includes(category)) {
@@ -90,6 +105,7 @@ router.put("/:address", (req, res) => {
   if (Array.isArray(tags)) {
     entry.tags = tags.filter((tag: unknown): tag is string => typeof tag === "string");
   }
+  if (listed !== undefined) entry.listed = typeof listed === "string" ? listed.toLowerCase() === "true" : Boolean(listed);
 
   writeDB(db);
   res.json(db[addr]);
