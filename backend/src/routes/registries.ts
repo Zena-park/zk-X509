@@ -189,8 +189,7 @@ router.put("/:address/ca-guides/:caHash", (req, res) => {
   const addr = (req.params.address as string).toLowerCase();
   const caHash = req.params.caHash as string;
   if (!db[addr]) {
-    res.status(404).json({ error: "Registry not found" });
-    return;
+    db[addr] = makeDefaultEntry();
   }
 
   const { name, description, issue_url, instructions } = req.body;
@@ -210,18 +209,13 @@ router.put("/:address/ca-guides/:caHash", (req, res) => {
   res.json(db[addr].caGuides[caHash]);
 });
 
-// DELETE /api/registries/:address/ca-guides/:caHash
+// DELETE /api/registries/:address/ca-guides/:caHash — idempotent
 router.delete("/:address/ca-guides/:caHash", (req, res) => {
   const db = readDB();
   const addr = (req.params.address as string).toLowerCase();
   const caHash = req.params.caHash as string;
-  if (!db[addr]) {
-    res.status(404).json({ error: "Registry not found" });
-    return;
-  }
-
-  if (!db[addr].caGuides[caHash]) {
-    res.status(404).json({ error: "CA guide not found" });
+  if (!db[addr] || !db[addr].caGuides[caHash]) {
+    res.status(204).send();
     return;
   }
 
