@@ -61,9 +61,6 @@ cat > /shared/addresses.json <<EOF
 }
 EOF
 
-# Also write to host-mounted path (for developer reference)
-cp /shared/addresses.json /host-root/.docker-addresses.json 2>/dev/null || true
-
 echo ""
 echo "=== Deploy complete ==="
 echo "FACTORY=$FACTORY"

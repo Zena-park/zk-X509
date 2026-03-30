@@ -1,14 +1,13 @@
-.PHONY: up down clean status logs addresses
+.PHONY: up down clean status logs addresses help
 
 ## Docker local environment
 up:                ## Start all services (build + deploy + run)
 	docker compose up --build -d
 	@echo ""
 	@echo "Waiting for deployer to finish..."
-	@while docker compose ps -a deployer --format '{{.State}}' 2>/dev/null | grep -q running; do sleep 1; done
+	@docker compose wait deployer || { echo "ERROR: deployer failed"; docker compose logs deployer; exit 1; }
 	@docker compose logs deployer
-	@EXIT=$$(docker compose ps -a deployer --format '{{.ExitCode}}' 2>/dev/null); \
-	 if [ "$$EXIT" != "0" ]; then echo "ERROR: deployer failed (exit $$EXIT)"; exit 1; fi
+	@docker compose cp deployer:/shared/addresses.json .docker-addresses.json 2>/dev/null || true
 	@echo ""
 	@echo "Services running:"
 	@echo "   Frontend   → http://localhost:3000"
@@ -23,7 +22,7 @@ down:              ## Stop all services (chain state resets on next up)
 
 clean:             ## Stop all services, remove volumes, and clear cached addresses
 	docker compose down -v
-	rm -f .docker-addresses.json
+	rm -rf .docker-addresses.json
 
 status:            ## Show service status
 	docker compose ps
