@@ -5,10 +5,11 @@ up:                ## Start all services (build + deploy + run)
 	docker compose up --build -d
 	@echo ""
 	@echo "Waiting for deployer to finish..."
-	@status=0; docker compose wait deployer || status=$$?; \
-	 if [ $$status -ne 0 ]; then echo "ERROR: 'docker compose wait deployer' exited with status $$status"; docker compose logs deployer; exit $$status; fi
+	@while docker compose ps -a deployer --format '{{.State}}' 2>/dev/null | grep -q running; do sleep 1; done
 	@docker compose logs deployer
-	@docker compose cp deployer:/shared/addresses.json .docker-addresses.json
+	@EXIT=$$(docker compose ps -a deployer --format '{{.ExitCode}}' 2>/dev/null); \
+	 if [ "$$EXIT" != "0" ]; then echo "ERROR: deployer failed (exit $$EXIT)"; exit 1; fi
+	@docker compose cp deployer:/shared/addresses.json .docker-addresses.json 2>/dev/null || true
 	@echo ""
 	@echo "Services running:"
 	@echo "   Frontend   → http://localhost:3000"
