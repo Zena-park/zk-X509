@@ -199,16 +199,14 @@ export async function putCaGuide(
   }
 }
 
-export async function deleteCaGuide(address: string, caHash: string): Promise<boolean> {
-  try {
-    validateAddress(address);
-    const res = await fetch(
-      `${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${encodeURIComponent(caHash)}`,
-      { method: "DELETE" },
-    );
-    return res.ok;
-  } catch {
-    return false;
+export async function deleteCaGuide(address: string, caHash: string): Promise<void> {
+  validateAddress(address);
+  const res = await fetch(
+    `${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${encodeURIComponent(caHash)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error("Failed to delete CA guide. Status: " + res.status);
   }
 }
 

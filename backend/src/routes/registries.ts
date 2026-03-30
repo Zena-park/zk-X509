@@ -37,12 +37,18 @@ interface RegistryEntry {
 type DB = Record<string, RegistryEntry>;
 
 function readDB(): DB {
-  if (!fs.existsSync(DB_PATH)) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    fs.writeFileSync(DB_PATH, "{}", "utf-8");
+  try {
+    const raw = fs.readFileSync(DB_PATH, "utf-8");
+    return JSON.parse(raw);
+  } catch (error: any) {
+    if (error.code === "ENOENT") {
+      fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+      fs.writeFileSync(DB_PATH, "{}", "utf-8");
+      return {};
+    }
+    console.error("Error reading or parsing DB file at " + DB_PATH + ":", error);
+    throw error;
   }
-  const raw = fs.readFileSync(DB_PATH, "utf-8");
-  return JSON.parse(raw);
 }
 
 function writeDB(db: DB): void {

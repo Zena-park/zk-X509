@@ -9,7 +9,7 @@ type Step = "tx" | "sign" | "git" | "done" | "error" | "partial";
 
 interface Props {
   open: boolean;
-  onClose: () => void;
+  onClose: (txSuccess: boolean) => void;
   operation: "add-ca" | "remove-ca" | "update";
   chainId: string;
   registryAddress: string;
@@ -137,7 +137,7 @@ export default function CaRegistrationModal({
             )}
           </h3>
           {canClose && (
-            <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface">
+            <button onClick={() => onClose(!!txHash)} className="text-on-surface-variant hover:text-on-surface">
               <X className="w-5 h-5" />
             </button>
           )}
@@ -222,7 +222,7 @@ export default function CaRegistrationModal({
             <p className="text-xs text-yellow-300/80">{errorMsg}</p>
             <p className="text-xs text-on-surface-variant">You can create the PR manually later.</p>
             <button
-              onClick={onClose}
+              onClick={() => onClose(true)}
               className="bg-surface-highest text-on-surface px-4 py-1.5 rounded-lg text-xs font-bold"
             >
               Close
@@ -236,7 +236,7 @@ export default function CaRegistrationModal({
             <p className="text-sm text-red-400 font-medium">Error</p>
             <p className="text-xs text-red-300/80">{errorMsg}</p>
             <button
-              onClick={onClose}
+              onClick={() => onClose(false)}
               className="bg-surface-highest text-on-surface px-4 py-1.5 rounded-lg text-xs font-bold"
             >
               Close
