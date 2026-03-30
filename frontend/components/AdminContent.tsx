@@ -35,6 +35,7 @@ import {
   deleteAnnouncement,
   getCaGuides,
   putCaGuide,
+  deleteCaGuide,
   type RegistryMetadata,
   type Announcement,
   type CaGuide,
@@ -650,6 +651,8 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
       .map(({ idx }) => idx)
       .sort((a, b) => b - a);
 
+    const removedLeaves = [...selectedCaLeaves];
+
     execTx(
       setRemoveAllTx,
       () => indices.length === 1
@@ -660,6 +663,12 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
         setRemoveCaTxMap({});
         refresh();
         fetchCaLeaves();
+        // Sync: remove CA guides from backend DB
+        if (registryAddr) {
+          for (const leaf of removedLeaves) {
+            deleteCaGuide(registryAddr, leaf).catch(console.error);
+          }
+        }
       },
     );
   };
@@ -2017,6 +2026,12 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
         }
         if (op === "remove-ca") {
           setRemoveCaTxMap({});
+          // Remove CA guides from backend DB
+          if (registryAddr && certs.length > 0) {
+            for (const c of certs) {
+              deleteCaGuide(registryAddr, c.hashHex).catch(console.error);
+            }
+          }
         }
         // Save CA guides to backend DB
         if (registryAddr && (op === "add-ca" || op === "update")) {
