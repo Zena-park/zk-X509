@@ -37,12 +37,18 @@ interface RegistryEntry {
 type DB = Record<string, RegistryEntry>;
 
 function readDB(): DB {
-  if (!fs.existsSync(DB_PATH)) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    fs.writeFileSync(DB_PATH, "{}", "utf-8");
+  try {
+    const raw = fs.readFileSync(DB_PATH, "utf-8");
+    return JSON.parse(raw);
+  } catch (error: any) {
+    if (error.code === "ENOENT") {
+      fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+      fs.writeFileSync(DB_PATH, "{}", "utf-8");
+      return {};
+    }
+    console.error("Error reading or parsing DB file at " + DB_PATH + ":", error);
+    throw error;
   }
-  const raw = fs.readFileSync(DB_PATH, "utf-8");
-  return JSON.parse(raw);
 }
 
 function writeDB(db: DB): void {
@@ -189,8 +195,7 @@ router.put("/:address/ca-guides/:caHash", (req, res) => {
   const addr = (req.params.address as string).toLowerCase();
   const caHash = req.params.caHash as string;
   if (!db[addr]) {
-    res.status(404).json({ error: "Registry not found" });
-    return;
+    db[addr] = makeDefaultEntry();
   }
 
   const { name, description, issue_url, instructions } = req.body;
@@ -210,18 +215,13 @@ router.put("/:address/ca-guides/:caHash", (req, res) => {
   res.json(db[addr].caGuides[caHash]);
 });
 
-// DELETE /api/registries/:address/ca-guides/:caHash
+// DELETE /api/registries/:address/ca-guides/:caHash — idempotent
 router.delete("/:address/ca-guides/:caHash", (req, res) => {
   const db = readDB();
   const addr = (req.params.address as string).toLowerCase();
   const caHash = req.params.caHash as string;
-  if (!db[addr]) {
-    res.status(404).json({ error: "Registry not found" });
-    return;
-  }
-
-  if (!db[addr].caGuides[caHash]) {
-    res.status(404).json({ error: "CA guide not found" });
+  if (!db[addr] || !db[addr].caGuides[caHash]) {
+    res.status(204).send();
     return;
   }
 

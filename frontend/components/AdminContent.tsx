@@ -35,6 +35,7 @@ import {
   deleteAnnouncement,
   getCaGuides,
   putCaGuide,
+  deleteCaGuide,
   type RegistryMetadata,
   type Announcement,
   type CaGuide,
@@ -650,6 +651,8 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
       .map(({ idx }) => idx)
       .sort((a, b) => b - a);
 
+    const removedLeaves = [...selectedCaLeaves];
+
     execTx(
       setRemoveAllTx,
       () => indices.length === 1
@@ -660,6 +663,14 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
         setRemoveCaTxMap({});
         refresh();
         fetchCaLeaves();
+        // Sync: remove CA guides from backend DB
+        if (registryAddr) {
+          for (const leaf of removedLeaves) {
+            deleteCaGuide(registryAddr, leaf).catch((e) =>
+              console.error("Failed to delete CA guide for " + leaf + ":", e),
+            );
+          }
+        }
       },
     );
   };
@@ -1999,7 +2010,7 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
     {/* CA Registration Modal (on-chain + Git) — shared for add/remove/edit */}
     <CaRegistrationModal
       open={caModalOpen}
-      onClose={() => {
+      onClose={(txSuccess) => {
         const entry = caModalEntry;
         const certs = caModalCerts;
         const op = caModalOp;
@@ -2017,13 +2028,21 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
         }
         if (op === "remove-ca") {
           setRemoveCaTxMap({});
+          if (txSuccess && registryAddr && certs.length > 0) {
+            for (const c of certs) {
+              deleteCaGuide(registryAddr, c.hashHex).catch((e) =>
+                console.error("Failed to delete CA guide for " + c.hashHex + ":", e),
+              );
+            }
+          }
         }
-        // Save CA guides to backend DB
-        if (registryAddr && (op === "add-ca" || op === "update")) {
+        if (txSuccess && registryAddr && (op === "add-ca" || op === "update")) {
           const allCerts = entry ? [{ hashHex: entry.hashHex, guide: entry.guide }] : certs;
           for (const c of allCerts) {
             if (c.guide?.name) {
-              putCaGuide(registryAddr, c.hashHex, c.guide).catch(console.error);
+              putCaGuide(registryAddr, c.hashHex, c.guide).catch((e) =>
+                console.error("Failed to save CA guide for " + c.hashHex + ":", e),
+              );
             }
           }
         }
