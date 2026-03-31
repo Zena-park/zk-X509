@@ -101,21 +101,21 @@ npx hardhat test
 ### Semaphore
 - **Source:** https://github.com/semaphore-protocol/semaphore
 - **System:** Circom + Groth16
-- **Constraints:** ~150K (Semaphore v4)
-- **Gas:** ~150K
+- **Constraints:** ~150K (Semaphore v4, estimated)
+- **Gas:** ~300K (estimated from external reports)
 - **Note:** Group membership proof only, no PKI
 
 ### zkPassport
 - **Source:** https://github.com/zkpassport
-- **System:** Noir/Circom
-- **Gas:** ~250K (estimated from similar circuits)
-- **Note:** Requires NFC reader for passport chip
+- **System:** Noir (Ultra Honk / Barretenberg)
+- **Gas:** ~300K–500K (estimated, Ultra Honk verifier)
+- **Note:** Requires NFC reader for passport/eID chip; supports scoped nullifiers and chainId binding
 
 ### Worldcoin
 - **Source:** https://github.com/worldcoin
-- **System:** Custom ZK circuits
+- **System:** Semaphore (zk-SNARKs)
 - **Gas:** ~200K (estimated)
-- **Note:** Requires Orb biometric scanner
+- **Note:** Requires Orb biometric scanner (open-source hardware design)
 
 ## Notes
 

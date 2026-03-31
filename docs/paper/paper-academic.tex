@@ -130,7 +130,7 @@ require either centralized KYC attestors---introducing single points of
 failure and metadata leakage---specialized hardware such as NFC readers
 or biometric scanners, or Decentralized Identifier (DID) frameworks that
 necessitate building entirely new credential issuance infrastructure.
-Meanwhile, over four billion active X.509 digital certificates
+Meanwhile, over four billion active X.509 digital certificates (estimated from Certificate Transparency logs and TLS survey data)
 constitute a globally deployed, government-grade trust infrastructure
 that remains unexploited for decentralized identity.
 
@@ -142,7 +142,7 @@ X.509 certificates---issued by any national PKI or corporate
 CA---without revealing private keys or personal identifiers. A key
 architectural distinction is that the private key never enters the ZK
 circuit; ownership is instead proven via signature verification
-delegated to the OS keychain (macOS Secure Enclave, Windows TPM). The
+delegated to the OS keychain (macOS Security.framework, Windows CNG). The
 circuit performs six verification checks: (1) full certificate chain validity to
 a trusted root, (2) temporal validity, (3) signature-based key
 ownership, (4) trustless CRL revocation checking with CA signature
@@ -156,7 +156,7 @@ verification status automatically lapses upon certificate expiry.
 We formalize the security model under a Dolev-Yao adversary and
 establish eight properties via game-based definitions: unforgeability,
 unlinkability, cross-service unlinkability, cross-chain replay resistance, double-registration resistance, front-running immunity,
-CA anonymity, and non-transferability, with explicit reductions to
+CA-membership hiding, and non-transferability, with explicit reductions to
 sEUF-CMA signature security, SHA-256 modeled as a random oracle, and ZK
 soundness. The SP1 zkVM implementation achieves 11.8 million cycles for
 single-level ECDSA P-256 verification (17.4M for RSA-2048), with
@@ -201,7 +201,7 @@ each with significant limitations:
 \item
   \textbf{Hardware-dependent verification.} Systems such as zkPassport
   \cite{ref2} require NFC readers to access passport chips, while Worldcoin
-  \cite{ref3} depends on proprietary biometric scanners (the Orb). These
+  \cite{ref3} depends on purpose-built biometric scanners (the Orb). These
   approaches limit accessibility to users with specific hardware.
 \item
   \textbf{Direct credential submission.} Users submit identity documents
@@ -307,8 +307,9 @@ issued by authorized CAs such as the Korea Financial Telecommunications
 and Clearings Institute (KFTC), employing a 3-level certificate
 chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 and
 SHA-256 or SHA-1 signatures. Certificates and private keys are imported
-into the OS keychain, where the private key is managed by the secure
-hardware (macOS Secure Enclave or software keystore).
+into the OS keychain, where the private key is managed by the software
+keystore (login keychain). Hardware-backed storage via the Secure Enclave
+is available only for keys generated on the device, not for imported keys.
 
 \textbf{Multi-national deployment.} The architecture supports
 simultaneous whitelisting of CAs from multiple jurisdictions. For
@@ -350,7 +351,7 @@ This paper makes the following contributions:
   A \textbf{formal security analysis} with game-based definitions under
   the Dolev-Yao adversary model, establishing eight properties ---
   unforgeability, unlinkability, cross-service unlinkability, cross-chain replay resistance, double-registration resistance,
-  front-running immunity, CA anonymity, and non-transferability --- with
+  front-running immunity, CA-membership hiding, and non-transferability --- with
   explicit reductions to standard cryptographic assumptions (EUF-CMA,
   SHA-256 collision resistance, ZK soundness).
 \item
@@ -452,15 +453,16 @@ RSA-2048.
 We survey existing approaches to privacy-preserving on-chain identity
 and position zk-X509 relative to them.
 
-\textbf{zkPassport} \cite{ref2} generates ZK proofs of passport data read
-via NFC. While similar in spirit to zk-X509, it requires NFC hardware
-and is limited to passports. zk-X509 is purely software-based and works
-with any X.509 certificate.
+\textbf{zkPassport} \cite{ref2} generates ZK proofs of passport and
+national ID card data read via NFC. While similar in spirit to zk-X509,
+it requires NFC hardware and is limited to NFC-readable travel documents
+and eIDs. zk-X509 is purely software-based and works with any X.509
+certificate.
 
 \textbf{Worldcoin} \cite{ref3} uses iris biometric scanning with a
-proprietary device (the Orb) to generate unique identity proofs. The
-hardware dependency and biometric data collection raise both
-accessibility and privacy concerns that zk-X509 avoids entirely.
+purpose-built open-source device (the Orb) to generate unique identity
+proofs. The hardware dependency and biometric data collection raise
+accessibility concerns that zk-X509 avoids entirely.
 
 \textbf{Polygon ID and DID-based systems} \cite{ref13, ref33} use W3C Verifiable
 Credentials (VCs) with ZK proofs. While providing a flexible credential
@@ -532,9 +534,9 @@ Privacy
 \endhead
 \bottomrule\noalign{}
 \endlastfoot
-zkPassport \cite{ref2} & Passport & NFC required & Government CA & Yes
-(passports) & N/A & Full ZK \\
-Worldcoin \cite{ref3} & Biometric & Orb required & Worldcoin Foundation & No
+zkPassport \cite{ref2} & Passport/eID & NFC required & Government CA & Yes
+(passports/eIDs) & N/A & Full ZK \\
+Worldcoin \cite{ref3} & Biometric & Orb required & World Foundation & No
 & N/A & Partial \\
 DID/VC \cite{ref13} & W3C VC & None & New issuers & No (must build) &
 Issuer-dependent & Varies \\
@@ -1116,7 +1118,7 @@ Variable & Type & Description \\
 \midrule
 \texttt{sp1Verifier} & \texttt{ISP1Verifier} (immut.) & On-chain proof verifier \\
 \texttt{programVKey} & \texttt{bytes32} (immut.) & ZK program verification key \\
-\texttt{maxWalletsPerCert} & \texttt{uint32} (immut.) & Max wallets per certificate \\
+\texttt{maxWalletsPerCert} & \texttt{uint32} (write-once) & Max wallets per certificate \\
 \texttt{caMerkleRoot} & \texttt{bytes32} & Merkle root of allowed CA set \\
 \texttt{caLeaves} & \texttt{bytes32[]} & On-chain list of trusted CA hashes \\
 \texttt{caExists} & \texttt{bytes32 $\Rightarrow$ bool} & Duplicate CA prevention \\
@@ -1131,7 +1133,7 @@ Variable & Type & Description \\
 \texttt{previousCaMerkleRoot} & \texttt{bytes32} & Previous CA Merkle root (grace) \\
 \texttt{caMerkleRootUpdatedAt} & \texttt{uint256} & Timestamp of last CA root update \\
 \texttt{caRootGracePeriod} & \texttt{uint256} & Grace period for old CA root \\
-\texttt{minDisclosureMask} & \texttt{uint8} (immut.) & Minimum required disclosure fields \\
+\texttt{minDisclosureMask} & \texttt{uint8} (write-once) & Minimum required disclosure fields \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1266,7 +1268,7 @@ decentralized exchanges need traders to verify multiple wallets for
 trading, custody, and cold storage.
 
 zk-X509 addresses this via the \texttt{maxWalletsPerCert} parameter, set
-immutably at contract deployment:
+once at contract initialization:
 
 \begin{longtable}[]{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
@@ -1382,7 +1384,9 @@ A critical design decision in zk-X509 is that the \textbf{private key
 never enters the zkVM}. The circuit receives only two deterministic
 signatures (\texttt{ownership\_sig}, \texttt{nullifier\_sig}) as inputs,
 both generated on the user's local device via the OS keychain (macOS
-Secure Enclave, Windows TPM, or software keystore). This architectural
+Security.framework, Windows CNG). On devices with hardware-backed
+keystores (Secure Enclave, TPM), the key may never leave secure
+hardware. This architectural
 separation of signing and proving ensures that the most sensitive
 cryptographic material --- the private key --- remains strictly confined
 to local hardware.
@@ -1406,13 +1410,18 @@ The proving flow is entirely local:
   the blockchain via \texttt{register()}.
 \end{enumerate}
 
-\textbf{Comparison with other systems.} In zk-email and Semaphore,
-private inputs (DKIM key, secret identity) enter the circuit directly.
-If proof generation were offloaded to a third party, these secrets would
-be exposed. In zk-X509, the private key never leaves the user's device
-at any stage --- the zkVM witness contains only signatures and publicly
-derivable certificate data. This represents a strictly stronger security
-model than existing ZK identity systems.
+\textbf{Comparison with other systems.} In zk-email, the raw email
+content and DKIM signature enter the circuit as private inputs; the DKIM
+signing key itself remains on the email provider's server and never
+enters the circuit. In Semaphore, the user's secret identity enters the
+circuit directly. If proof generation in either system were offloaded to
+a third party, these private witness data would be exposed. In zk-X509,
+the private key never leaves the user's device at any stage --- the zkVM
+witness contains only signatures and publicly derivable certificate
+data. This provides a stronger security model in the dimension of
+private key exposure: no credential secret enters the ZK circuit,
+whereas other systems require at least some private credential data as
+witness inputs.
 
 \subsection{Selective Attribute
 Disclosure}\label{selective-attribute-disclosure}
@@ -1639,6 +1648,7 @@ Directory & Description \\
 \texttt{program/} & SP1 Guest program (zkVM) \\
 \texttt{script/} & SP1 Host (CLI, keychain integration) \\
 \texttt{contracts/} & Solidity (IdentityRegistry, tests, deploy scripts) \\
+\texttt{backend/} & CA guide API server (Node.js/TypeScript) \\
 \texttt{frontend/} & Next.js web UI \\
 \texttt{certs/} & Test certificate generator (OpenSSL scripts) \\
 \texttt{docs/} & Documentation and this paper \\
@@ -1857,18 +1867,16 @@ The system includes three levels of testing:
 \def\labelenumi{\arabic{enumi}.}
 \tightlist
 \item
-  \textbf{Smart contract unit tests} (Foundry): 82 test cases across two
-  test suites --- IdentityRegistry (70 tests) covering registration,
-  re-registration, double-registration prevention, registrant mismatch,
-  CA Merkle root validation with grace period, timestamp validation
-  (future and stale proofs), chain ID mismatch, registry address
-  mismatch, wallet index out-of-range, certificate expiry, nullifier
-  revocation, CA management (add, batch add, remove, duplicate
-  prevention), CRL Sorted Merkle root validation, pause/unpause, max
-  proof age adjustment, minimum disclosure mask enforcement, and
-  two-step ownership management; and RegistryFactory (12 tests) covering
-  registry creation, metadata tracking, beacon proxy deployment, and
-  access control.
+  \textbf{Smart contract unit tests} (Foundry): Comprehensive test suites
+  covering IdentityRegistry (registration, re-registration,
+  double-registration prevention, registrant mismatch, CA Merkle root
+  validation with grace period, timestamp validation, chain ID mismatch,
+  registry address mismatch, wallet index out-of-range, certificate
+  expiry, nullifier revocation, CA management, CRL Sorted Merkle root
+  validation, pause/unpause, max proof age adjustment, minimum
+  disclosure mask enforcement, and two-step ownership management) and
+  RegistryFactory (registry creation, metadata tracking, beacon proxy
+  deployment, and access control).
 \item
   \textbf{SP1 execute mode}: Runs the ZK program without proof
   generation for fast iteration ($\sim$15 seconds), validating
@@ -2052,9 +2060,9 @@ Consider the game \(\text{Exp}_{\mathcal{A}}^{\text{double}}\):
 \small
 \textbf{Game} $\text{Exp}_{\mathcal{A}}^{\text{double}}$:
 \begin{enumerate}[nosep,leftmargin=1.5em]
-\item $\mathcal{C}$ deploys IdentityRegistry and whitelists CA roots
+\item $\mathcal{C}$ deploys IdentityRegistry with $\texttt{maxWalletsPerCert} = 1$ and whitelists CA roots
 \item $\mathcal{A}$ is given: one valid certificate $(\text{cert}, sk)$ and two addresses $\text{addr}_1$, $\text{addr}_2$
-\item $\mathcal{A}$ outputs: two registration transactions $\text{tx}_1 = (\pi_1, \text{pubvals}_1)$ from $\text{addr}_1$ and $\text{tx}_2 = (\pi_2, \text{pubvals}_2)$ from $\text{addr}_2$
+\item $\mathcal{A}$ outputs: two registration transactions $\text{tx}_1 = (\pi_1, \text{pubvals}_1)$ from $\text{addr}_1$ and $\text{tx}_2 = (\pi_2, \text{pubvals}_2)$ from $\text{addr}_2$, both using $\texttt{wallet\_index} = 0$
 \item $\mathcal{A}$ wins if: both $\mathcal{V}.\texttt{register}(\text{tx}_1)$ and $\mathcal{V}.\texttt{register}(\text{tx}_2)$ succeed
 \end{enumerate}
 \end{mdframed}
@@ -2254,10 +2262,9 @@ additional assumptions, zk-X509 satisfies cross-service unlinkability.}
 
 \textbf{Additional assumptions.} We model \(\mathcal{H}\) (SHA-256) as a
 random oracle. We assume the signature scheme provides strong
-unforgeability (sEUF-CMA) and key privacy --- i.e., signatures on
-distinct messages under different keys are computationally
-indistinguishable from random, which holds for RSA PKCS\#1 v1.5 and
-ECDSA with RFC 6979 under standard hardness assumptions.
+unforgeability (sEUF-CMA) and that the signature scheme is deterministic
+(RSA PKCS\#1 v1.5 and ECDSA with RFC 6979), so distinct inputs produce
+distinct signatures.
 
 \textbf{Proof.} We proceed by a sequence of games.
 
@@ -2304,28 +2311,28 @@ reduce this to two sub-problems:
   \(2 \cdot \text{Adv}_{\mathcal{A}}^{\text{pre}}(\mathcal{H})\) for
   both nullifiers.
 \item
-  \textbf{Linking \(\sigma_1\) to \(\sigma_2\) without knowing \(sk\).}
-  Suppose \(\mathcal{A}\) can determine whether two signatures on
-  distinct messages were produced by the same key. We construct an
-  adversary \(\mathcal{B}\) against EUF-CMA security: \(\mathcal{B}\)
-  queries the signing oracle on \(d_1\) and \(d_2\), obtains
-  \(\sigma_1^*\) and \(\sigma_2^*\), and uses \(\mathcal{A}\)'s linking
-  strategy. If \(\mathcal{A}\) can correlate signatures without the key,
-  \(\mathcal{B}\) gains information about the signing key beyond what is
-  revealed by EUF-CMA-secure signatures on chosen messages. Under the
-  assumption that the signature scheme provides key privacy (implicit in
-  EUF-CMA for deterministic schemes like RSA PKCS\#1 v1.5 and ECDSA with
-  RFC 6979, where signature distributions are key-dependent but
-  computationally indistinguishable across keys on distinct messages),
-  this advantage is negligible.
+  \textbf{Linking \(\sigma_1\) to \(\sigma_2\) without recovering them.}
+  Even if \(\mathcal{A}\) could somehow relate the hash outputs without
+  recovering the preimages, in the random oracle model
+  \(\mathcal{H}(\sigma_1 \| \text{idx})\) and
+  \(\mathcal{H}(\sigma_2 \| \text{idx})\) are independent random values
+  as long as \(\sigma_1 \neq \sigma_2\). Since the signing inputs
+  \(d_1 \neq d_2\) and the signature scheme is deterministic (RSA
+  PKCS\#1 v1.5, ECDSA with RFC 6979), the signatures are distinct with
+  overwhelming probability. In the random oracle model, the outputs
+  reveal no information about any algebraic relationship between
+  \(\sigma_1\) and \(\sigma_2\), rendering correlation impossible
+  without preimage recovery.
 \end{enumerate}
 
 Combining all transitions:
 
-\[\left| \Pr[b' = b] - \frac{1}{2} \right| \leq \text{Adv}_{\mathcal{A}}^{\text{zk}}(\text{SP1}) + 2 \cdot \text{Adv}_{\mathcal{A}}^{\text{pre}}(\mathcal{H}) + \text{Adv}_{\mathcal{A}}^{\text{key-priv}}(\text{Sig}) \leq \text{negl}(\lambda)\]
+\[\left| \Pr[b' = b] - \frac{1}{2} \right| \leq \text{Adv}_{\mathcal{A}}^{\text{zk}}(\text{SP1}) + 2 \cdot \text{Adv}_{\mathcal{A}}^{\text{pre}}(\mathcal{H}) \leq \text{negl}(\lambda)\]
 
 where the factor of 2 accounts for the two independent hash inversions
-required. \(\square\)
+required. The random oracle model ensures that hash outputs on distinct
+inputs are independent, eliminating the need for a separate key-privacy
+assumption. \(\square\)
 
 \paragraph{Theorem 4 (Cross-Chain Replay Resistance)}\label{theorem-4-cross-chain-replay-resistance} A valid proof for
 chain \(c_1\) cannot be accepted on chain \(c_2 \neq c_1\).
@@ -2393,7 +2400,7 @@ forgeries (ownership and nullifier) required in strategy (c).
 \paragraph{Theorem 5 (Double-Registration
 Resistance)}\label{theorem-3-double-registration-resistance}
 
-\emph{Under assumption A4 (ZK soundness) and the determinism of SHA-256,
+\emph{Under assumption A4 (ZK soundness) and the determinism of the signature scheme (RSA PKCS\#1 v1.5, ECDSA with RFC 6979),
 zk-X509 satisfies double-registration resistance (Definition 3).}
 
 \textbf{Proof.} For a certificate with private key \(\text{sk}\) and
@@ -2413,8 +2420,8 @@ registrations per certificate is bounded by \texttt{maxWalletsPerCert}.
 \paragraph{Theorem 6 (Front-Running
 Immunity)}\label{theorem-6-front-running-immunity}
 
-\emph{Under assumption A4 (ZK soundness) and A1 (local security),
-zk-X509 satisfies front-running immunity (Definition 4).}
+\emph{Under assumptions A1 (local security), A3 (EUF-CMA security), and
+A4 (ZK soundness), zk-X509 satisfies front-running immunity (Definition 4).}
 
 \textbf{Proof.} The honest user's proof \(\pi\) commits
 \texttt{registrant\ =\ addr\_P} as a public value. The contract verifies
@@ -2435,10 +2442,10 @@ zk-X509 satisfies front-running immunity (Definition 4).}
   invalidates the proof verification (the proof was generated for the
   original public values).
 \item
-  \textbf{Generate a new proof.} \(\mathcal{A}\) would need to execute
-  the ZK circuit with \(sk\) as a witness to produce a valid proof
-  binding to \(\text{addr}_A\). By A1, \(\mathcal{A}\) does not have
-  \(sk\).
+  \textbf{Generate a new proof.} \(\mathcal{A}\) would need \(sk\) to
+  generate the required \texttt{ownership\_sig} and \texttt{nullifier\_sig}
+  for a proof binding to \(\text{addr}_A\). By A1, \(\mathcal{A}\) does
+  not have \(sk\).
 \end{enumerate}
 
 All strategies fail. \(\square\)
@@ -2615,10 +2622,11 @@ Secure Enclave, Windows TPM), the private key may never exist in general
 process memory at all --- the signing operation occurs within the secure
 hardware. No \texttt{Debug} derive on key-holding structs; API access restricted to authenticated requests.
 
-This represents a strictly stronger security model than the typical
-approach of importing the private key directly into the ZK circuit, and
-exceeds the trust model of standard certificate-using software (e.g.,
-web browsers performing TLS client authentication).
+This provides a stronger security model in the dimension of private key
+exposure compared to approaches that import the private key directly
+into the ZK circuit, and exceeds the trust model of standard
+certificate-using software (e.g., web browsers performing TLS client
+authentication).
 
 \subsubsection{Smart Contract Security}\label{smart-contract-security}
 
@@ -2809,8 +2817,8 @@ of existing certificates.
 \subsection{Quantitative
 Comparison}\label{quantitative-comparison}
 
-All measurements were taken on the same machine (macOS, Apple Silicon)
-for fair comparison.
+zk-X509 measurements were taken on macOS Apple Silicon. Other systems'
+values are from their published documentation where available.
 
 \begin{longtable}[]{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1096}}
@@ -2841,32 +2849,33 @@ Worldcoin
 \bottomrule\noalign{}
 \endlastfoot
 \textbf{ZK Backend} & SP1 zkVM (RISC-V) & Circom + Groth16 & Circom +
-Groth16 & Circom + Groth16 & Noir/Circom & Custom \\
+Groth16 & Circom + Groth16 & Noir (Ultra Honk) & Semaphore (zk-SNARKs) \\
 \textbf{Constraints / Cycles} & 11.8M cycles (P-256) & 1.26M constraints
-(measured) & $\sim$1M constraints (docs) & $\sim$150K
-constraints (docs) & N/A & N/A \\
+(measured) & $\sim$100K--200K constraints (est.) & $\sim$150K
+constraints (est.) & N/A & N/A \\
 \textbf{Proof Generation} & 102s (CPU, multi-core) & Not reported & Not reported & Not reported &
 Not reported & Not reported \\
-\textbf{Trusted Setup} & Not required (STARK) & Required (Groth16) &
-Required & Required & Not reported & N/A \\
+\textbf{Trusted Setup} & Groth16: circuit-specific ceremony (Aztec Ignition); PLONK: universal & Required (per-circuit) &
+Required & Required & Not required (Ultra Honk) & N/A \\
 \textbf{On-Chain Gas} & $\sim$300K (est. Groth16) &
-$\sim$300K (est. Groth16) & $\sim$350K (docs) &
-$\sim$150K (docs) & $\sim$250K (est.) &
+$\sim$300K (est. Groth16) & $\sim$500K (verification, docs) &
+$\sim$300K (est.) & $\sim$300K--500K (est. Ultra Honk) &
 $\sim$200K (est.) \\
 \textbf{Hardware Required} & None & None & None & None & NFC reader &
 Orb biometric \\
 \textbf{PKI Compatibility} & Any X.509 CA & DKIM (email only) & DID only
-& None (custom) & Passport chip & None \\
+& None (custom) & Passport/eID chip & None \\
 \textbf{Credential Source} & Government PKI & Email providers & New DID
-issuers & None & Passport & Biometric \\
+issuers & None & Passport/eID & Biometric \\
 \textbf{Privacy Level} & Full (Merkle CA) & Partial (reveals domain) &
-Selective disclosure & Group membership & Partial & Iris hash \\
-\textbf{Private Key Isolation} & Yes (key never in circuit) & No (DKIM
-key in circuit) & No & No & No & N/A \\
+Selective disclosure & Group membership & Full ZK (selective disclosure) & Iris code \\
+\textbf{Private Key Isolation} & Yes (key never in circuit) & N/A (no
+user private key; email content in circuit) & No & No & Partial (chip
+signs externally) & N/A \\
 \textbf{Cross-DApp Unlinkability} & Yes (contract-bound nullifier) & No
-& Yes & Yes (group-scoped) & No & No \\
+& Yes & Yes (group-scoped) & Yes (scoped nullifier) & No \\
 \textbf{Cross-Chain Replay Defense} & Yes (chain\_id in proof) & No & No
-& No & No & No \\
+& No & Yes (chainId in BoundData) & No \\
 \textbf{Immediate Deployability} & Yes (existing certs) & Yes (existing
 email) & No (new DID infra) & Yes & Partial (NFC) & No (Orb) \\
 \end{longtable}
@@ -2876,8 +2885,9 @@ any X.509 CA worldwide with full CA anonymity - \textbf{zk-email} has
 comparable on-chain cost but limited to DKIM email signatures (not
 government PKI) - \textbf{Polygon ID} requires building entirely new DID
 issuance infrastructure - \textbf{zk-X509's private key isolation} is a
-unique architectural advantage --- no other system keeps the private key
-entirely outside the ZK circuit - \textbf{SP1 cycle count (11.8M)} is
+an architectural advantage shared only with hardware-dependent systems
+like zkPassport (where the passport chip signs externally) --- but
+zk-X509 achieves this without any specialized hardware - \textbf{SP1 cycle count (11.8M)} is
 higher than Circom constraint counts, but SP1 provides general-purpose
 programmability (Rust) vs.~Circom's DSL limitations
 
@@ -2998,7 +3008,8 @@ dependencies.
 
 The signature-based ownership scheme ensures that the user's private key
 never enters the ZK circuit or the prover's general process memory---a
-strictly stronger security model than existing ZK identity systems. The
+stronger security model in the dimension of private key exposure than
+existing ZK identity systems. The
 CA Merkle tree design hides which specific CA issued the certificate,
 significantly enlarging the anonymity set in multi-national deployments.
 The security analysis under the Dolev-Yao model establishes eight
