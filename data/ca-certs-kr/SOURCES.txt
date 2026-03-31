@@ -1,0 +1,58 @@
+Korea CA Certificates - Download Sources
+=========================================
+
+These certificates are from the Korean NPKI (National Public Key Infrastructure).
+
+Root CAs are distributed via KISA (Korea Internet & Security Agency).
+Intermediate CAs are issued by licensed Korean CAs (공인인증기관).
+
+Source: Korean NPKI trust store / individual CA repositories
+- KISA: https://www.rootca.or.kr/
+- SignKorea (한국전자인증): https://www.signkorea.com/
+- CrossCert (한국정보인증): https://www.crosscert.com/
+- TradeSign (한국무역정보통신): https://www.tradesign.net/
+- yessign (금융결제원): https://www.yessign.com/
+
+Files:
+- KISA-RootCA-1.der          — KISA Root CA 1
+  URL: https://www.rootca.or.kr/kor/accredited/KISA-RootCA-1.der
+- KISA-RootCA-4.der          — KISA Root CA 4
+  URL: https://www.rootca.or.kr/kor/accredited/KISA-RootCA-4.der
+- SignKorea-CA3.der           — SignKorea CA 3
+  URL: https://www.signkorea.com/certificate/SignKorea-CA3.der
+- SignKorea-CA4.der           — SignKorea CA 4
+  URL: https://www.signkorea.com/certificate/SignKorea-CA4.der
+- SignGATE-ECDSA-CA.der       — SignGATE ECDSA CA
+  URL: https://www.signkorea.com/certificate/SignGATE-ECDSA-CA.der
+- SignGATE-Device-CA-0101.der — SignGATE Device CA 0101
+  URL: https://www.signkorea.com/certificate/SignGATE-Device-CA-0101.der
+- signGATE-CA6.der            — SignGATE CA 6
+  URL: https://www.signkorea.com/certificate/signGATE-CA6.der
+- SignGATEOCSP05.der          — SignGATE OCSP 05
+  URL: https://www.signkorea.com/certificate/SignGATEOCSP05.der
+- SignGATETSA05.der           — SignGATE TSA 05
+  URL: https://www.signkorea.com/certificate/SignGATETSA05.der
+- SignGATETSA06.der           — SignGATE TSA 06
+  URL: https://www.signkorea.com/certificate/SignGATETSA06.der
+- CrossCert-Device-CA.der     — CrossCert Device CA
+  URL: https://www.crosscert.com/repository/CrossCert-Device-CA.der
+- CrossCertCA4.der            — CrossCert CA 4
+  URL: https://www.crosscert.com/repository/CrossCertCA4.der
+- CrossCertOCSP3.der          — CrossCert OCSP 3
+  URL: https://www.crosscert.com/repository/CrossCertOCSP3.der
+- CrossCertTSA3.der           — CrossCert TSA 3
+  URL: https://www.crosscert.com/repository/CrossCertTSA3.der
+- TradeSignCA4.der            — TradeSign CA 4
+  URL: https://www.tradesign.net/repository/TradeSignCA4.der
+- TradeSignOCSP3.der          — TradeSign OCSP 3
+  URL: https://www.tradesign.net/repository/TradeSignOCSP3.der
+- TradeSignOCSP4.der          — TradeSign OCSP 4
+  URL: https://www.tradesign.net/repository/TradeSignOCSP4.der
+- yessignCA-Class3.der        — yessign CA Class 3
+  URL: https://www.yessign.com/repository/yessignCA-Class3.der
+
+Note: Korean NPKI CAs do not always provide stable public download URLs.
+      These URLs are reconstructed from known repository patterns.
+      If a URL fails, check the CA's official website repository page.
+
+Downloaded: 2026-03-31

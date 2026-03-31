@@ -1,0 +1,45 @@
+Taiwan CA Certificates - Download Sources
+==========================================
+
+GRCA - Government Root CA (政府憑證總管理中心)
+  Source: https://grca.nat.gov.tw/GRCAeng/1-3.html
+  - GRCA.der    — Government Root CA G1
+    URL: https://grca.nat.gov.tw/repository/Certs/GRCA.cer
+  - GRCA2.der   — Government Root CA G2
+    URL: https://grca.nat.gov.tw/repository/Certs/GRCA2.cer
+  - GRCA3.der   — Government Root CA G3
+    URL: https://grca.nat.gov.tw/repository/Certs/GRCA3.cer
+
+GCA - Government CA (政府憑證管理中心) — for government agencies
+  - GCA2.der    — GCA G2
+    URL: https://gca.nat.gov.tw/repository/Certs/GCA2.cer
+  - GCA3.der    — GCA G3
+    URL: https://gca.nat.gov.tw/repository/Certs/GCA3.cer
+
+MOICA - Citizen Digital Certificate CA (內政部憑證管理中心)
+  - MOICA2.der  — MOICA G2
+    URL: https://moica.nat.gov.tw/repository/Certs/MOICA2.cer
+  - MOICA3.der  — MOICA G3
+    URL: https://grca.nat.gov.tw/repository/Certs/MOICA3.cer
+
+XCA - Cross-Certification CA (組織及團體憑證管理中心)
+  - XCA2.der    — XCA G2
+    URL: https://xca.nat.gov.tw/repository/Certs/XCA2.cer
+  - XCA3.der    — XCA G3
+    URL: https://xca.nat.gov.tw/repository/Certs/XCA3.cer
+
+MOEACA - Business Certificate CA (工商憑證管理中心)
+  - MOEACA2.der — MOEACA G2
+    URL: https://grca.nat.gov.tw/download/MOEACA2.cer
+  - MOEACA3.der — MOEACA G3
+    URL: https://grca.nat.gov.tw/download/MOEACA3.cer
+
+HCA - Healthcare CA (醫事憑證管理中心)
+  - HCA2.der    — HCA G2
+    URL: https://grca.nat.gov.tw/download/HCA2.cer
+
+Reference:
+- GRCA English: https://grca.nat.gov.tw/GRCAeng/1-3.html
+- GRCA Repository: https://grca.nat.gov.tw/GRCAeng/3-1.html
+
+Downloaded: 2026-03-31

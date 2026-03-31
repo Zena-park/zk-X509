@@ -1,0 +1,29 @@
+United States Federal PKI CA Certificates - Download Sources
+==============================================================
+
+Extracted from the FPKI trust bundle (P7B):
+  https://www.idmanagement.gov/implement/tools/CACertificatesValidatingToFederalCommonPolicyG2.p7b
+
+The bundle contains 134 certificates. We extracted the 10 key root/bridge CAs below.
+
+Files:
+- FCPCA-G2.der               — Federal Common Policy CA G2 (RSA, expires 2040-10) — FPKI trust anchor
+- FBCA-G4.der                — Federal Bridge CA G4 (RSA, expires 2029-12)
+- DoD-Root-CA-3.der          — DoD Root CA 3 (RSA, expires 2027-10)
+- DoD-Root-CA-6.der          — DoD Root CA 6 (RSA, expires 2026-07)
+- DoD-Interop-Root-CA-2.der  — DoD Interoperability Root CA 2 (RSA, expires 2029-01)
+- ECA-Root-CA-4.der          — ECA Root CA 4 (RSA, expires 2027-06)
+- ECA-Root-CA-5.der          — ECA Root CA 5 (RSA, expires 2027-05)
+- IdenTrust-Global-Root-CA-1.der — IdenTrust Global Common Root CA 1 (RSA, expires 2027-03)
+- US-Treasury-Root-CA.der    — US Treasury Root CA (RSA, expires 2026-08)
+- US-State-Dept-Root-CA.der  — US Department of State AD Root CA (RSA, expires 2026-11)
+
+Reference:
+- FPKI overview: https://www.idmanagement.gov/university/fpki/
+- IRS digital certificates (FATCA): https://www.irs.gov/businesses/corporations/digital-certificates
+- Full P7B bundle: https://www.idmanagement.gov/implement/tools/CACertificatesValidatingToFederalCommonPolicyG2.p7b
+
+Note: DoD Root CA 6, US Treasury Root CA, US State Dept Root CA expire in 2026.
+      Re-download the P7B bundle to get updated certificates when they are renewed.
+
+Downloaded: 2026-03-31

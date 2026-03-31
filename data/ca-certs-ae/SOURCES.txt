@@ -1,0 +1,29 @@
+UAE CA Certificates - Download Sources
+=======================================
+
+STATUS: UNAVAILABLE (as of 2026-03-31)
+
+The UAE national PKI (operated by DigitalTrust, formerly DarkMatter) is offline.
+All certificate download endpoints are unreachable:
+  - cacerts.digitaltrust.ae — no response
+  - ca.digitaltrust.ae — redirects to unrelated domain
+  - sdk.emiratesid.ae — connection refused
+  - pki.digitaltrust.ae — connection refused
+
+Known Root CAs (not downloaded):
+  - UAE Global Root CA G3 (ECDSA P-384, 2019-2029)
+  - UAE Global Root CA G4 (RSA-4096, 2019-2029)
+
+Note: These roots were never included in Mozilla/Microsoft/Apple trust stores.
+      DarkMatter root inclusion was denied (Mozilla Bugzilla #1427262).
+
+Alternative sources to try later:
+  - TDRA Trusted List XML: https://uri.trustservices.gov.ae/uae-trusted-list/UAE-TL.xml
+  - Certificate Transparency logs (crt.sh): search "UAE Global Root CA"
+  - Extract from Emirates ID smart card via PKCS#11
+
+Reference:
+  - TDRA: https://tdra.gov.ae/en/About/tdra-sectors/information-and-digital-government/policy-and-programs-department/trust-services/uae-trusted-list
+  - DESC (Dubai PKI): https://www.desc.gov.ae/regulations/public-key-infrastructure/
+
+Checked: 2026-03-31

@@ -1,0 +1,32 @@
+Singapore CA Certificates - Download Sources
+==============================================
+
+1. National CA (Government Technology Agency)
+   Source: https://repository.nca.gov.sg/
+   - RCA-B1.der              — Singapore National Root CA - B1 (ECDSA, expires 2044)
+     URL: https://repository.nca.gov.sg/RCA-B1.crt
+   - ICA1-B1.der             — Singapore NDI Intermediate CA 1 - B1 (ECDSA, expires 2034)
+     URL: https://repository.nca.gov.sg/ICA1-B1.crt
+   - ICA1-B2.der             — Singapore NDI Intermediate CA 1 - B2 (ECDSA, expires 2034)
+     URL: https://repository.nca.gov.sg/ICA1-B2.crt
+   - ICA2-B1.der             — Singapore NDI Intermediate CA 2 - B1 (ECDSA, expires 2034)
+     URL: https://repository.nca.gov.sg/ICA2-B1.crt
+
+2. Netrust Pte Ltd (Accredited CA, accreditation valid through 2027-06-13)
+   Source: https://www.netrust.net/resources/downloads/#1696909641983-f172378e-ea2c
+   - Netrust-Root-CA-2.der   — Netrust Root CA 2 (RSA, expires 2041)
+     URL: https://www.netrust.net/downloads/public/certs/Netrust%20Root%20CA%202.crt
+   - Netrust-Root-CA-3.der   — Netrust Root CA 3 (RSA, expires 2041)
+     URL: https://www.netrust.net/downloads/public/certs/Netrust%20Root%20CA%203.crt
+   - Netrust-CA-2-1.der      — Netrust CA 2-1 (RSA, expires 2036)
+     URL: https://www.netrust.net/downloads/public/certs/Netrust%20CA%202-1.crt
+   - Netrust-CA-2-2.der      — Netrust CA 2-2 (RSA, expires 2036)
+     URL: https://www.netrust.net/downloads/public/certs/Netrust%20CA%202-2.crt
+   - Netrust-CA-3-1.der      — Netrust CA 3-1 (RSA, expires 2036)
+     URL: https://www.netrust.net/downloads/public/certs/Netrust%20CA%203-1.crt
+
+Reference:
+- NCA repository: https://repository.nca.gov.sg/
+- Accredited CAs list: https://www.imda.gov.sg/regulations-and-licensing-listing/electronic-transactions-act-and-regulations/controller-of-certification-authorities/accredited-cas-in-singapore
+
+Downloaded: 2026-03-31

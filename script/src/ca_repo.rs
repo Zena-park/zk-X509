@@ -170,9 +170,9 @@ mod tests {
 
     #[test]
     fn test_verify_and_parse_real_cert() {
-        // Load a real CA cert from data/ca-certs/
+        // Load a real CA cert from data/ca-certs-kr/
         let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-        let ca_dir = base.join("data/ca-certs");
+        let ca_dir = base.join("data/ca-certs-kr");
         let entries: Vec<_> = std::fs::read_dir(&ca_dir)
             .into_iter()
             .flatten()
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn test_cache_roundtrip() {
         let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-        let ca_dir = base.join("data/ca-certs");
+        let ca_dir = base.join("data/ca-certs-kr");
         let entries: Vec<_> = std::fs::read_dir(&ca_dir)
             .into_iter()
             .flatten()

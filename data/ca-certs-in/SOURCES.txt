@@ -1,0 +1,24 @@
+India CA Certificates - Download Sources
+=========================================
+
+CCA (Controller of Certifying Authorities)
+Source: https://cca.gov.in/root_certificate.html
+
+Root CAs (active):
+  - CCAIndia2022.der     — CCA India 2022 (expires 2042)
+    URL: https://cca.gov.in/cca/sites/default/files/files/CCAIndia2022.cer
+  - CCAIndia2022SPL.der  — CCA India 2022 SPL (expires 2042)
+    URL: https://cca.gov.in/cca/sites/default/files/files/CCAIndia2022SPL.cer
+
+Licensed CA Intermediates (under RCAI 2022):
+  Source: https://cca.gov.in/display_cert2022.php
+  - eMudhra-CA-2022.der  — e-Mudhra CA 2022 (expires 2032)
+    URL: https://cca.gov.in/cca/sites/default/files/files/e-Mudhra%20CA%202022.cer
+  - nCode-CA-2022.der    — (n)Code Solutions CA 2022 (expires 2032)
+    URL: https://cca.gov.in/cca/sites/default/files/files/nCode%20Solutions%20CA%202022.cer
+
+Note: CCAIndia2014, 2015 root CAs are expired and not included.
+      ~21 licensed CAs exist under RCAI 2022 — only key ones downloaded.
+      Full list at: https://cca.gov.in/ca_certificates.html
+
+Downloaded: 2026-03-31

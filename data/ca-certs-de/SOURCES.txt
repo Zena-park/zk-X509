@@ -1,0 +1,41 @@
+Germany CA Certificates - Download Sources
+============================================
+
+1. D-Trust (Bundesdruckerei) - Primary German CA
+   Source: https://www.d-trust.net/en/support/repository
+   Note: URLs redirect from www.d-trust.net -> www1.d-trust.net (use curl -L)
+
+   Root CAs:
+   - D-TRUST_Root_CA_1_2021.der          — Root CA 1 2021 (RSA, expires 2036)
+     URL: https://www.d-trust.net/cgi-bin/D-TRUST_Root_CA_1_2021.crt
+   - D-TRUST_Root_CA_5_2022.der          — Root CA 5 2022 (RSA, expires 2037)
+     URL: https://www.d-trust.net/cgi-bin/D-TRUST_Root_CA_5_2022.crt
+   - D-TRUST_Root_CA_6_2023.der          — Root CA 6 2023 (ECC, expires 2038)
+     URL: https://www.d-trust.net/cgi-bin/D-TRUST_Root_CA_6_2023.crt
+   - D-TRUST_BR_Root_CA_2_2023.der       — BR Root CA 2 2023 (TLS, expires 2038)
+     URL: https://www.d-trust.net/cgi-bin/D-TRUST_BR_Root_CA_2_2023.crt
+   - D-TRUST_EV_Root_CA_2_2023.der       — EV Root CA 2 2023 (expires 2038)
+     URL: https://www.d-trust.net/cgi-bin/D-TRUST_EV_Root_CA_2_2023.crt
+   - D-TRUST_Basic_Root_CA_1_EC_2024.der — Basic Root CA 1 EC 2024 (ECC, expires 2039)
+     URL: https://www.d-trust.net/cgi-bin/D-TRUST_Basic_Root_CA_1_EC_2024.crt
+   - D-TRUST_Basic_Root_CA_2_RSA_2024.der — Basic Root CA 2 RSA 2024 (RSA, expires 2039)
+     URL: https://www.d-trust.net/cgi-bin/D-TRUST_Basic_Root_CA_2_RSA_2024.crt
+
+2. BNotK (Bundesnotarkammer) - Qualified CA for notaries
+   Source: https://zertifizierungsstelle.bnotk.de/veroeffentlichungen
+   - BNotK-Root-CA-2021.der     — BNotK Root CA 2021 (RSA, expires 2051)
+     URL: https://zertifizierungsstelle.bnotk.de/fileadmin/user_upload_zs/Dokumente/Downloads/BNotKRootCA2021.crt
+   - BNotK-EC-Root-CA-2020.der  — BNotK EC Root CA 2020 (ECC, expires 2040)
+     URL: https://zertifizierungsstelle.bnotk.de/fileadmin/user_upload_zs/Dokumente/Downloads/BNotK_EC_Root_CA_2020.cer
+
+3. gematik TI (Telematikinfrastruktur) - Health infrastructure
+   Source: https://download.tsl.ti-dienste.de/ROOT-CA/
+   - GEM.RCA9.der   — gematik Root CA 9 (RSA, expires 2035)
+     URL: https://download.tsl.ti-dienste.de/ROOT-CA/GEM.RCA9.der
+   - GEM.RCA11.der  — gematik Root CA 11 (ECC, expires 2035)
+     URL: https://download.tsl.ti-dienste.de/ECC/ROOT-CA/GEM.RCA11.der
+
+Reference:
+- BSI V-PKI roots: https://www.bsi.bund.de/ (search Verwaltungs-PKI Wurzelzertifikate)
+
+Downloaded: 2026-03-31
