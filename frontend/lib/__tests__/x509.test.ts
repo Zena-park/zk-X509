@@ -3,13 +3,13 @@ import { parseCaDer, generateCaGuide } from "../x509";
 import * as fs from "fs";
 import * as path from "path";
 
-const CA_CERTS_DIR = path.resolve(__dirname, "../../../data/ca-certs");
+const CA_CERTS_DIR = path.resolve(__dirname, "../../../data/ca-certs-kr");
 
 describe("parseCaDer", () => {
   it("should parse a real CA DER file", () => {
     const files = fs.readdirSync(CA_CERTS_DIR).filter((f) => f.endsWith(".der"));
     if (files.length === 0) {
-      console.warn("No CA DER files found in data/ca-certs/, skipping test");
+      console.warn("No CA DER files found in data/ca-certs-kr/, skipping test");
       return;
     }
 

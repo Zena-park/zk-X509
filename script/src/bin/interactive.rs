@@ -177,7 +177,7 @@ fn main() {
         Vec::new()
     };
 
-    // Fallback to local data/ca-certs/ if remote returned nothing
+    // Fallback to local data/ca-certs-*/ if remote returned nothing
     if ca_certs.is_empty() {
         ca_certs = zk_x509_script::ca::scan_ca_certs();
     }

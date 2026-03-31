@@ -1,6 +1,6 @@
 //! CA certificate scanner and auto-matcher.
 //!
-//! Scans `data/ca-certs/` for full X.509 CA certificates (DER),
+//! Scans `data/ca-certs-*/` for full X.509 CA certificates (DER),
 //! extracts SPKI (SubjectPublicKeyInfo) for on-chain matching,
 //! and auto-selects the CA that issued a given user certificate.
 //!
@@ -43,23 +43,17 @@ impl CaCertInfo {
     }
 }
 
-/// Default CA certificate directory name.
-const CA_CERT_DIR: &str = "data/ca-certs";
-
 /// Scan CA certificate directories for DER-encoded X.509 certificates.
 ///
 /// Search order:
-/// 1. `data/ca-certs/` relative to CWD (normal CLI usage).
+/// 1. `data/ca-certs-*/` relative to CWD (normal CLI usage).
 /// 2. `Contents/Resources/ca-certs/` in a macOS `.app` bundle (relative to the executable).
-/// 3. `data/ca-certs/` relative to `CARGO_MANIFEST_DIR` (for tests run from a different directory).
+/// 3. `data/ca-certs-*/` relative to `CARGO_MANIFEST_DIR` (for tests run from a different directory).
 pub fn scan_ca_certs() -> Vec<CaCertInfo> {
     let mut entries = Vec::new();
 
     // Try CWD-relative path first (normal runtime)
-    let cwd_path = Path::new(CA_CERT_DIR);
-    if cwd_path.exists() {
-        scan_ca_dir(cwd_path, &mut entries);
-    }
+    scan_ca_dirs_matching(Path::new("."), &mut entries);
 
     // Try macOS .app bundle Resources directory
     if entries.is_empty() {
@@ -78,14 +72,26 @@ pub fn scan_ca_certs() -> Vec<CaCertInfo> {
     // Try relative to cargo manifest (for tests)
     if entries.is_empty() {
         if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
-            let test_path = PathBuf::from(manifest).join("..").join(CA_CERT_DIR);
-            if test_path.exists() {
-                scan_ca_dir(&test_path, &mut entries);
-            }
+            let base = PathBuf::from(manifest).join("..");
+            scan_ca_dirs_matching(&base, &mut entries);
         }
     }
 
     entries
+}
+
+/// Scan all `data/ca-certs-*` subdirectories under the given base path.
+fn scan_ca_dirs_matching(base: &Path, entries: &mut Vec<CaCertInfo>) {
+    let data_dir = base.join("data");
+    if let Ok(read_dir) = std::fs::read_dir(&data_dir) {
+        for entry in read_dir.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("ca-certs-") && entry.path().is_dir() {
+                scan_ca_dir(&entry.path(), entries);
+            }
+        }
+    }
 }
 
 fn scan_ca_dir(dir: &Path, entries: &mut Vec<CaCertInfo>) {
@@ -155,8 +161,8 @@ mod tests {
     #[test]
     fn test_scan_ca_certs_finds_files() {
         let certs = scan_ca_certs();
-        // data/ca-certs/ should have at least some certificates
-        assert!(!certs.is_empty(), "Should find CA certs in data/ca-certs/");
+        // data/ca-certs-*/ should have at least some certificates
+        assert!(!certs.is_empty(), "Should find CA certs in data/ca-certs-*/");
         for ca in &certs {
             assert!(!ca.subject.is_empty());
             assert!(!ca.spki_der.is_empty());
@@ -181,7 +187,7 @@ mod tests {
 
         // Try matching without on-chain filter
         let result = find_issuer_ca(&user_cert, &ca_certs, None);
-        // May or may not match depending on whether the test CA is in data/ca-certs/
+        // May or may not match depending on whether the test CA is in data/ca-certs-*/
         // This test mainly verifies no panic
         let _ = result;
     }

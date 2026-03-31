@@ -24,9 +24,9 @@ Germany CA Certificates - Download Sources
 2. BNotK (Bundesnotarkammer) - Qualified CA for notaries
    Source: https://zertifizierungsstelle.bnotk.de/veroeffentlichungen
    - BNotK-Root-CA-2021.der     — BNotK Root CA 2021 (RSA, expires 2051)
-     URL: https://zertifizierungsstelle.bnotk.de/.../BNotKRootCA2021.crt
+     URL: https://zertifizierungsstelle.bnotk.de/fileadmin/user_upload_zs/Dokumente/Downloads/BNotKRootCA2021.crt
    - BNotK-EC-Root-CA-2020.der  — BNotK EC Root CA 2020 (ECC, expires 2040)
-     URL: https://zertifizierungsstelle.bnotk.de/.../BNotK_EC_Root_CA_2020.cer
+     URL: https://zertifizierungsstelle.bnotk.de/fileadmin/user_upload_zs/Dokumente/Downloads/BNotK_EC_Root_CA_2020.cer
 
 3. gematik TI (Telematikinfrastruktur) - Health infrastructure
    Source: https://download.tsl.ti-dienste.de/ROOT-CA/
