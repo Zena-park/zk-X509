@@ -307,9 +307,9 @@ issued by authorized CAs such as the Korea Financial Telecommunications
 and Clearings Institute (KFTC), employing a 3-level certificate
 chain (Root CA → Intermediate CA → User Certificate) with RSA-2048 and
 SHA-256 or SHA-1 signatures. Certificates and private keys are imported
-into the OS keychain, where the private key is managed by the software
-keystore (login keychain). Hardware-backed storage via the Secure Enclave
-is available only for keys generated on the device, not for imported keys.
+into the OS keychain, where the prover application delegates signing to
+the platform keychain API (macOS Security.framework, Windows CNG) without
+direct access to the private key material.
 
 \textbf{Multi-national deployment.} The architecture supports
 simultaneous whitelisting of CAs from multiple jurisdictions. For
