@@ -101,21 +101,23 @@ npx hardhat test
 ### Semaphore
 - **Source:** https://github.com/semaphore-protocol/semaphore
 - **System:** Circom + Groth16
-- **Constraints:** ~150K (Semaphore v4, estimated)
-- **Gas:** ~300K (estimated from external reports)
+- **Constraints:** ~150K (Semaphore v4, estimated from circuit structure: EdDSA key derivation + Poseidon Merkle tree depth ~20)
+- **Gas:** ~300K (estimated; Groth16 base ~207K + public inputs overhead. Consistent with community reports of ~300K for signaling)
 - **Note:** Group membership proof only, no PKI
 
 ### zkPassport
-- **Source:** https://github.com/zkpassport
+- **Source:** https://github.com/zkpassport/circuits (Noir circuits), https://github.com/zkpassport/zkpassport-packages (SDK)
 - **System:** Noir (Ultra Honk / Barretenberg)
-- **Gas:** ~300K–500K (estimated, Ultra Honk verifier)
-- **Note:** Requires NFC reader for passport/eID chip; supports scoped nullifiers and chainId binding
+- **Gas:** ~300K–500K (estimated from Ultra Honk verifier complexity; no official gas benchmarks published as of 2026-03)
+- **Scoped nullifiers:** `H(private_nullifier, service_scope, service_subscope)` per `lib/commitment/scoped-nullifier/src/lib.nr`
+- **Chain binding:** `BoundData` struct includes `senderAddress` and `chainId` per `Types.sol`
+- **Note:** Requires NFC reader for passport/eID chip
 
 ### Worldcoin
-- **Source:** https://github.com/worldcoin
-- **System:** Semaphore (zk-SNARKs)
-- **Gas:** ~200K (estimated)
-- **Note:** Requires Orb biometric scanner (open-source hardware design)
+- **Source:** https://github.com/worldcoin, https://whitepaper.world.org/
+- **System:** Semaphore (zk-SNARKs) — per whitepaper: "Semaphore, a generic, open-source privacy layer for Ethereum applications based on zk-SNARKs"
+- **Gas:** ~200K (estimated from Semaphore L2 verification)
+- **Note:** Requires Orb biometric scanner (open-source hardware design per whitepaper: "The Orb's design is open sourced")
 
 ## Notes
 
