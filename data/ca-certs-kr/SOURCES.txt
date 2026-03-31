@@ -1,0 +1,36 @@
+Korea CA Certificates - Download Sources
+=========================================
+
+These certificates are from the Korean NPKI (National Public Key Infrastructure).
+
+Root CAs are distributed via KISA (Korea Internet & Security Agency).
+Intermediate CAs are issued by licensed Korean CAs (공인인증기관).
+
+Source: Korean NPKI trust store / individual CA repositories
+- KISA: https://www.rootca.or.kr/
+- SignKorea (한국전자인증): https://www.signkorea.com/
+- CrossCert (한국전자인증): https://www.crosscert.com/
+- TradeSign (한국무역정보통신): https://www.tradesign.net/
+- yessign (금융결제원): https://www.yessign.com/
+
+Files:
+- KISA-RootCA-1.der          — KISA Root CA 1
+- KISA-RootCA-4.der          — KISA Root CA 4
+- SignKorea-CA3.der           — SignKorea CA 3
+- SignKorea-CA4.der           — SignKorea CA 4
+- SignGATE-ECDSA-CA.der       — SignGATE ECDSA CA
+- SignGATE-Device-CA-0101.der — SignGATE Device CA 0101
+- signGATE-CA6.der            — signGATE CA 6
+- SignGATEOCSP05.der          — SignGATE OCSP 05
+- SignGATETSA05.der           — SignGATE TSA 05
+- SignGATETSA06.der           — SignGATE TSA 06
+- CrossCert-Device-CA.der     — CrossCert Device CA
+- CrossCertCA4.der            — CrossCert CA 4
+- CrossCertOCSP3.der          — CrossCert OCSP 3
+- CrossCertTSA3.der           — CrossCert TSA 3
+- TradeSignCA4.der            — TradeSign CA 4
+- TradeSignOCSP3.der          — TradeSign OCSP 3
+- TradeSignOCSP4.der          — TradeSign OCSP 4
+- yessignCA-Class3.der        — yessign CA Class 3
+
+Downloaded: 2026-03 (approximate)

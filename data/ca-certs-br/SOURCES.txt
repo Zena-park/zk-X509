@@ -1,0 +1,32 @@
+Brazil CA Certificates - Download Sources
+==========================================
+
+ICP-Brasil (Infraestrutura de Chaves Publicas Brasileira)
+Source: https://www.gov.br/iti/pt-br/assuntos/repositorio/repositorio-ac-raiz
+
+AC Raiz (Root CAs):
+  - ICP-Brasilv5.der   — AC Raiz v5 (RSA, expires 2029)
+    URL: https://acraiz.icpbrasil.gov.br/credenciadas/RAIZ/ICP-Brasilv5.crt
+  - ICP-Brasilv6.der   — AC Raiz v6 (ECC, expires 2038)
+    URL: https://acraiz.icpbrasil.gov.br/credenciadas/RAIZ/ICP-Brasilv6.crt
+  - ICP-Brasilv7.der   — AC Raiz v7 (ECC, expires 2038)
+    URL: https://acraiz.icpbrasil.gov.br/credenciadas/RAIZ/ICP-Brasilv7.crt
+  - ICP-Brasilv10.der  — AC Raiz v10 (SSL, expires 2032)
+    URL: https://acraiz.icpbrasil.gov.br/credenciadas/RAIZ/ICP-Brasilv10.crt
+  - ICP-Brasilv12.der  — AC Raiz v12 (expires 2037)
+    URL: https://acraiz.icpbrasil.gov.br/credenciadas/RAIZ/ICP-Brasilv12.crt
+  - ICP-Brasilv13.der  — AC Raiz v13 (expires 2045)
+    URL: https://acraiz.icpbrasil.gov.br/credenciadas/RAIZ/ICP-Brasilv13.crt
+
+Intermediate CAs (1st level, key ones):
+  - AC-SERPRO-v4.der      — AC SERPRO v4 (expires 2029)
+    URL: https://acraiz.icpbrasil.gov.br/credenciadas/SERPRO/v5/p/Autoridade_Certificadora_Serpro_v4.crt
+  - AC-Certisign-G8.der  — AC Certisign G8 (expires 2037)
+    URL: https://acraiz.icpbrasil.gov.br/credenciadas/CERTISIGN/v12/p/AC_Certisign_G8.crt
+
+Reference:
+- Repository index: https://www.gov.br/iti/pt-br/assuntos/repositorio
+- Chain listing: https://www.gov.br/iti/pt-br/assuntos/repositorio/cadeias-da-icp-brasil
+- URL pattern: https://acraiz.icpbrasil.gov.br/credenciadas/{CA_NAME}/{version}/p/{filename}.crt
+
+Downloaded: 2026-03-31

@@ -1,0 +1,40 @@
+Estonia CA Certificates - Download Sources
+============================================
+
+SK ID Solutions (formerly AS Sertifitseerimiskeskus)
+Source: https://www.skidsolutions.eu/resources/certificates/
+
+Root CAs:
+  - SK_ID_Solutions_ROOT_G1R.der — Root G1R (RSA-4096, SHA384)
+    URL: https://c.sk.ee/SK_ID_Solutions_ROOT_G1R.der.crt
+  - SK_ID_Solutions_ROOT_G1E.der — Root G1E (ECC-521, SHA512)
+    URL: https://c.sk.ee/SK_ID_Solutions_ROOT_G1E.der.crt
+  - EE-GovCA2018.der            — Government Root CA 2018 (ECC-P521, SHA512)
+    URL: https://c.sk.ee/EE-GovCA2018.der.crt
+
+eID Qualified Intermediates (eIDAS):
+  - EID_Q_2024E.der — eID Qualified 2024 ECC (P384)
+    URL: https://c.sk.ee/EID_Q_2024E.der.crt
+  - EID_Q_2024R.der — eID Qualified 2024 RSA (4096)
+    URL: https://c.sk.ee/EID_Q_2024R.der.crt
+
+eID Non-Qualified Intermediates:
+  - EID_NQ_2021E.der — eID NQ 2021 ECC
+    URL: https://c.sk.ee/EID_NQ_2021E.der.crt
+  - EID_NQ_2021R.der — eID NQ 2021 RSA
+    URL: https://c.sk.ee/EID_NQ_2021R.der.crt
+
+ESTEID (Estonian eID):
+  - esteid2018.der — ESTEID2018 (ECC-P521)
+    URL: https://c.sk.ee/esteid2018.der.crt
+
+Organization CAs:
+  - ORG_2021E.der — Organization 2021 ECC
+    URL: https://c.sk.ee/ORG_2021E.der.crt
+  - ORG_2021R.der — Organization 2021 RSA
+    URL: https://c.sk.ee/ORG_2021R.der.crt
+
+Note: All certs available in both DER (.der.crt) and PEM (.pem.crt) formats.
+Test certificates also available with TEST_ prefix.
+
+Downloaded: 2026-03-31

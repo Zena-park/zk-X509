@@ -1,0 +1,38 @@
+Japan CA Certificates - Download Sources
+=========================================
+
+1. GPKI - Bridge CA (政府認証基盤 ブリッジ認証局)
+   Source: https://www.gpki.go.jp/selfcert/self_cert.html
+   - GPKI-Bridge-CA.der      — BridgeCA self-signed (expires 2034)
+     URL: https://www.gpki.go.jp/bca/BCAself.der
+
+2. GPKI - Official Status CA (官職認証局)
+   Source: https://www.gpki.go.jp/selfcert/self_cert.html
+   - GPKI-OSCA-Root.der      — OfficialStatusCA root (expires 2034)
+     URL: https://www.gpki.go.jp/osca/OSCAroot.der
+
+3. JGCA - Japan Government CA (日本政府認証局, WebTrust certified)
+   Source: https://www.gpki.go.jp/selfcert/jgca_cert.html
+   - JGCA-Root.der           — Japanese Government Root CA (expires 2048)
+     URL: https://www.gpki.go.jp/jgca/jgrootca.cer
+   - JGCA-OS-SubCA.der       — OfficialStatus Sub CA (expires 2038)
+     URL: https://www.gpki.go.jp/jgca/ossubca.cer
+   - JGCA-Org-SubCA.der      — Organization Sub CA (expires 2039)
+     URL: https://www.gpki.go.jp/jgca/osubca.cer
+
+4. JPKI - My Number Card CAs (公的個人認証サービス)
+   Source (Sign): https://www.jpki.go.jp/ca/ca_rules3.html
+   Source (Auth): https://www.jpki.go.jp/ca/ca_rules4.html
+   - JPKI-Sign-CA-03.der     — Signature CA (署名用, expires 2033)
+     URL: https://www.jpki.go.jp/ca/pdf/signca03.cer
+   - JPKI-Auth-CA-03.der     — Authentication CA (利用者証明用, expires 2033)
+     URL: https://www.jpki.go.jp/ca/pdf/authca03.cer
+
+Fingerprint verification:
+- GPKI/JGCA: https://www.gpki.go.jp/selfcert/finger_print.html
+- JPKI Sign: https://www.jpki.go.jp/ca/pdf/sign_fingerprint.pdf
+- JPKI Auth: https://www.jpki.go.jp/ca/pdf/auth_fingerprint.pdf
+
+Note: LGPKI (地方公共団体 PKI) certs at http://www.lgpki.jp/ were not downloadable externally.
+
+Downloaded: 2026-03-31
