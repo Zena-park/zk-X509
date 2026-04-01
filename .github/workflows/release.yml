@@ -24,9 +24,6 @@ jobs:
           - platform: macos-latest
             target: x86_64-apple-darwin
             label: macOS-x64
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            label: Windows-x64
 
     runs-on: ${{ matrix.platform }}
     name: Build (${{ matrix.label }})
@@ -34,13 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install protoc (macOS)
-        if: matrix.platform == 'macos-latest'
+      - name: Install protoc
         run: brew install protobuf
 
-      - name: Install protoc (Windows)
-        if: matrix.platform == 'windows-latest'
-        run: choco install protoc -y
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -49,18 +42,13 @@ jobs:
       - name: Ensure Rust target is installed
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install SP1 toolchain (macOS/Linux)
-        if: matrix.platform != 'windows-latest'
+      - name: Install SP1 toolchain
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -L https://sp1up.succinct.xyz | bash
-          ~/.sp1/bin/sp1up
+          ~/.sp1/bin/sp1up --version v6.0.2
 
-      - name: Install SP1 toolchain (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: |
-          irm https://sp1up.succinct.xyz/install.ps1 | iex
-          sp1up
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -144,18 +132,6 @@ jobs:
 
           rm "$ZIP_NAME"
           ditto -c -k --keepParent "$APP_DIR" "$ZIP_NAME"
-
-      - name: Package (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: |
-          $outDir = "dist\${{ env.APP_NAME }}-win"
-          New-Item -ItemType Directory -Force -Path $outDir
-          Copy-Item "target\${{ matrix.target }}\release\interactive.exe" "$outDir\zk-X509.exe"
-          if (Test-Path "data\ca-certs") {
-            Copy-Item -Recurse "data\ca-certs" "$outDir\ca-certs"
-          }
-          Compress-Archive -Path "$outDir\*" -DestinationPath "${{ env.APP_NAME }}-win-x64.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
