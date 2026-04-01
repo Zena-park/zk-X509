@@ -49,6 +49,19 @@ jobs:
       - name: Ensure Rust target is installed
         run: rustup target add ${{ matrix.target }}
 
+      - name: Install SP1 toolchain (macOS/Linux)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up
+
+      - name: Install SP1 toolchain (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          irm https://sp1up.succinct.xyz/install.ps1 | iex
+          sp1up
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
