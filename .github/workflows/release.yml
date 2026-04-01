@@ -47,8 +47,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build release binary
-        run: |
-          cargo build --release --bin interactive --target ${{ matrix.target }}
+        run: cargo build --release --bin interactive --target ${{ matrix.target }}
 
       - name: Create .app bundle (macOS)
         if: matrix.platform == 'macos-latest'
@@ -58,41 +57,18 @@ jobs:
           mkdir -p "$APP_DIR/Contents/MacOS"
           mkdir -p "$APP_DIR/Contents/Resources"
 
-          # Info.plist with version
           APP_VERSION="${GITHUB_REF_NAME#v}"
           cp script/app-resources/Info.plist "$APP_DIR/Contents/"
           sed -i '' "s/0\.1\.0/$APP_VERSION/g" "$APP_DIR/Contents/Info.plist"
 
-          # Binary
           cp "target/${{ matrix.target }}/release/interactive" "$APP_DIR/Contents/MacOS/interactive"
-
-          # Launcher script
-          cat > "$APP_DIR/Contents/MacOS/launcher" << 'LAUNCHER_EOF'
-#!/bin/bash
-DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$DIR/interactive"
-if [ ! -x "$BINARY" ]; then
-    osascript -e 'display dialog "zk-X509 binary not found." buttons {"OK"} default button "OK" with icon stop'
-    exit 1
-fi
-osascript <<APPLESCRIPT
-set binPath to quoted form of "$BINARY"
-tell application "Terminal"
-    activate
-    set newTab to do script "clear && " & binPath & "; echo ''; echo 'Press Enter to close...'; read"
-    set custom title of newTab to "zk-X509 Proof Generator"
-    set title displays custom title of newTab to true
-end tell
-APPLESCRIPT
-LAUNCHER_EOF
+          cp script/app-resources/launcher.sh "$APP_DIR/Contents/MacOS/launcher"
           chmod +x "$APP_DIR/Contents/MacOS/launcher"
 
-          # Icon
           if [ -f script/app-resources/AppIcon.icns ]; then
             cp script/app-resources/AppIcon.icns "$APP_DIR/Contents/Resources/"
           fi
 
-          # CA certificates
           if [ -d data/ca-certs ]; then
             cp -r data/ca-certs "$APP_DIR/Contents/Resources/ca-certs"
           fi
@@ -145,7 +121,6 @@ LAUNCHER_EOF
 
           xcrun stapler staple "$APP_DIR"
 
-          # Re-zip after stapling
           rm "$ZIP_NAME"
           ditto -c -k --keepParent "$APP_DIR" "$ZIP_NAME"
 
@@ -165,8 +140,7 @@ LAUNCHER_EOF
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APP_NAME }}-${{ matrix.label }}
-          path: |
-            *.zip
+          path: "*.zip"
 
   release:
     needs: build
