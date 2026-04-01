@@ -1,0 +1,164 @@
+name: Release Desktop App
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  APP_NAME: zk-X509
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macOS-ARM64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            label: macOS-x64
+
+    runs-on: ${{ matrix.platform }}
+    name: Build (${{ matrix.label }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install protoc
+        run: brew install protobuf
+
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Ensure Rust target is installed
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install SP1 toolchain
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --version v6.0.2
+
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --bin interactive --target ${{ matrix.target }}
+
+      - name: Create .app bundle (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          APP_DIR="dist/${{ env.APP_NAME }}.app"
+          rm -rf "$APP_DIR"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+
+          APP_VERSION="${GITHUB_REF_NAME#v}"
+          cp script/app-resources/Info.plist "$APP_DIR/Contents/"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$APP_DIR/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_VERSION" "$APP_DIR/Contents/Info.plist"
+
+          cp "target/${{ matrix.target }}/release/interactive" "$APP_DIR/Contents/MacOS/interactive"
+          cp script/app-resources/launcher.sh "$APP_DIR/Contents/MacOS/launcher"
+          chmod +x "$APP_DIR/Contents/MacOS/launcher"
+
+          if [ -f script/app-resources/AppIcon.icns ]; then
+            cp script/app-resources/AppIcon.icns "$APP_DIR/Contents/Resources/"
+          fi
+
+          if ls data/ca-certs-* >/dev/null 2>&1; then
+            mkdir -p "$APP_DIR/Contents/Resources/ca-certs"
+            for dir in data/ca-certs-*; do
+              [ -d "$dir" ] || continue
+              for cert in "$dir"/*.der; do
+                [ -f "$cert" ] || continue
+                cp "$cert" "$APP_DIR/Contents/Resources/ca-certs/"
+              done
+            done
+          fi
+
+      - name: Import Apple certificate (macOS)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
+          security create-keychain -p "" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "" $KEYCHAIN_PATH
+          security import $CERTIFICATE_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "" $KEYCHAIN_PATH
+          security list-keychains -d user -s $KEYCHAIN_PATH login.keychain-db
+
+      - name: Sign app (macOS)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          APP_DIR="dist/${{ env.APP_NAME }}.app"
+          codesign --deep --force --options runtime \
+            --entitlements script/app-resources/entitlements.plist \
+            -s "$APPLE_SIGNING_IDENTITY" "$APP_DIR"
+          echo "Signed with: $APPLE_SIGNING_IDENTITY"
+
+      - name: Notarize app (macOS)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP_DIR="dist/${{ env.APP_NAME }}.app"
+          ARCH="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
+          ZIP_NAME="${{ env.APP_NAME }}-mac-${ARCH}.zip"
+
+          ditto -c -k --keepParent "$APP_DIR" "$ZIP_NAME"
+
+          xcrun notarytool submit "$ZIP_NAME" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "$APP_DIR"
+
+          rm "$ZIP_NAME"
+          ditto -c -k --keepParent "$APP_DIR" "$ZIP_NAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ matrix.label }}
+          path: "*.zip"
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.APP_NAME }}-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.zip"
+          generate_release_notes: true
