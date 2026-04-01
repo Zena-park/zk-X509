@@ -17,6 +17,7 @@ import {
   FileCheck,
   Server,
   Globe,
+  FileText,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -246,6 +247,28 @@ export default function LandingPage() {
                 Create Auth Policy
               </Link>
             </div>
+
+            <div className="flex items-center justify-center gap-6 mt-6">
+              <a
+                href="https://arxiv.org/abs/2603.25190"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-on-surface-variant hover:text-tertiary transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                arXiv Paper
+              </a>
+              <span className="text-outline-variant/30">|</span>
+              <a
+                href="https://gist.science/paper/2603.25190"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-on-surface-variant hover:text-tertiary transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                Read Summary
+              </a>
+            </div>
           </motion.div>
         </div>
       </section>
@@ -473,6 +496,14 @@ export default function LandingPage() {
           </span>
         </div>
         <div className="flex gap-8 text-[10px] font-label uppercase tracking-widest">
+          <a
+            href="https://arxiv.org/abs/2603.25190"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-primary transition-colors"
+          >
+            Paper
+          </a>
           <Link
             href="/faq"
             className="hover:text-primary transition-colors"
@@ -487,6 +518,8 @@ export default function LandingPage() {
           </Link>
           <a
             href="https://github.com/tokamak-network/zk-X509"
+            target="_blank"
+            rel="noopener noreferrer"
             className="hover:text-primary transition-colors"
           >
             GitHub
