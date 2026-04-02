@@ -327,6 +327,10 @@ async fn prove_handler(
 
     // Run proving in a blocking task to avoid tokio runtime nesting
     // (SP1 ProverClient internally uses block_on which conflicts with async)
+    // TODO: pre-initialize client + pk at startup for better performance.
+    // Currently, setup() runs per-request. SP1 ProvingKey is a trait object
+    // that doesn't implement Send/Sync, preventing Arc sharing. Revisit when
+    // the SP1 SDK exposes a thread-safe ProvingKey.
     let start = Instant::now();
     let prove_result = tokio::task::spawn_blocking(move || {
         let client = ProverClient::from_env();
@@ -335,7 +339,7 @@ async fn prove_handler(
             .prove(&pk, stdin)
             .groth16()
             .run()?;
-        Ok::<_, Box<dyn std::error::Error + Send>>(proof)
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(proof)
     })
     .await
     .map_err(|e| err500(format!("Task join error: {}", e)))?
