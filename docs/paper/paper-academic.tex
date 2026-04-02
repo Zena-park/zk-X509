@@ -150,7 +150,7 @@ verification inside the zkVM, (5) binding to a specific blockchain
 address, and (6) configurable nullifier generation for Sybil resistance.
 Thirteen public values are committed, including a nullifier, a CA Merkle
 root that hides the issuing CA's identity, the certificate's expiry
-timestamp, and four optional selective disclosure hashes. On-chain
+timestamp, and four optional selective disclosure fields. On-chain
 verification status automatically lapses upon certificate expiry.
 
 We formalize the security model under a Dolev-Yao adversary and
@@ -287,7 +287,7 @@ without revealing which CA), a \textbf{timestamp}, the
 \textbf{expiry time} (\texttt{notAfter}), a \textbf{chain ID} (EIP-155
 \cite{ref28}), a \textbf{registry address} (cross-DApp unlinkability), a
 \textbf{CRL Merkle root}, and four optional \textbf{selective disclosure
-hashes} (country, organization, organizational unit, common name). These
+fields} (country, organization, organizational unit, common name). These
 are committed as public outputs and verified on-chain by a Solidity
 smart contract.
 
@@ -322,7 +322,7 @@ credential issuance. The \texttt{caMerkleRoot} in the public values
 attests that the certificate was issued by one of the whitelisted CAs
 without revealing which one, preserving jurisdictional privacy.
 Applications requiring jurisdiction-specific logic can request the user
-to additionally disclose \texttt{countryHash} via selective disclosure
+to additionally disclose \texttt{country} via selective disclosure
 (Section 3.11).
 
 \subsection{Contributions}\label{contributions}
@@ -336,9 +336,15 @@ This paper makes the following contributions:
   verification pipeline supporting full certificate chain verification
   (RSA and ECDSA), trustless CRL checking, signature-based ownership
   (private key never enters zkVM), registrant binding, configurable
-  multi-wallet registration, automatic identity expiry, selective
-  attribute disclosure, CA-anonymous verification via Merkle tree, and
-  self-service wallet migration.
+  multi-wallet registration, automatic identity expiry, plaintext
+  selective attribute disclosure, CA-anonymous verification via Merkle
+  tree, and self-service wallet migration.
+\item
+  A \textbf{multi-tenant platform} where each on-chain service deploys
+  its own identity registry with independent policies---disclosure
+  requirements, wallet limits, CA whitelists---enabling certificate
+  attributes to be directly consumed by smart contracts for compliance
+  and business logic.
 \item
   A \textbf{working implementation} using the SP1 zkVM for
   zero-knowledge computation, with Solidity smart contracts for on-chain
@@ -753,9 +759,8 @@ via SP1 stdin. \textbf{NOTE:} no private key.
   $\text{notAfter} \leftarrow \text{cert.notAfter}$
 \item \textit{Verify CA Merkle membership:}
   $\text{MerkleVerify}(\text{caRootHash}, \pi_{\text{ca}}, \text{ca\_merkle\_root})$
-\item \textit{Selective disclosure} (salted with private-key-derived salt):\\
-  $\text{salt} \leftarrow \mathcal{H}(\text{``zk-X509-Disclosure-Salt-v1''} \| \text{nullifier\_sig})$;\\
-  for each masked bit: $\text{hash} \leftarrow \mathcal{H}(\text{field} \| \text{salt})$ or $\texttt{0x0}$
+\item \textit{Selective disclosure} (plaintext in \texttt{bytes32}):\\
+  for each masked bit: $\text{field\_utf8}$ right-padded to 32 bytes, or $\texttt{0x0}$ if unset
 \item \textit{Commit public values} (caMerkleRoot, NOT caRootHash)
 \end{enumerate}
 
@@ -816,10 +821,10 @@ Field & Type & Description \\
 \texttt{chainId} & \texttt{uint64} & EIP-155 chain ID \\
 \texttt{registryAddress} & \texttt{address} & Target registry address \\
 \texttt{crlMerkleRoot} & \texttt{bytes32} & CRL Merkle root (\texttt{0} = disabled) \\
-\texttt{countryHash} & \texttt{bytes32} & $\mathcal{H}(\text{country} \| \text{salt})$ or \texttt{0x0} \\
-\texttt{orgHash} & \texttt{bytes32} & $\mathcal{H}(\text{organization} \| \text{salt})$ or \texttt{0x0} \\
-\texttt{orgUnitHash} & \texttt{bytes32} & $\mathcal{H}(\text{org unit} \| \text{salt})$ or \texttt{0x0} \\
-\texttt{commonNameHash} & \texttt{bytes32} & $\mathcal{H}(\text{common name} \| \text{salt})$ or \texttt{0x0} \\
+\texttt{country} & \texttt{bytes32} & UTF-8 plaintext (right-padded) or \texttt{0x0} \\
+\texttt{org} & \texttt{bytes32} & UTF-8 plaintext (right-padded) or \texttt{0x0} \\
+\texttt{orgUnit} & \texttt{bytes32} & UTF-8 plaintext (right-padded) or \texttt{0x0} \\
+\texttt{commonName} & \texttt{bytes32} & UTF-8 plaintext (right-padded) or \texttt{0x0} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -840,9 +845,9 @@ separately on each chain, enabling per-chain and per-DApp Sybil
 resistance policies. The \texttt{crlMerkleRoot} field commits the CRL
 Sorted Merkle Tree root, enabling on-chain validation of revocation
 checking (\texttt{bytes32(0)} disables CRL enforcement). The four
-disclosure hash fields enable selective attribute disclosure (Section
-3.11) --- each field is either the SHA-256 hash of the corresponding
-certificate attribute salted with a private-key-derived salt (when
+disclosure fields enable selective attribute disclosure (Section
+3.11) --- each field contains the UTF-8 plaintext of the corresponding
+certificate attribute right-padded to 32 bytes (when
 disclosed) or zero (when hidden), controlled by the user's
 \texttt{disclosure\_mask}.
 
@@ -984,8 +989,9 @@ The circuit asserts \texttt{wallet\_index\ \textless{}\ max\_wallets}
 before proceeding. All private inputs remain hidden within the ZK proof.
 The thirteen public values committed are: nullifier, caMerkleRoot,
 timestamp, registrant, walletIndex, notAfter, chainId, registryAddress,
-crlMerkleRoot, and four selective disclosure hashes (countryHash,
-orgHash, orgUnitHash, commonNameHash --- zero when not disclosed).
+crlMerkleRoot, and four selective disclosure fields (country,
+org, orgUnit, commonName --- UTF-8 plaintext in bytes32 when
+disclosed, zero when hidden).
 
 \textbf{Certificate Parsing.} We use the \texttt{x509-parser} crate
 (v0.16) with \texttt{default-features\ =\ false} to parse DER-encoded
@@ -1259,6 +1265,57 @@ Emergency stop mechanism to halt all registrations. -
 \texttt{acceptOwnership()}}: Two-step ownership transfer preventing
 accidental transfers.
 
+\subsection{Multi-Tenant Platform}\label{multi-tenant-platform}
+
+A single \texttt{IdentityRegistry} instance serves one service with one
+policy. In practice, different services require fundamentally different
+identity policies:
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Example service configurations on the zk-X509 platform.}
+\label{tab:platform-examples}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Service & Wallets & Disclosure & CA Policy \\
+\midrule
+DAO voting & 1 & None (\texttt{0x00}) & Korean NPKI only \\
+DeFi lending & 3 & Country + Org (\texttt{0x03}) & Global CAs \\
+Corporate portal & 1 & All (\texttt{0x0F}) & Internal CA only \\
+Airdrop & 1 & None (\texttt{0x00}) & Any government CA \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \texttt{RegistryFactory} contract provides a self-service platform
+where any operator can deploy and manage their own
+\texttt{IdentityRegistry} via a single \texttt{createRegistry()} call.
+All registries share the same SP1 verifier and ZK program verification
+key (centrally managed by the factory owner), but each registry has its
+own administrator, CA whitelist, disclosure policy, and registration
+rules. Registries are deployed as Beacon Proxies, enabling the factory
+owner to upgrade the implementation for all registries simultaneously.
+
+\textbf{Per-service policy.} At deployment, each service operator
+configures registration policy: wallet limits (Section
+\ref{configurable-registration-policy}), attribute disclosure
+requirements (Section \ref{selective-attribute-disclosure}), proof
+freshness window, and CA whitelist. These parameters are immutable per
+registry, ensuring that policy cannot change after users have registered
+under a given set of rules.
+
+\textbf{Shared infrastructure.} The ZK program verification key
+(\texttt{programVKey}) is managed at the factory level. When the ZK
+program is upgraded (e.g., to support new signature algorithms), the
+factory owner updates the key once, and all registries read the current
+key from the factory via a cross-contract call. This eliminates the need
+to update each registry individually.
+
+This architecture transforms zk-X509 from a single-purpose contract
+into a platform that diverse on-chain services can adopt, each with
+policies tailored to their specific compliance and business requirements.
+
 \subsection{Configurable Registration
 Policy}\label{configurable-registration-policy}
 
@@ -1426,12 +1483,20 @@ witness inputs.
 \subsection{Selective Attribute
 Disclosure}\label{selective-attribute-disclosure}
 
-Prior sections describe a binary identity model: the verifier learns
-only ``this wallet holds a valid certificate'' without any attributes.
-While this suffices for simple Sybil resistance, real-world applications
-often require \textbf{granular attribute verification}: ``this user is
-from country X'' or ``this user belongs to organization Y'' --- without
-revealing other attributes like name or ID number.
+Prior sections describe a binary identity model: the on-chain verifier
+learns only ``this wallet holds a valid certificate'' without any
+attributes. While this suffices for simple Sybil resistance,
+on-chain services---particularly DeFi lending protocols, DAO governance,
+and compliance-sensitive applications---often need the same granular
+identity attributes that off-chain services already rely on:
+jurisdiction, organizational affiliation, and entity type (individual vs.
+business). These attributes exist in X.509 certificates but are locked
+inside the ZK proof unless explicitly disclosed.
+The challenge is to make \textbf{certificate attributes directly
+available on-chain}, so that smart contracts can enforce real-world
+policies---such as jurisdiction-restricted lending or business-only
+registration---without off-chain oracle dependencies or additional KYC
+rounds.
 
 zk-X509 implements selective disclosure via a \texttt{disclosure\_mask}
 bitmask input to the ZK circuit:
@@ -1450,32 +1515,51 @@ Bit & Field & X.509 OID & Example \\
 \end{longtable}
 
 For each bit set in the mask, the circuit extracts the corresponding
-field from the certificate's subject DN, hashes it with a
-\textbf{private-key-derived salt}, and commits the hash as a public
-value. For unset bits, zero is committed. The salt is computed as
-\(\mathcal{H}(\text{"zk-X509-Disclosure-Salt-v1"} \| \text{nullifier\_sig})\),
-where \texttt{nullifier\_sig} is the deterministic signature used for
-nullifier generation. This salt is deterministic (same certificate
-always produces the same salt) yet private (only the private key holder
-can compute \texttt{nullifier\_sig}), preventing brute-force attacks on
-small input spaces such as country codes ($\sim$200 values).
-Without this salt, an attacker could precompute
-\(\mathcal{H}(\text{"KR"})\), \(\mathcal{H}(\text{"US"})\), etc., and
-match against on-chain \texttt{countryHash} values. With the salt, each
-user's hashes are unique and unpredictable.
+field from the certificate's subject DN and commits its UTF-8 encoding,
+right-padded with zeros to 32 bytes, as a public value. For unset bits,
+zero is committed. Values whose UTF-8 encoding exceeds 32 bytes are
+truncated on a UTF-8 character boundary (never splitting a multi-byte
+codepoint), which is sufficient for practical fields (country codes are
+2 bytes; Korean organization names are typically under 30 bytes in
+UTF-8).
 
-\textbf{User sovereignty.} The \texttt{disclosure\_mask} is chosen by
-the user at proof generation time, not by the verifier. The same
-certificate can produce different proofs for different applications: a
-DAO voting contract may require only \texttt{countryHash}, while a
-corporate DeFi protocol may additionally require \texttt{orgHash}. The
-user decides what to reveal on a per-proof basis.
+\textbf{Plaintext disclosure by design.} Disclosed fields are committed
+as readable plaintext rather than hashes, because disclosure represents
+explicit user consent to public visibility. This is a deliberate design
+choice: off-chain services already operate on plaintext attributes
+(e.g., KYC databases store ``Country: KR'', not a hash), and on-chain
+services need the same fidelity to replicate off-chain business logic.
+A DeFi lending protocol can read the \texttt{country} field to enforce
+jurisdiction-specific regulations; a DAO can read \texttt{org} to verify
+corporate membership---all on-chain, without external oracle calls or
+off-chain verification rounds.
 
-\textbf{Privacy guarantee.} Fields with mask bit = 0 produce a zero hash
+\textbf{Service-defined policy.} Each service sets a
+\texttt{minDisclosureMask} at deployment time, specifying which fields
+must be disclosed for registration. A DAO voting contract may require
+only country disclosure, while a corporate DeFi lending protocol may
+require both country and organization. Users who register with that
+service must meet the policy; the smart contract rejects proofs with
+insufficient disclosure. This gives service operators the same
+policy-setting capability they have off-chain (e.g., ``business accounts
+require company name''), now enforced trustlessly on-chain.
+
+\textbf{Privacy guarantee.} Fields with mask bit = 0 produce zero
 in the public values, revealing no information. The ZK zero-knowledge
 property ensures that even the \emph{existence} of undisclosed fields is
 hidden --- the verifier cannot distinguish ``field is empty in the
 certificate'' from ``field exists but was not disclosed.''
+
+\textbf{Entity type classification.} In government-issued PKI systems
+such as Korean NPKI, the Organization (O) field distinguishes certificate
+types: individual certificates lack an Organization field, while business
+certificates (sole proprietors and corporations) include one. By
+requiring O field disclosure (\texttt{minDisclosureMask} bit 1), a
+service can enforce entity-level policies on-chain---for example,
+``only business entities may register''---by checking whether
+\texttt{org} is zero (individual) or non-zero (business). This mirrors
+the off-chain KYC distinction between personal and business accounts,
+now enforceable trustlessly on-chain via a single ZK proof.
 
 \subsection{CA-Anonymous Verification via Merkle
 Tree}\label{ca-anonymous-verification-via-merkle-tree}
@@ -1564,9 +1648,9 @@ delays \\
 Gas payment source & Trace ETH funding of the registrant address to a
 jurisdiction & Use fresh wallets funded via privacy-preserving
 bridges \\
-Selective disclosure & \texttt{countryHash} directly reveals
-jurisdiction, reducing anonymity set to single-country users &
-User-controlled --- do not disclose unless required \\
+Selective disclosure & Disclosed fields reveal plaintext attributes
+(e.g., country, organization), reducing anonymity &
+User-controlled --- do not disclose unless required by service policy \\
 Transaction volume & Low-population CAs (e.g., Estonia
 $\sim$1.3M) have fewer active blockchain users, making
 correlation easier & Whitelist CAs with large user populations \\
