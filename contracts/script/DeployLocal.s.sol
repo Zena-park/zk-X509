@@ -14,7 +14,7 @@ contract DeployLocalScript is Script {
         console.log("SP1VerifierGroth16 (v6.0.0):", address(verifier));
 
         // Deploy RegistryFactory (deploys implementation + beacon internally)
-        bytes32 vkey = vm.envOr("PROGRAM_V_KEY", bytes32(0x0072633ccccee97a9e508e3c73306048284a98ee1f7c32bd6a0eed5a407522f5));
+        bytes32 vkey = vm.envOr("PROGRAM_V_KEY", bytes32(0x001f3272fa4043ac0b428241e62131888f8ce4b3208f425e46b991c890c57d13));
         // Deploy with no platform fee (free mode for local development)
         RegistryFactory factory = new RegistryFactory(address(verifier), vkey, address(0), 0, address(0));
         console.log("RegistryFactory:", address(factory));
