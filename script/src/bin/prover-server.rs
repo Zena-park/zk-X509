@@ -325,24 +325,27 @@ async fn prove_handler(
         chain_id: req.chain_id,
     });
 
-    // TODO: pre-initialize client + pk at startup for better performance
-    // (SP1 ProvingKey is a trait object, needs refactoring to share across requests)
+    // Run proving in a blocking task to avoid tokio runtime nesting
+    // (SP1 ProverClient internally uses block_on which conflicts with async)
     let start = Instant::now();
-    let client = ProverClient::from_env();
-    let pk = client.setup(ZK_X509_ELF)
-        .map_err(|e| err500(format!("Prover setup failed: {}", e)))?;
-
-    let proof: SP1ProofWithPublicValues = client
-        .prove(&pk, stdin)
-        .groth16()
-        .run()
-        .map_err(|e| err500(format!("Proving failed: {}", e)))?;
+    let prove_result = tokio::task::spawn_blocking(move || {
+        let client = ProverClient::from_env();
+        let pk = client.setup(ZK_X509_ELF)?;
+        let proof: SP1ProofWithPublicValues = client
+            .prove(&pk, stdin)
+            .groth16()
+            .run()?;
+        Ok::<_, Box<dyn std::error::Error + Send>>(proof)
+    })
+    .await
+    .map_err(|e| err500(format!("Task join error: {}", e)))?
+    .map_err(|e| err500(format!("Proving failed: {}", e)))?;
 
     let proving_time_ms = start.elapsed().as_millis() as u64;
 
     // 5. Encode proof for on-chain submission
-    let proof_bytes = proof.bytes();
-    let public_values = proof.public_values.as_slice();
+    let proof_bytes = prove_result.bytes();
+    let public_values = prove_result.public_values.as_slice();
 
     tracing::info!("Proof generated: proving_time={}ms", proving_time_ms);
 
