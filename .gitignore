@@ -44,3 +44,4 @@ contracts/test/fixtures/groth16-fixture.json
 data/ca-certs/ca_pub.der
 .env.local
 .docker-addresses.json
+elf/

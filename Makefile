@@ -1,4 +1,4 @@
-.PHONY: up down clean status logs addresses help
+.PHONY: up down clean status logs addresses elf help
 
 ## Docker local environment
 up:                ## Start all services (build + deploy + run)
@@ -14,17 +14,28 @@ up:                ## Start all services (build + deploy + run)
 	@echo "Services running:"
 	@echo "   Frontend   → http://localhost:3000"
 	@echo "   Backend    → http://localhost:4000"
+	@echo "   Prover     → http://localhost:9090"
 	@echo "   Anvil RPC  → http://localhost:8545"
 	@echo "   Chain ID   → 31337"
 	@echo ""
 	@cat .docker-addresses.json 2>/dev/null && echo "" || echo "Addresses not yet available. Run: make addresses"
+	@echo ""
+	@echo "Extracting ELF for local vkey consistency..."
+	@mkdir -p elf
+	@CID=$$(docker create zk-x509-prover 2>/dev/null) && \
+	 docker cp $$CID:/usr/local/bin/vkey /dev/null 2>/dev/null && \
+	 docker cp $$CID:/usr/local/share/vkey.txt elf/vkey.txt && \
+	 docker rm $$CID > /dev/null && \
+	 echo "   VKEY=$$(cat elf/vkey.txt)" && \
+	 echo "   Run 'make elf' to extract full ELF for local builds" || \
+	 echo "   WARNING: ELF extraction skipped (prover not built)"
 
 down:              ## Stop all services (chain state resets on next up)
 	docker compose down
 
-clean:             ## Stop all services, remove volumes, and clear cached addresses
+clean:             ## Stop all services, remove volumes, and clear cached data
 	docker compose down -v
-	rm -rf .docker-addresses.json
+	rm -rf .docker-addresses.json elf/
 
 status:            ## Show service status
 	docker compose ps
@@ -34,6 +45,15 @@ logs:              ## Tail logs (usage: make logs or make logs s=frontend)
 
 addresses:         ## Show deployed contract addresses
 	@cat .docker-addresses.json 2>/dev/null || echo "No addresses found. Run: make up"
+
+elf:               ## Extract pre-built ELF from Docker (for local vkey consistency)
+	@mkdir -p elf
+	@docker build --target elf-builder -f script/Dockerfile -t prover-elf-builder . -q
+	@CID=$$(docker create prover-elf-builder) && \
+	 docker cp $$CID:/build/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/zk-x509-program elf/zk-x509-program && \
+	 docker rm $$CID > /dev/null
+	@echo "ELF extracted. Usage:"
+	@echo "  PREBUILT_ELF=$$(pwd)/elf/zk-x509-program cargo build --release --bin interactive"
 
 help:              ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-12s %s\n", $$1, $$2}'
