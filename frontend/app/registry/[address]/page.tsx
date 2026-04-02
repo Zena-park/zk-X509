@@ -48,6 +48,8 @@ interface RegistryInfo {
   minDisclosureMask: number;
   caCount: number;
   paused: boolean;
+  delegatedProving: boolean;
+  proverUrl: string;
 }
 
 type PageTab = "register" | "manage" | "info";
@@ -168,6 +170,18 @@ function RegistryDetailContent() {
           // getCaLeaves may not be available
         }
 
+        // Fetch delegated proving config
+        let delegatedProving = false;
+        let proverUrl = "";
+        try {
+          [delegatedProving, proverUrl] = await Promise.all([
+            contract.delegatedProvingRequired(),
+            contract.proverUrl(),
+          ]);
+        } catch {
+          // may not exist on older contracts
+        }
+
         setInfo({
           name: serviceName,
           owner,
@@ -175,6 +189,8 @@ function RegistryDetailContent() {
           minDisclosureMask,
           caCount: Number(caCount),
           paused,
+          delegatedProving,
+          proverUrl,
         });
 
         // Load off-chain platform data (non-blocking)
@@ -399,6 +415,22 @@ function RegistryDetailContent() {
                 </p>
               </div>
             </div>
+
+            {/* Delegated Proving Banner */}
+            {info.delegatedProving && (
+              <div className="flex items-center gap-3 p-4 rounded-2xl border border-tertiary/20 bg-tertiary/5 mb-4">
+                <ShieldCheck className="w-5 h-5 text-tertiary shrink-0" />
+                <div>
+                  <p className="text-sm font-headline font-bold text-tertiary">
+                    Delegated Proving Required
+                  </p>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    This service requires proof generation via the operator&apos;s prover server for compliance.
+                    {info.proverUrl ? ` Prover: ${info.proverUrl}` : " Prover not yet configured."}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Contract Info */}
             <div className="glass-panel rounded-2xl p-5 mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
