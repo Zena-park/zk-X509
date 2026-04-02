@@ -64,6 +64,11 @@ impl AppState {
 // ── Request/Response types ──────────────────────────────────────
 
 #[derive(Deserialize)]
+struct CertDerRequest {
+    cert_index: usize,
+}
+
+#[derive(Deserialize)]
 struct SignConsentRequest {
     cert_index: usize,
     prover_url: String,
@@ -193,6 +198,17 @@ async fn refresh_certs_handler(state: Arc<AppState>) -> impl IntoResponse {
     Json(serde_json::json!({ "refreshed": count }))
 }
 
+/// Return certificate DER bytes (base64 encoded) for a given cert index.
+async fn cert_der_handler(
+    Json(req): Json<CertDerRequest>,
+    state: Arc<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let der = get_cert_der_at_index(&state, req.cert_index)?;
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&der);
+    Ok(Json(serde_json::json!({ "cert_der": b64 })))
+}
+
 /// Sign a consent message for delegated proving.
 /// The consent message is constructed server-side from the provided parameters.
 async fn sign_consent_handler(
@@ -300,6 +316,13 @@ async fn async_main(state: Arc<AppState>) {
             move || {
                 let s = Arc::clone(&s);
                 async move { refresh_certs_handler(s).await }
+            }
+        }))
+        .route("/api/cert-der", post({
+            let s = Arc::clone(&state);
+            move |body: Json<CertDerRequest>| {
+                let s = Arc::clone(&s);
+                async move { cert_der_handler(body, s).await }
             }
         }))
         .route("/api/sign/consent", post({
