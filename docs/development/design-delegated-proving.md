@@ -336,6 +336,8 @@ Paste these into the frontend to complete registration.
 | `script/src/keychain.rs` | Add `Send` bound to `PlatformIdentity` | ✅ Done |
 | `script/Cargo.toml` | Add `base64` dep, `prover-server` binary | ✅ Done |
 | `contracts/src/IdentityRegistry.sol` | `delegatedProvingRequired` + `proverUrl` + `setDelegatedProving()` | ✅ Done |
-| `script/src/bin/interactive.rs` | Query on-chain config, consent flow, send to prover | TODO |
-| `frontend/components/AdminContent.tsx` | UI for configuring delegated proving | TODO |
-| `frontend/app/registry/[address]/page.tsx` | Show delegated proving status | TODO |
+| `script/src/bin/interactive.rs` | Query on-chain config, consent flow, send to prover | ✅ Done |
+| `frontend/components/AdminContent.tsx` | UI for configuring delegated proving | ✅ Done |
+| `frontend/app/registry/[address]/page.tsx` | Show delegated proving status | ✅ Done |
+| `frontend/app/create/page.tsx` | Delegated proving toggle in create flow | ✅ Done |
+| `frontend/lib/contract.ts` | ABI entries for new fields | ✅ Done |
