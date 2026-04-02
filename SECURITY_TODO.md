@@ -82,12 +82,8 @@
 #### 51. zk-email 벤치마크 재실행
 - 비교 논문용. 현재 급하지 않음
 
-### 이전에 미해결이었으나 해결됨
+### 설계 변경 이력
 
-| # | 이슈 | 해결 |
-|---|------|------|
-| 42 | 컨트랙트 업그레이드 경로 | Beacon Proxy 패턴으로 해결 (PR #100) |
-| 52 | Delegated Proving 삭제 결정 | **번복** — consent-based 위임 증명으로 구현 완료 (PR #100, #103) |
-| 47 | Delegated Proving 논문 삭제 | **번복** — 구현 완료, 논문에 Consent Protocol 섹션 추가 |
-| 32 | Selective Disclosure salt 보강 | **변경** — salt 제거, 평문 bytes32로 전환 (PR #99) |
-| 53 | 프론트엔드 ABI 동기화 | delegatedProving, proverUrl, setDelegatedProving 추가 완료 (PR #100) |
+- **#32**: Selective Disclosure salt → 평문 bytes32로 전환 ([#99](https://github.com/tokamak-network/zk-X509/pull/99))
+- **#42**: Proxy 업그레이드 → Beacon Proxy로 해결 ([#100](https://github.com/tokamak-network/zk-X509/pull/100))
+- **#47/#52**: Delegated Proving 삭제 결정 → **번복**, consent-based 위임 증명 구현 ([#100](https://github.com/tokamak-network/zk-X509/pull/100), [#103](https://github.com/tokamak-network/zk-X509/pull/103))
