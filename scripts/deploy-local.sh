@@ -20,7 +20,14 @@ if [ "$PRIVATE_KEY" = "$DEFAULT_PRIVATE_KEY" ]; then
   esac
 fi
 
-# Auto-detect vkey from current ELF (if cargo is available)
+# Read vkey from shared volume (written by vkey-init container) or auto-detect
+if [ -z "$PROGRAM_V_KEY" ] && [ -f /shared/vkey.txt ]; then
+  DETECTED_VKEY=$(cat /shared/vkey.txt | tr -d '[:space:]')
+  if [ -n "$DETECTED_VKEY" ]; then
+    export PROGRAM_V_KEY="$DETECTED_VKEY"
+    echo "PROGRAM_V_KEY=$PROGRAM_V_KEY (from vkey-init)"
+  fi
+fi
 if [ -z "$PROGRAM_V_KEY" ] && command -v cargo >/dev/null 2>&1; then
   echo "=== Auto-detecting program vkey ==="
   DETECTED_VKEY=$(cargo run --release --bin vkey 2>/dev/null | grep -oE '0x[0-9a-fA-F]{64}' | head -1)

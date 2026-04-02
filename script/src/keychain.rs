@@ -19,6 +19,9 @@ pub enum CertSource {
     /// Windows Certificate Store identity
     #[cfg(target_os = "windows")]
     CertStore,
+    /// File-based certificate (for server/Linux environments without OS keystore)
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    File,
 }
 
 impl std::fmt::Display for CertSource {
@@ -28,6 +31,8 @@ impl std::fmt::Display for CertSource {
             CertSource::Keychain => write!(f, "Keychain"),
             #[cfg(target_os = "windows")]
             CertSource::CertStore => write!(f, "CertStore"),
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            CertSource::File => write!(f, "File"),
         }
     }
 }
