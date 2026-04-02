@@ -13,7 +13,7 @@
 //!   cargo run --release --bin interactive
 
 use alloy_sol_types::SolType;
-use base64::Engine;
+use base64::Engine as _;
 use sha2::Digest;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
@@ -330,9 +330,9 @@ fn main() {
         println!("  ✓ Consent signed");
 
         // Encode data for prover
-        let cert_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &cert_der);
+        let cert_b64 = base64::engine::general_purpose::STANDARD.encode(&cert_der);
         let chain_b64: Vec<String> = cert_chain.iter()
-            .map(|c| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, c))
+            .map(|c| base64::engine::general_purpose::STANDARD.encode(c))
             .collect();
 
         let body = serde_json::json!({

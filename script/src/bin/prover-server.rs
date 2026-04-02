@@ -17,7 +17,6 @@
 //!   POST /api/prove  - Generate a ZK proof from pre-signed inputs
 //!   GET  /api/health - Server status (SP1 version, Docker availability)
 
-use alloy_sol_types::SolType;
 use axum::{
     extract::Json,
     http::StatusCode,
@@ -56,7 +55,8 @@ struct DelegatedProveRequest {
     #[serde(default)]
     crl_data: Option<String>,    // base64, optional
     #[serde(default)]
-    crl_merkle_root: Option<String>,
+    #[serde(default)]
+    _crl_merkle_root: Option<String>,
     timestamp: u64,
 }
 
