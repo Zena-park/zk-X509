@@ -7,14 +7,18 @@ fn main() {
     // and therefore produce the same verification key (vkey).
     if let Ok(elf_path) = std::env::var("PREBUILT_ELF") {
         let path = Path::new(&elf_path);
-        if path.exists() {
-            let abs = path.canonicalize().expect("failed to canonicalize PREBUILT_ELF path");
-            println!("cargo:rustc-env=SP1_ELF_zk-x509-program={}", abs.display());
-            println!("cargo:warning=Using pre-built ELF: {}", abs.display());
-            println!("cargo:rerun-if-env-changed=PREBUILT_ELF");
-            return;
+        if !path.exists() {
+            panic!("PREBUILT_ELF set but file not found: {}", elf_path);
         }
-        println!("cargo:warning=PREBUILT_ELF set but file not found: {}", elf_path);
+        let abs = match path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => panic!("failed to canonicalize PREBUILT_ELF path {}: {}", elf_path, e),
+        };
+        println!("cargo:rustc-env=SP1_ELF_zk-x509-program={}", abs.display());
+        println!("cargo:warning=Using pre-built ELF: {}", abs.display());
+        println!("cargo:rerun-if-env-changed=PREBUILT_ELF");
+        println!("cargo:rerun-if-changed={}", abs.display());
+        return;
     }
 
     println!("cargo:rerun-if-env-changed=PREBUILT_ELF");

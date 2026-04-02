@@ -46,9 +46,10 @@ RUN cargo build --release --bin prover-server --bin vkey
 # ── Stage 3: Minimal runtime ──
 FROM debian:bookworm-slim
 
+# Install only Docker CLI (not the engine) for SP1 gnark container invocation.
+# Using distro package avoids supply-chain risk from get.docker.com script.
 RUN apt-get update && \
-    apt-get install -y ca-certificates libssl3 curl && \
-    curl -fsSL https://get.docker.com | sh && \
+    apt-get install -y ca-certificates libssl3 docker.io && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/target/release/prover-server /usr/local/bin/prover-server

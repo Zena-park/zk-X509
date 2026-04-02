@@ -44,7 +44,16 @@ jobs:
       - name: Extract vkey
         id: vkey
         run: |
-          VKEY=$(cargo run --release --bin vkey 2>/dev/null | grep -oE '0x[0-9a-fA-F]{64}')
+          VKEY=$(cargo run --release --bin vkey 2>/dev/null | grep -oE '0x[0-9a-fA-F]{64}' | head -1)
+          if [ -z "$VKEY" ]; then
+            echo "::error::vkey extraction failed: no 0x-prefixed 64-char hex value found"
+            exit 1
+          fi
+          MATCH_COUNT=$(cargo run --release --bin vkey 2>/dev/null | grep -oEc '0x[0-9a-fA-F]{64}')
+          if [ "$MATCH_COUNT" -ne 1 ]; then
+            echo "::error::vkey extraction ambiguous: expected 1 match, got $MATCH_COUNT"
+            exit 1
+          fi
           echo "vkey=$VKEY" >> "$GITHUB_OUTPUT"
           echo "## Program Verification Key" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

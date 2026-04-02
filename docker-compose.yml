@@ -14,9 +14,10 @@ services:
     build:
       context: .
       dockerfile: script/Dockerfile
+    image: zk-x509-prover:local
     volumes:
       - deployer-output:/shared
-    entrypoint: ["sh", "-c", "vkey | grep -oE '0x[0-9a-fA-F]{64}' | head -1 > /shared/vkey.txt && echo \"VKEY=$(cat /shared/vkey.txt)\""]
+    entrypoint: ["sh", "-c", "VKEY=$$(vkey | grep -oE '0x[0-9a-fA-F]{64}' | head -1) && if [ -z \"$$VKEY\" ] || [ $${#VKEY} -ne 66 ]; then echo 'ERROR: vkey extraction failed' >&2; exit 1; fi && echo \"$$VKEY\" > /shared/vkey.txt && echo \"VKEY=$$VKEY\""]
 
   deployer:
     image: ghcr.io/foundry-rs/foundry@sha256:9e591221051112fe0bb530abcaba67f43f01ebbd12a94a8632d570d5e065a8bf
@@ -45,15 +46,17 @@ services:
       - RPC_URL=http://anvil:8545
 
   prover:
-    build:
-      context: .
-      dockerfile: script/Dockerfile
+    image: zk-x509-prover:local
     depends_on:
+      vkey-init: { condition: service_completed_successfully }
       deployer: { condition: service_completed_successfully }
     ports:
       - "9090:9090"
     volumes:
       - ./logs:/logs
+      # NOTE: docker.sock is required for SP1 Groth16 proving (sp1-gnark container).
+      # This grants host Docker access — use only in local/dev environments.
+      # For production, use SP1 network proving or a dedicated proving cluster.
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - SP1_PROVER=local
