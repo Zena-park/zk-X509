@@ -13,6 +13,8 @@
 //!   cargo run --release --bin interactive
 
 use alloy_sol_types::SolType;
+use base64::Engine;
+use sha2::Digest;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
     include_elf, Elf,
@@ -95,10 +97,29 @@ fn main() {
         }
     };
 
+    // Check delegated proving configuration
+    let delegated_config = zk_x509_script::onchain::fetch_delegated_proving_config(
+        &rpc_url, &registry_bytes,
+    ).ok();
+
+    let delegated_required = delegated_config.as_ref().map_or(false, |c| c.required);
+    let prover_url = delegated_config.as_ref().map_or(String::new(), |c| c.prover_url.clone());
+
     println!();
     println!("  ✓ RPC: {}", rpc_url);
     println!("  ✓ Registry: {}", registry_address);
     println!("  ✓ Chain ID: {} / Max Wallets: {}", chain_id, max_wallets);
+
+    if delegated_required {
+        println!("  ✓ Delegated proving: REQUIRED");
+        if prover_url.is_empty() {
+            println!("  ✗ Prover server not yet configured. Registration unavailable.");
+            return;
+        }
+        println!("  ✓ Prover URL: {}", prover_url);
+    } else {
+        println!("  ✓ Delegated proving: not required (local proving)");
+    }
 
     // ── Step 2: Certificate Selection ─────────────────
     println!();
@@ -267,8 +288,119 @@ fn main() {
         chain_id,
     });
 
-    // Mode selection
+    // Mode selection — delegated proving overrides local
     println!();
+
+    if delegated_required {
+        // ── Delegated Proving ────────────────────────
+        println!("  ── Delegated Proving ──");
+        println!();
+        println!("  ⚠ This service requires delegated proving.");
+        println!("  Your certificate information will be sent to:");
+        println!("    {}", prover_url);
+        println!();
+        println!("  The following data will be shared with the prover:");
+        println!("    - Certificate subject (name, organization, country)");
+        println!("    - Certificate chain and validity period");
+        println!("    - Your wallet address");
+        println!();
+        println!("  Your private key will NOT be sent.");
+        println!("  The prover may store this information for compliance.");
+        println!();
+        let consent = prompt("  Do you consent? (y/n): ");
+        if consent.to_lowercase() != "y" {
+            println!("  Consent declined. Exiting.");
+            return;
+        }
+
+        // Sign consent with cert key
+        let consent_message = format!(
+            "zk-x509-delegated-proving-consent\nProver: {}\nRegistry: {}\nChain ID: {}\nWallet: {}\nTimestamp: {}",
+            prover_url,
+            registry_address.to_lowercase(),
+            chain_id,
+            registrant.to_lowercase(),
+            timestamp,
+        );
+        let consent_hash: [u8; 32] = sha2::Sha256::digest(consent_message.as_bytes()).into();
+        let consent_sig = match identity.sign_prehash(&consent_hash) {
+            Ok(s) => s,
+            Err(e) => { println!("  ✗ Consent signing failed: {}", e); return; }
+        };
+        println!("  ✓ Consent signed");
+
+        // Encode data for prover
+        let cert_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &cert_der);
+        let chain_b64: Vec<String> = cert_chain.iter()
+            .map(|c| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, c))
+            .collect();
+
+        let body = serde_json::json!({
+            "consent_signature": format!("0x{}", hex::encode(&consent_sig)),
+            "cert_der": cert_b64,
+            "cert_chain": chain_b64,
+            "ownership_sig": format!("0x{}", hex::encode(&ownership_sig)),
+            "nullifier_sig": format!("0x{}", hex::encode(&nullifier_sig)),
+            "registrant": registrant.to_lowercase(),
+            "wallet_index": wallet_index,
+            "max_wallets": max_wallets,
+            "disclosure_mask": disclosure_mask,
+            "chain_id": chain_id,
+            "registry_address": registry_address.to_lowercase(),
+            "ca_merkle_root": format!("0x{}", hex::encode(ca_merkle_root)),
+            "ca_merkle_proof": ca_merkle_proof.iter().map(|h| format!("0x{}", hex::encode(h))).collect::<Vec<_>>(),
+            "timestamp": timestamp,
+        });
+
+        println!("  Sending to prover (this may take a few minutes)...");
+        let url = format!("{}/api/prove", prover_url.trim_end_matches('/'));
+        let resp: Result<ureq::Body, _> = ureq::post(&url)
+            .header("Content-Type", "application/json")
+            .send(body.to_string().as_bytes())
+            .map(|r| r.into_body());
+
+        match resp {
+            Ok(mut body) => {
+                let result: serde_json::Value = body.read_json()
+                    .unwrap_or_else(|e| { println!("  ✗ Failed to parse response: {}", e); std::process::exit(1); });
+
+                if let Some(err) = result.get("error") {
+                    println!("  ✗ Prover error: {}", err);
+                    return;
+                }
+
+                let proof_hex = result["proof"].as_str().unwrap_or("");
+                let pv_hex = result["public_values"].as_str().unwrap_or("");
+                let time_ms = result["proving_time_ms"].as_u64().unwrap_or(0);
+
+                println!();
+                println!("  ✓ Proof received! ({:.1} seconds)", time_ms as f64 / 1000.0);
+                println!();
+                println!("  ── Step 5/5: Copy to Dashboard ──");
+                println!();
+                println!("  ═══════════════════════════════════════");
+                println!("  Proof:");
+                println!("  {}", proof_hex);
+                println!();
+                println!("  Public Values:");
+                println!("  {}", pv_hex);
+                println!("  ═══════════════════════════════════════");
+                println!();
+                println!("  → Open http://localhost:3000/dashboard");
+                println!("  → Paste Proof and Public Values");
+                println!("  → Click Register");
+            }
+            Err(e) => {
+                println!("  ✗ Failed to connect to prover: {}", e);
+                println!("    Check that the prover server is running at {}", prover_url);
+            }
+        }
+
+        println!();
+        println!("  Done!");
+        return;
+    }
+
     let mode = prompt("  [1] Execute (fast test, no proof) / [2] Groth16 (production) [2]: ");
     let client = ProverClient::from_env();
 

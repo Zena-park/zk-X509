@@ -71,6 +71,48 @@ pub fn build_ca_merkle(
     }
 }
 
+/// Delegated proving configuration from on-chain registry.
+pub struct DelegatedProvingConfig {
+    pub required: bool,
+    pub prover_url: String,
+}
+
+/// Fetch delegated proving configuration from the on-chain registry.
+pub fn fetch_delegated_proving_config(rpc_url: &str, registry: &[u8; 20]) -> Result<DelegatedProvingConfig, String> {
+    // delegatedProvingRequired() → bool
+    let required_hex = eth_call(rpc_url, registry, "0x8780e041")?;  // delegatedProvingRequired()
+    let required_bytes = hex::decode(required_hex.strip_prefix("0x").unwrap_or(&required_hex))
+        .map_err(|e| format!("Invalid hex: {}", e))?;
+    let required = required_bytes.len() >= 32 && required_bytes[31] == 1;
+
+    // proverUrl() → string
+    let url_hex = eth_call(rpc_url, registry, "0x2c64939c")?;  // proverUrl()
+    let url_bytes = hex::decode(url_hex.strip_prefix("0x").unwrap_or(&url_hex))
+        .map_err(|e| format!("Invalid hex: {}", e))?;
+    let prover_url = decode_abi_string(&url_bytes).unwrap_or_default();
+
+    Ok(DelegatedProvingConfig { required, prover_url })
+}
+
+/// Decode an ABI-encoded string (offset + length + data).
+fn decode_abi_string(raw: &[u8]) -> Result<String, String> {
+    if raw.len() < 64 {
+        return Ok(String::new());
+    }
+    // offset word at [0..32], length at [offset..offset+32]
+    let offset = u64::from_be_bytes(raw[24..32].try_into().unwrap()) as usize;
+    if raw.len() < offset + 32 {
+        return Ok(String::new());
+    }
+    let len = u64::from_be_bytes(raw[offset + 24..offset + 32].try_into().unwrap()) as usize;
+    let data_start = offset + 32;
+    if raw.len() < data_start + len {
+        return Ok(String::new());
+    }
+    String::from_utf8(raw[data_start..data_start + len].to_vec())
+        .map_err(|e| format!("Invalid UTF-8 in proverUrl: {}", e))
+}
+
 pub fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
     let data = eth_call(rpc_url, registry, SELECTOR_GET_CA_LEAVES)?;
     decode_bytes32_array(&data)
