@@ -191,6 +191,7 @@ contract IdentityRegistry is Initializable {
     /// @param _maxProofAge Maximum allowed age of a proof in seconds (e.g., 3600 = 1 hour).
     /// @param _owner The initial owner of this registry.
     /// @param _factory Factory address. If non-zero, vkey is read from factory (centrally managed).
+    /// @param _delegatedProving Whether this service requires delegated proving.
     function initialize(
         address _sp1Verifier,
         bytes32 _programVKey,
@@ -198,7 +199,8 @@ contract IdentityRegistry is Initializable {
         uint8 _minDisclosureMask,
         uint256 _maxProofAge,
         address _owner,
-        address _factory
+        address _factory,
+        bool _delegatedProving
     ) external initializer {
         if (_sp1Verifier == address(0)) revert ZeroAddress();
         if (_sp1Verifier.code.length == 0) revert VerifierNotContract();
@@ -222,6 +224,7 @@ contract IdentityRegistry is Initializable {
         MIN_DISCLOSURE_MASK = _minDisclosureMask;
         maxProofAge = _maxProofAge;
         owner = _owner;
+        delegatedProvingRequired = _delegatedProving;
     }
 
     // ============ Internal ============

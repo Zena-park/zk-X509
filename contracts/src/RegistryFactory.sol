@@ -166,12 +166,14 @@ contract RegistryFactory {
     /// @param maxWallets Max wallets per certificate (1 = strict, N = multi-wallet).
     /// @param minDisclosureMask Minimum disclosure bitmask (0x00 = none required).
     /// @param maxProofAge Maximum proof age in seconds (e.g., 3600 = 1 hour). Cannot be changed after deployment.
+    /// @param delegatedProving Whether this service requires delegated proving (KYC/compliance mode).
     /// @return registry The address of the newly deployed registry proxy.
     function createRegistry(
         string calldata name,
         uint32 maxWallets,
         uint8 minDisclosureMask,
-        uint256 maxProofAge
+        uint256 maxProofAge,
+        bool delegatedProving
     ) external payable returns (address registry) {
         if (maxWallets == 0) revert ZeroMaxWallets();
         if (minDisclosureMask > 0x0F) revert InvalidDisclosureMask();
@@ -182,7 +184,7 @@ contract RegistryFactory {
         // Encode the initialize call for the proxy (uses latest VKey)
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(SP1_VERIFIER), bytes32(0), maxWallets, minDisclosureMask, maxProofAge, msg.sender, address(this))
+            (address(SP1_VERIFIER), bytes32(0), maxWallets, minDisclosureMask, maxProofAge, msg.sender, address(this), delegatedProving)
         );
 
         BeaconProxy proxy = new BeaconProxy(address(beacon), initData);
