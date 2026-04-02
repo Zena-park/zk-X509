@@ -56,7 +56,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (verifier, vkey, maxWallets, mask, 3600, _owner, address(0))
+            (verifier, vkey, maxWallets, mask, 3600, _owner, address(0), false)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         return IdentityRegistry(address(proxy));
@@ -237,7 +237,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory))
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), false)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry factoryRegistry = IdentityRegistry(address(proxy));
@@ -475,7 +475,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 0, 0, 3600, address(this), address(0))
+            (address(mockVerifier), PROGRAM_V_KEY, 0, 0, 3600, address(this), address(0), false)
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.ZeroMaxWallets.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -486,7 +486,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(0xDEAD), PROGRAM_V_KEY, 1, 0, 3600, address(this), address(0))
+            (address(0xDEAD), PROGRAM_V_KEY, 1, 0, 3600, address(this), address(0), false)
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.VerifierNotContract.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -496,7 +496,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0))
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0), false)
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.ZeroProgramVKey.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -576,7 +576,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0))
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0), false)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry customReg = IdentityRegistry(address(proxy));
@@ -588,7 +588,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0))
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0), false)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry shortAgeRegistry = IdentityRegistry(address(proxy));
@@ -982,7 +982,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, 3600, address(this), address(0))
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, 3600, address(this), address(0), false)
         );
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.InvalidDisclosureMask.selector, uint8(0x10))
@@ -1015,7 +1015,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory))
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), false)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry factoryRegistry = IdentityRegistry(address(proxy));
@@ -1062,8 +1062,45 @@ contract IdentityRegistryTest is Test {
             address(impl),
             abi.encodeCall(
                 IdentityRegistry.initialize,
-                (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0xFACE))
+                (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0xFACE), false)
             )
         );
+    }
+
+    // ============ Delegated Proving Tests ============
+
+    function test_SetDelegatedProving() public {
+        registry.setDelegatedProving(true, "https://prover.example.com");
+        assertTrue(registry.delegatedProvingRequired());
+        assertEq(registry.proverUrl(), "https://prover.example.com");
+    }
+
+    function test_SetDelegatedProvingDisable() public {
+        registry.setDelegatedProving(true, "https://prover.example.com");
+        registry.setDelegatedProving(false, "");
+        assertFalse(registry.delegatedProvingRequired());
+        assertEq(registry.proverUrl(), "");
+    }
+
+    function test_RevertSetDelegatedProvingNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        registry.setDelegatedProving(true, "https://evil.com");
+    }
+
+    function test_InitializeWithDelegatedProving() public {
+        IdentityRegistry dp = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0, address(this));
+        assertFalse(dp.delegatedProvingRequired());
+
+        // Deploy with delegated proving enabled via factory
+        IdentityRegistry impl = new IdentityRegistry();
+        MockRegistryFactory mockFactory = new MockRegistryFactory(PROGRAM_V_KEY);
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), true)
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        IdentityRegistry dpReg = IdentityRegistry(address(proxy));
+        assertTrue(dpReg.delegatedProvingRequired());
     }
 }

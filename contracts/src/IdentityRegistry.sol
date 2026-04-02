@@ -97,8 +97,17 @@ contract IdentityRegistry is Initializable {
     /// @notice Factory address. If set, vkey is read from factory (centrally managed).
     address public factory;
 
+    /// @notice Whether this service requires delegated proving (KYC/compliance mode).
+    bool public delegatedProvingRequired;
+
+    /// @notice Delegated prover server URL. Empty = not yet configured.
+    string public proverUrl;
+
     /// @dev Reserved storage gap for future upgradeable state variables.
-    uint256[49] private __gap;
+    // factory (address) + delegatedProvingRequired (bool) pack into 1 slot
+    // proverUrl (string) = 1 slot
+    // Total new slots: 2, so gap = 50 - 2 = 48
+    uint256[48] private __gap;
 
     // ============ Events ============
 
@@ -109,6 +118,7 @@ contract IdentityRegistry is Initializable {
     event CaRemoved(bytes32 indexed caHash, uint256 index);
     event CrlMerkleRootUpdated(bytes32 indexed newRoot);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event DelegatedProvingConfigUpdated(bool required, string proverUrl);
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
     event CaRootGracePeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
     event ProgramVKeyUpdated(bytes32 indexed newVKey);
@@ -184,6 +194,7 @@ contract IdentityRegistry is Initializable {
     /// @param _maxProofAge Maximum allowed age of a proof in seconds (e.g., 3600 = 1 hour).
     /// @param _owner The initial owner of this registry.
     /// @param _factory Factory address. If non-zero, vkey is read from factory (centrally managed).
+    /// @param _delegatedProving Whether this service requires delegated proving.
     function initialize(
         address _sp1Verifier,
         bytes32 _programVKey,
@@ -191,7 +202,8 @@ contract IdentityRegistry is Initializable {
         uint8 _minDisclosureMask,
         uint256 _maxProofAge,
         address _owner,
-        address _factory
+        address _factory,
+        bool _delegatedProving
     ) external initializer {
         if (_sp1Verifier == address(0)) revert ZeroAddress();
         if (_sp1Verifier.code.length == 0) revert VerifierNotContract();
@@ -215,6 +227,7 @@ contract IdentityRegistry is Initializable {
         MIN_DISCLOSURE_MASK = _minDisclosureMask;
         maxProofAge = _maxProofAge;
         owner = _owner;
+        delegatedProvingRequired = _delegatedProving;
     }
 
     // ============ Internal ============
@@ -408,6 +421,15 @@ contract IdentityRegistry is Initializable {
         if (newVKey == bytes32(0)) revert ZeroProgramVKey();
         PROGRAM_V_KEY = newVKey;
         emit ProgramVKeyUpdated(newVKey);
+    }
+
+    /// @notice Configure delegated proving settings.
+    /// @param _required Whether delegated proving is required for this service.
+    /// @param _proverUrl URL of the delegated prover server (can be empty if not yet configured).
+    function setDelegatedProving(bool _required, string calldata _proverUrl) external onlyOwner {
+        delegatedProvingRequired = _required;
+        proverUrl = _proverUrl;
+        emit DelegatedProvingConfigUpdated(_required, _proverUrl);
     }
 
     /// @notice Update the CRL Merkle root. Set bytes32(0) to disable CRL checking.

@@ -54,7 +54,7 @@ pub struct CertEntry {
 
 /// Opaque handle to an OS-managed identity (certificate + private key).
 /// Implementations must ensure the private key NEVER leaves the OS store.
-pub trait PlatformIdentity: std::fmt::Debug {
+pub trait PlatformIdentity: std::fmt::Debug + Send {
     /// Sign a 32-byte prehash using the identity's private key.
     /// The private key stays in the OS-managed store.
     fn sign_prehash(&mut self, prehash: &[u8; 32]) -> Result<Vec<u8>, String>;

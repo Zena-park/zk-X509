@@ -1,0 +1,43 @@
+sequenceDiagram
+    participant U as User (Browser)
+    participant A as Local App (Keychain)
+    participant P as Delegated Prover
+    participant C as Smart Contract
+
+    Note over U,A: Phase A — Certificate Selection
+    U->>A: GET /certs
+    A-->>U: Certificate list
+    U->>U: User selects certificate
+
+    Note over U,A: Phase B — Consent (NO cert data transmitted yet)
+    U->>U: Show consent dialog:<br/>"Send your cert info to [proverUrl]?"
+    U->>U: User clicks [Agree]
+    U->>A: POST /sign/consent<br/>{proverUrl, registry, chainId,<br/>registrant, timestamp}
+    A->>A: Sign consent message<br/>with cert key (keychain)
+    A-->>U: consent_sig
+
+    Note over U,P: Phase C — Signing + Data Transmission (after consent only)
+    U->>A: POST /sign/ownership<br/>{serial, registrant, walletIndex,<br/>timestamp, chainId}
+    A-->>U: ownership_sig
+    U->>A: POST /sign/nullifier<br/>{registryAddress, chainId}
+    A-->>U: nullifier_sig
+
+    rect rgb(255, 240, 240)
+        Note over U,P: Certificate data transmitted ONLY after consent
+        U->>P: POST /api/prove<br/>{consent_sig, cert_der, cert_chain,<br/>ownership_sig, nullifier_sig,<br/>registrant, wallet_index, ...}
+    end
+
+    P->>P: 1. Verify consent_sig<br/>against cert public key
+    alt Consent invalid
+        P-->>U: 403 Reject (data discarded)
+    else Consent valid
+        P->>P: 2. Store consent<br/>(compliance record)
+        P->>P: 3. Build SP1 stdin
+        P->>P: 4. Generate ZK proof (GPU)
+        P-->>U: {proof, public_values}
+    end
+
+    Note over U,C: Phase D — On-Chain Registration
+    U->>C: register(proof, publicValues)
+    C->>C: Verify ZK proof<br/>Check nullifier, expiry,<br/>disclosure, etc.
+    C-->>U: Registered ✓

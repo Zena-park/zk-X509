@@ -131,6 +131,7 @@ export default function CreateRegistryPage() {
   const [maxWalletsOption, setMaxWalletsOption] = useState<"1" | "3" | "custom">("1");
   const [customMaxWallets, setCustomMaxWallets] = useState("");
   const [disclosureBits, setDisclosureBits] = useState<boolean[]>([false, false, false, false]);
+  const [delegatedProving, setDelegatedProving] = useState(false);
   const [selectedUseCases, setSelectedUseCases] = useState<Set<string>>(new Set());
 
   /* ---------- tx state ---------- */
@@ -196,7 +197,7 @@ export default function CreateRegistryPage() {
       if (creationFee > BigInt(0) && isNativeFee) {
         txOptions.value = creationFee;
       }
-      const tx = await factory.createRegistry(name.trim(), maxWallets, minDisclosureMask, maxProofAge, txOptions);
+      const tx = await factory.createRegistry(name.trim(), maxWallets, minDisclosureMask, maxProofAge, delegatedProving, txOptions);
 
       setTxStatus("confirming");
       setTxHash(tx.hash);
@@ -385,6 +386,42 @@ export default function CreateRegistryPage() {
           <p className="text-on-surface-variant text-xs px-1 font-mono">
             Disclosure mask: 0x{minDisclosureMask.toString(16).padStart(2, "0")} ({minDisclosureMask.toString(2).padStart(4, "0")}b)
           </p>
+        </div>
+
+        {/* Delegated Proving */}
+        <div className="space-y-3">
+          <label className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest px-1">
+            Delegated Proving
+          </label>
+          <div className="flex items-center justify-between bg-surface-container-low rounded-xl p-4">
+            <div>
+              <p className="text-sm font-headline font-bold text-on-surface">
+                Require Delegated Proving
+              </p>
+              <p className="text-xs text-on-surface-variant mt-1">
+                Users must send their certificate to your prover server for proof generation.
+                Enables KYC/compliance — you can verify user identity before registration.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDelegatedProving(!delegatedProving)}
+              className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors focus:outline-none ${
+                delegatedProving ? "bg-tertiary" : "bg-surface-container-highest"
+              }`}
+            >
+              <span
+                className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${
+                  delegatedProving ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+          {delegatedProving && (
+            <p className="text-xs text-tertiary px-1">
+              You can set the prover URL after deployment via the admin panel.
+            </p>
+          )}
         </div>
 
         {/* Use Cases */}

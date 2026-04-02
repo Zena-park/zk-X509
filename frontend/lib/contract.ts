@@ -349,6 +349,32 @@ export const IDENTITY_REGISTRY_ABI = [
     stateMutability: "view",
     type: "function",
   },
+
+  // ============ Delegated Proving ============
+  {
+    inputs: [],
+    name: "delegatedProvingRequired",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "proverUrl",
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "_required", type: "bool" },
+      { name: "_proverUrl", type: "string" },
+    ],
+    name: "setDelegatedProving",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
 ] as const;
 
 /// Registry address from environment variable (NEXT_PUBLIC_REGISTRY_ADDRESS).
@@ -368,6 +394,7 @@ export const REGISTRY_FACTORY_ABI = [
       { name: "maxWallets", type: "uint32" },
       { name: "minDisclosureMask", type: "uint8" },
       { name: "maxProofAge", type: "uint256" },
+      { name: "delegatedProving", type: "bool" },
     ],
     name: "createRegistry",
     outputs: [{ name: "", type: "address" }],

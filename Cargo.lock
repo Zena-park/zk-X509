@@ -7219,6 +7219,7 @@ version = "0.1.0"
 dependencies = [
  "alloy-sol-types",
  "axum",
+ "base64 0.22.1",
  "clap",
  "dirs 6.0.0",
  "dotenv",

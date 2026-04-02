@@ -22,6 +22,7 @@ import {
   Plus,
   Save,
   Loader2,
+  Server,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ethers } from "ethers";
@@ -370,6 +371,12 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
   const [onChainCaLeaves, setOnChainCaLeaves] = useState<string[]>([]);
   const [caListLoading, setCaListLoading] = useState(false);
 
+  // delegated proving
+  const [dpRequired, setDpRequired] = useState(false);
+  const [dpProverUrl, setDpProverUrl] = useState("");
+  const [dpProverUrlInput, setDpProverUrlInput] = useState("");
+  const [dpTx, setDpTx] = useState<TxStatus>(IDLE);
+
   const [addCaTxMap, setAddCaTxMap] = useState<Record<string, TxStatus>>({});
   const [addAllTx, setAddAllTx] = useState<TxStatus>(IDLE);
   const [removeCaTxMap, setRemoveCaTxMap] = useState<Record<string, TxStatus>>({});
@@ -465,6 +472,24 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
   useEffect(() => {
     fetchCaLeaves();
   }, [fetchCaLeaves]);
+
+  /* ---------- fetch delegated proving config ---------- */
+  useEffect(() => {
+    if (!readContract) return;
+    (async () => {
+      try {
+        const [required, url] = await Promise.all([
+          readContract.delegatedProvingRequired(),
+          readContract.proverUrl(),
+        ]);
+        setDpRequired(required);
+        setDpProverUrl(url);
+        setDpProverUrlInput(url);
+      } catch {
+        // fields may not exist on older contracts
+      }
+    })();
+  }, [readContract]);
 
   /* ---------- search handler ---------- */
   const handleSearch = useCallback(async () => {
@@ -1510,6 +1535,109 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
                       {isBusy(proofAgeTx) ? "Processing..." : "SET AGE"}
                     </button>
                     <TxBadge status={proofAgeTx} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Delegated Proving */}
+              <div className="glass-panel rounded-3xl p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <Server className="text-tertiary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-on-surface">
+                    Delegated Proving
+                  </h2>
+                </div>
+                <p className="text-xs text-on-surface-variant mb-4">
+                  Require users to generate proofs via your prover server. Enables KYC/compliance — your server can verify user identity before generating the proof.
+                </p>
+
+                <div className="space-y-4">
+                  {/* Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-headline font-bold text-primary">
+                        Require Delegated Proving
+                      </p>
+                      <p className="text-xs text-on-surface-variant mt-1">
+                        {dpRequired ? "Users must use your prover server" : "Users generate proofs locally"}
+                      </p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      dpRequired ? "bg-tertiary/20 text-tertiary" : "bg-surface-container-highest text-on-surface-variant"
+                    }`}>
+                      {dpRequired ? "REQUIRED" : "OFF"}
+                    </span>
+                  </div>
+
+                  {/* Prover URL */}
+                  <div>
+                    <label className="text-xs text-on-surface-variant font-label block mb-1">
+                      Prover Server URL
+                    </label>
+                    <input
+                      className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm font-mono outline-none text-primary placeholder:text-on-surface-variant/30"
+                      placeholder="https://prover.your-service.com"
+                      value={dpProverUrlInput}
+                      onChange={(e) => setDpProverUrlInput(e.target.value)}
+                      disabled={disabled}
+                    />
+                    {dpRequired && !dpProverUrl && (
+                      <p className="text-xs text-error mt-1">Prover URL not set — users cannot register yet.</p>
+                    )}
+                  </div>
+
+                  {/* Save button */}
+                  <button
+                    className="w-full py-3 bg-tertiary text-on-tertiary hover:brightness-110 transition-all font-bold text-xs rounded-xl uppercase tracking-widest disabled:opacity-50"
+                    disabled={
+                      disabled ||
+                      isBusy(dpTx) ||
+                      (dpRequired === (contractState?.delegatedProvingRequired ?? false) &&
+                       dpProverUrlInput === dpProverUrl)
+                    }
+                    onClick={async () => {
+                      if (!writeContract) return;
+                      setDpTx({ status: "pending" });
+                      try {
+                        const tx = await writeContract.setDelegatedProving(dpRequired, dpProverUrlInput);
+                        setDpTx({ status: "confirming", hash: tx.hash });
+                        await tx.wait();
+                        setDpTx({ status: "confirmed", hash: tx.hash });
+                        setDpProverUrl(dpProverUrlInput);
+                        refresh();
+                      } catch (e: unknown) {
+                        setDpTx({ status: "error", error: e instanceof Error ? e.message : "Failed" });
+                      }
+                    }}
+                  >
+                    {isBusy(dpTx) ? "Processing..." : "SAVE DELEGATED PROVING SETTINGS"}
+                  </button>
+                  <TxBadge status={dpTx} />
+
+                  {/* Toggle buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                        !dpRequired
+                          ? "bg-surface-container-highest text-on-surface-variant"
+                          : "border border-tertiary/40 text-tertiary hover:bg-tertiary/10"
+                      }`}
+                      disabled={disabled || dpRequired}
+                      onClick={() => setDpRequired(true)}
+                    >
+                      Enable
+                    </button>
+                    <button
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                        dpRequired
+                          ? "bg-surface-container-highest text-on-surface-variant"
+                          : "border border-outline-variant/40 text-on-surface-variant hover:bg-surface-container"
+                      }`}
+                      disabled={disabled || !dpRequired}
+                      onClick={() => setDpRequired(false)}
+                    >
+                      Disable
+                    </button>
                   </div>
                 </div>
               </div>
