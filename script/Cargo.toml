@@ -24,6 +24,10 @@ path = "src/bin/server.rs"
 name = "interactive"
 path = "src/bin/interactive.rs"
 
+[[bin]]
+name = "prover-server"
+path = "src/bin/prover-server.rs"
+
 [dependencies]
 sp1-sdk = { version = "6.0.1", features = ["blocking"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
@@ -44,6 +48,7 @@ p384 = { version = "0.13", features = ["ecdsa"] }
 x509-parser = "0.16"
 ureq = { version = "3.3.0", features = ["json"] }
 dirs = "6"
+base64 = "0.22"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
