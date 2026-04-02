@@ -53,6 +53,73 @@
 
 ## 미해결
 
+### HIGH — 기능 개발
+
+#### 56. Disclosure 필터링 (2단계 인증 정책)
+
+서비스 운영자가 인증 정책을 2단계로 설정:
+
+**1단계: disclosure mask** — 어떤 필드를 공개할지 (기존 `minDisclosureMask`)
+**2단계: 필터 값** — 공개된 필드 중 어떤 값만 허용할지 (신규)
+
+```
+필터 값 = bytes32(0)  → 공개만 하고 아무 값이나 허용
+필터 값 = "KR"        → 정확히 "KR"인 경우만 등록 가능
+```
+
+**설정 예시:**
+
+| 정책 | disclosure mask | 필터 |
+|------|----------------|------|
+| 아무나 | 0x00 | 없음 |
+| 한국인만 | 0x01 (Country) | requiredCountry = "KR" |
+| 삼성 직원만 | 0x02 (Org) | requiredOrg = "Samsung" |
+| 삼성 한국 엔지니어만 | 0x07 (C+O+OU) | requiredCountry = "KR", requiredOrg = "Samsung", requiredOrgUnit = "Engineering" |
+| 사업자만 (개인 제외) | 0x02 (Org) | org != 0x0 체크 (entity type filter) |
+
+**컨트랙트 설계:**
+
+```solidity
+// 필터 값 (bytes32(0) = 제한 없음, 값이 있으면 정확히 일치해야 함)
+bytes32 public requiredCountry;
+bytes32 public requiredOrg;
+bytes32 public requiredOrgUnit;
+bytes32 public requiredCommonName;
+
+// 서비스 운영자가 설정 (owner only)
+function setRequiredDisclosureValues(
+    bytes32 _country, bytes32 _org, bytes32 _orgUnit, bytes32 _cn
+) external onlyOwner;
+```
+
+**register() 검증 로직:**
+
+```solidity
+// 기존: disclosure mask 체크 (필드가 비어있지 않은지)
+// 추가: 필터 값 체크 (필드 값이 일치하는지)
+if (requiredCountry != bytes32(0))
+    require(pv.country == requiredCountry, "CountryMismatch");
+if (requiredOrg != bytes32(0))
+    require(pv.org == requiredOrg, "OrgMismatch");
+// ... orgUnit, commonName 동일
+```
+
+**Entity Type 필터 (개인/사업자 구분):**
+- requiredOrg가 설정되어 있으면 → 해당 기관만 허용
+- minDisclosureMask에 Org bit이 켜져있고 requiredOrg = bytes32(0)이면 → 사업자만 허용 (org != 0x0)
+- minDisclosureMask에 Org bit이 꺼져있으면 → 개인/사업자 무관
+
+**변경 범위:**
+- contracts: IdentityRegistry (storage + validation), RegistryFactory (createRegistry 파라미터)
+- frontend: create 페이지 (필터 값 입력), admin 설정 (필터 변경)
+- 가스 비용: 필터당 1 SLOAD (~2100 gas) 추가 — 4개 전부 설정해도 ~8400 gas
+
+#### ~~57. 한국 NPKI 개인사업자 vs 법인 세부 구분~~ → 불필요
+- O + CN 조합으로 구분 가능 (serialNumber 파싱 불필요)
+- 개인: O 없음
+- 개인사업자: O ≠ CN (O=사업명, CN=개인명)
+- 법인: O ≈ CN (O=회사명, CN=회사명/대표자)
+
 ### MEDIUM — 미해결
 
 #### 20. Solidity 형식 검증
