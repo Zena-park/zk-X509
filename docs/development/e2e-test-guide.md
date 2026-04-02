@@ -4,7 +4,9 @@
 
 - Docker Desktop running
 - Rust + SP1 toolchain installed (`sp1up --version v6.0.2`)
+- SP1 Rust crates: v6.0.1 (script/program), SP1 contracts: v6.0.0
 - Test certificate in macOS Keychain (or `certs/signCert.der` + `certs/signPri.key`)
+- On Apple Silicon: Docker must be able to pull `linux/amd64` images (Groth16 uses `sp1-gnark:v6.0.0` which is x86 only)
 
 ## 1. Start Local Stack
 
@@ -28,48 +30,56 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3000  # 200
 ## 2. Get Deployed Addresses
 
 ```bash
-# From shared volume
-docker run --rm -v zk-x509_deployer-output:/shared alpine cat /shared/addresses.json
-```
+# Parse addresses from deployer logs (works regardless of volume name)
+FACTORY=$(docker compose logs deployer 2>/dev/null | grep "FACTORY=" | tail -1 | sed 's/.*FACTORY=//')
+echo "FACTORY=$FACTORY"
 
-Or check deployer logs:
-```bash
-docker compose logs deployer | grep "FACTORY\|VERIFIER"
+# Get first registry address
+REGISTRY=$(cast call $FACTORY "registries(uint256)(address)" 0 --rpc-url http://localhost:8545)
+echo "REGISTRY=$REGISTRY"
 ```
 
 ## 3. Register Test CA
 
 ```bash
-REGISTRY=$(cast call $FACTORY "registries(uint256)(address)" 0 --rpc-url http://localhost:8545)
-
 # Compute CA hash
 CA_HASH=$(python3 -c "
 import hashlib
 with open('certs/ca_pub.der', 'rb') as f:
     print('0x' + hashlib.sha256(f.read()).hexdigest())
 ")
+echo "CA_HASH=$CA_HASH"
 
 # Register CA
 cast send $REGISTRY "addCA(bytes32)" $CA_HASH \
   --rpc-url http://localhost:8545 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+# Verify
+cast call $REGISTRY "getCaCount()(uint256)" --rpc-url http://localhost:8545
 ```
 
 ## 4. Check VKey Match
 
 ```bash
 # On-chain vkey
-cast call $FACTORY "currentProgramVKey()(bytes32)" --rpc-url http://localhost:8545
+ONCHAIN_VKEY=$(cast call $FACTORY "currentProgramVKey()(bytes32)" --rpc-url http://localhost:8545)
+echo "On-chain: $ONCHAIN_VKEY"
 
 # Local vkey (from current build)
-cargo run --release --bin vkey
-```
+LOCAL_VKEY=$(cargo run --release --bin vkey 2>/dev/null | grep -oE '0x[0-9a-fA-F]{64}' | head -1)
+echo "Local:    $LOCAL_VKEY"
 
-If they don't match, update on-chain:
-```bash
-cast send $FACTORY "updateProgramVKey(bytes32)" $LOCAL_VKEY \
-  --rpc-url http://localhost:8545 \
-  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+# Compare
+if [ "$ONCHAIN_VKEY" = "$LOCAL_VKEY" ]; then
+  echo "MATCH ✅"
+else
+  echo "MISMATCH ❌ — updating on-chain..."
+  cast send $FACTORY "updateProgramVKey(bytes32)" $LOCAL_VKEY \
+    --rpc-url http://localhost:8545 \
+    --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+  echo "Updated ✅"
+fi
 ```
 
 ## 5. Generate Proof (Execute Mode — Fast)
@@ -92,7 +102,7 @@ SP1_PROVER=mock cargo run --release --bin evm -- \
 
 ## 6. Generate Proof (Groth16 — Production)
 
-Requires Docker. Takes ~5–10 minutes:
+Requires Docker. Takes ~5–10 minutes. On Apple Silicon, the `sp1-gnark:v6.0.0` image runs under Rosetta emulation (linux/amd64).
 
 ```bash
 cargo run --release --bin evm -- \
@@ -105,10 +115,17 @@ cargo run --release --bin evm -- \
   --chain-id 31337 \
   --registry-address $REGISTRY \
   --rpc-url http://localhost:8545 \
-  --disclosure-mask 3
+  --disclosure-mask 3 \
+  | tee /tmp/proof-output.txt
 ```
 
-Output: `Proof: 0x...` and `Public Values: 0x...`
+Capture proof and public values from output:
+```bash
+PROOF=$(grep "^Proof:" /tmp/proof-output.txt | awk '{print $2}')
+PUBLIC_VALUES=$(grep "^Public Values:" /tmp/proof-output.txt | awk '{print $3}')
+echo "PROOF=${PROOF:0:20}..."
+echo "PV=${PUBLIC_VALUES:0:20}..."
+```
 
 ## 7. Register On-Chain
 
