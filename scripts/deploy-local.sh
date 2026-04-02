@@ -20,6 +20,18 @@ if [ "$PRIVATE_KEY" = "$DEFAULT_PRIVATE_KEY" ]; then
   esac
 fi
 
+# Auto-detect vkey from current ELF (if cargo is available)
+if [ -z "$PROGRAM_V_KEY" ] && command -v cargo >/dev/null 2>&1; then
+  echo "=== Auto-detecting program vkey ==="
+  DETECTED_VKEY=$(cargo run --release --bin vkey 2>/dev/null | grep -oE '0x[0-9a-fA-F]{64}' | head -1)
+  if [ -n "$DETECTED_VKEY" ]; then
+    export PROGRAM_V_KEY="$DETECTED_VKEY"
+    echo "PROGRAM_V_KEY=$PROGRAM_V_KEY (auto-detected)"
+  else
+    echo "WARNING: Could not auto-detect vkey, using hardcoded default"
+  fi
+fi
+
 echo "=== Deploying contracts ==="
 # Capture output but ensure logs are printed even on failure
 set +e
