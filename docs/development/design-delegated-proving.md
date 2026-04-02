@@ -11,33 +11,43 @@ Service operators who need to know user identity (KYC/compliance) or want to off
 
 ## Architecture Overview
 
+The desktop app is the central actor. It communicates directly with the prover server — the browser is only used for the final on-chain submission.
+
 ```
-Browser (frontend)     Local App (keychain)     Delegated Prover        Smart Contract
-──────────────────     ────────────────────     ────────────────        ──────────────
+Desktop App (keychain)                     Delegated Prover              Browser (frontend)
+──────────────────────                     ────────────────              ──────────────────
 
-1. Get cert list ─────→ /certs
-                 ←───── cert list
+1. User enters registry address
 
-2. Select cert, choose delegated proving
+2. Query on-chain: registry.proverUrl()
+   → If empty: local proving (existing flow)
+   → If set: delegated proving (this flow)
 
-3. Consent dialog shown to user
-   User clicks [Agree]
-   Request consent sig ──→ /sign/consent
-                     ←──── consent_sig (cert key)
+3. Show consent dialog:
+   "This service requires delegated proving.
+    Your cert info will be sent to [proverUrl].
+    Consent?"
+   → User agrees
 
-4. Request sigs ──────→ /sign/ownership
-                 ←───── ownership_sig
-                ──────→ /sign/nullifier
-                 ←───── nullifier_sig
+4. Keychain signs:
+   - consent_sig (for prover)
+   - ownership_sig (for ZK proof)
+   - nullifier_sig (for ZK proof)
 
-5. Send all to prover ──────────────────→ POST /api/prove
-   (consent + cert + sigs)                Verify consent → prove
-                       ←──────────────── proof + public_values
+5. Send directly to prover ────────────→ POST /api/prove
+   (consent + cert + sigs)                Verify consent
+                                          Generate ZK proof (GPU)
+6. Receive proof ←─────────────────────── {proof, public_values}
 
-6. Submit to chain ─────────────────────────────────────────→ register(proof, pv)
+7. Display proof for user to copy ─────────────────────────→ Paste into frontend
+                                                              register(proof, pv)
+                                                              → Smart Contract
 ```
 
-**Key invariant: Steps 4-5 only execute after step 3 (consent) succeeds.**
+**Key invariants:**
+- Certificate data flows: Desktop App → Prover Server (direct, no browser relay)
+- Steps 4-6 only execute after step 3 (consent) succeeds
+- Browser never sees certificate contents — only receives proof + public values
 
 ## Consent Protocol
 
@@ -72,50 +82,48 @@ The consent message is signed by the certificate's private key using the OS keyc
 **Critical rule: NO certificate data is transmitted until consent signature is complete.**
 
 ```
-Local App (keychain)                 Browser (frontend)              Delegated Prover
-────────────────────                 ──────────────────              ────────────────
+Desktop App (keychain)                                    Delegated Prover
+──────────────────────                                    ────────────────
 
-1. GET /certs ←──────────────────── Request cert list
-   Return cert list ─────────────→ Show cert selection
+1. User enters registry address + wallet address
 
-2. User selects certificate
+2. Query on-chain:
+   - registry.delegatedProvingRequired() → bool
+   - registry.proverUrl() → string
    
-3. Frontend shows consent dialog:
-   "Your certificate information will
-    be sent to [proverUrl]. Consent?"
+   Three cases:
+   a) delegatedProvingRequired == false → local proving (existing flow)
+   b) delegatedProvingRequired == true && proverUrl != "" → delegated proving (this flow)
+   c) delegatedProvingRequired == true && proverUrl == "" → "Service requires delegated proving but prover is not yet configured. Registration unavailable."
+
+3. Show consent dialog in terminal:
+   "This service requires delegated proving."
+   "Your certificate information will be sent to [proverUrl]."
+   "Do you consent? (y/n)"
    
-   User clicks [Agree]
+   User types 'y'
 
-4. POST /sign/consent ←────────── Request consent signature
-   {proverUrl, registry,            (consent message constructed
-    chainId, registrant,              by frontend, signed by
-    timestamp}                        cert key in keychain)
+4. Sign consent with cert key (keychain):
+   consent_sig = sign(SHA256(consent_message))
+
+5. Sign ownership + nullifier with cert key (keychain)
+
+6. ONLY NOW: send to prover ────────────────────────→ POST /api/prove
+   {consent_sig, cert_der, cert_chain,                 
+    ownership_sig, nullifier_sig,                       7. Verify consent FIRST:
+    registrant, wallet_index, ...}                         - verify sig against cert pubkey
+                                                           - check timestamp (10 min)
+                                                           - check prover URL matches
+                                                        
+                                                        8. If invalid → reject
+                                                           (discard all data)
+                                                        
+                                                        9. If valid → generate proof
+                                                           Store consent as compliance record
    
-   Sign with cert key (keychain)
-   Return consent_sig ───────────→ Consent signature received
+   ←────────────────────────────────────────────────── {proof, public_values}
 
-5. POST /sign/ownership ←──────── Request proving signatures
-   POST /sign/nullifier ←──────── 
-   Return sigs ──────────────────→ All signatures ready
-
-6. ONLY NOW: send everything ─────────────────────────────→ POST /api/prove
-   {consent_sig, consent_message,                            
-    cert_der, cert_chain,                                    7. Verify consent FIRST:
-    ownership_sig, nullifier_sig,                               - verify cert_sig against
-    registrant, wallet_index, ...}                                cert public key
-                                                                - check timestamp (10 min)
-                                                                - check prover URL matches
-                                                             
-                                                             8. If invalid → reject
-                                                                (discard all data)
-                                                             
-                                                             9. If valid → generate proof
-                                                                Store consent as
-                                                                compliance record
-   
-                                  ←─────────────────────────── {proof, public_values}
-
-10. register(proof, pv) ──→ Smart Contract
+10. Display proof hex for user to paste into frontend → register(proof, pv)
 ```
 
 ### Enforcement layers
@@ -236,51 +244,63 @@ New binary `script/src/bin/prover-server.rs` (separate from local `server.rs`):
 3. **No keychain dependency** — signatures come from the request body
 4. **Compliance logging**: Log `(nullifier, registrant, cert_subject, consent_sig)` to file
 
-### Phase 3: Frontend Integration
+### Phase 3: Desktop App Integration
 
-1. **Service metadata**: Add optional `proverUrl` to backend registry metadata
-2. **Prover selection UI**: If service has `proverUrl`, show delegated proving option alongside local
-3. **Consent flow**: Consent dialog → sign with cert key → proceed only after consent
-4. **Delegated proving flow**: Get signatures from local app → send to delegated prover → receive proof → submit to contract
+Modify `interactive.rs` to support delegated proving:
 
-## Prover Selection (User Choice)
+1. After registry address input, query on-chain `delegatedProvingRequired` and `proverUrl`
+2. If delegated required: show consent dialog in terminal → sign consent → send to prover → receive proof
+3. If not required: existing local proving flow (unchanged)
+4. Display proof hex for user to paste into frontend
 
-The user must **explicitly choose** which prover to use. This is a critical trust decision — the selected prover will see the user's certificate contents (name, organization, country).
+### Phase 4: Contract + Frontend
 
-### Options presented to the user:
+1. **Contract**: `delegatedProvingRequired` (bool) + `proverUrl` (string) fields + `setDelegatedProving()` setter (owner-only)
+2. **Frontend admin page**: UI for service operator to configure delegated proving settings
+3. **Frontend registry detail**: Show delegated proving status to users
 
-| Option | Privacy | Speed | Who sees identity |
-|--------|---------|-------|-------------------|
-| **Local** (my device) | Maximum | ~5 min CPU | Nobody |
-| **Service prover** (operated by this service) | Service sees identity | Fast (GPU) | Service operator |
-| **Custom prover URL** (user-specified) | Depends on trust | Varies | Prover operator |
+## Proving Mode Selection (Automatic)
 
-### UX flow:
+The proving mode is **determined by the service's on-chain configuration**, not by user choice:
 
-1. User clicks "Register" on a service page
-2. **Prover selection dialog** appears:
-   - "Generate proof on my device (private, slower)"
-   - "Use [Service Name]'s prover (faster, service will see your certificate)" — only shown if service has `proverUrl`
-   - "Use custom prover URL" (advanced)
-3. If delegated prover selected → **consent dialog**:
+| `delegatedProvingRequired` | `proverUrl` | Behavior |
+|:-:|:-:|---|
+| `false` | (ignored) | **Local proving** — desktop app generates proof locally |
+| `true` | non-empty | **Delegated proving** — desktop app sends to prover server after consent |
+| `true` | empty | **Unavailable** — "Prover not yet configured, registration unavailable" |
 
-   > **Personal Information Disclosure Consent**
-   >
-   > By using [Service Name]'s prover at `[proverUrl]`, the following information from your certificate will be sent to the prover:
-   > - Certificate subject (name, organization, country, etc.)
-   > - Certificate chain (issuing CA information)
-   > - Certificate validity period
-   > - Your wallet address
-   >
-   > **Your private key will NOT be sent.**
-   >
-   > The prover operator may store this information for compliance purposes.
-   >
-   > [Cancel] [Sign Consent]
+### Desktop app UX (interactive CLI):
 
-4. User clicks [Sign Consent] → local app signs consent message with certificate key (keychain prompt appears)
-5. Consent signature received → frontend proceeds with ownership/nullifier signing → sends all to prover
-6. Consent record (signed message + signature) stored locally for user reference
+```
+Registry: 0xABC...123
+Service: DeFi Lending Protocol
+
+⚠ This service requires delegated proving for compliance.
+  Your certificate information will be sent to:
+  https://prover.defi-lending.com
+
+  The following data will be shared with the prover:
+  - Certificate subject (name, organization, country)
+  - Certificate chain and validity period
+  - Your wallet address
+
+  Your private key will NOT be sent.
+  The prover may store this information for compliance purposes.
+
+  Do you consent? (y/n): y
+
+Signing consent... ✓
+Signing ownership... ✓
+Signing nullifier... ✓
+Sending to prover... ✓
+Generating proof (this may take a few minutes)...
+Proof received! (12.3 seconds)
+
+Proof:         0x1234...
+Public Values: 0x5678...
+
+Paste these into the frontend to complete registration.
+```
 
 ### Trust model:
 
@@ -309,10 +329,13 @@ The user must **explicitly choose** which prover to use. This is a critical trus
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `script/src/bin/server.rs` | Add `POST /api/prove`, signing endpoints |
-| `script/src/lib.rs` | Extract shared `build_stdin()` from interactive/evm |
-| `frontend/components/DashboardContent.tsx` | Add delegated proving flow |
-| `frontend/lib/platform.ts` | Add `proverUrl` to metadata |
-| `backend/db/registries.json` | Add optional `proverUrl` field |
+| File | Change | Status |
+|------|--------|--------|
+| `script/src/bin/server.rs` | Signing-only API (`/api/sign/*`) | ✅ Done |
+| `script/src/bin/prover-server.rs` | Delegated prover server binary | ✅ Done |
+| `script/src/keychain.rs` | Add `Send` bound to `PlatformIdentity` | ✅ Done |
+| `script/Cargo.toml` | Add `base64` dep, `prover-server` binary | ✅ Done |
+| `contracts/src/IdentityRegistry.sol` | `delegatedProvingRequired` + `proverUrl` + `setDelegatedProving()` | ✅ Done |
+| `script/src/bin/interactive.rs` | Query on-chain config, consent flow, send to prover | TODO |
+| `frontend/components/AdminContent.tsx` | UI for configuring delegated proving | TODO |
+| `frontend/app/registry/[address]/page.tsx` | Show delegated proving status | TODO |
