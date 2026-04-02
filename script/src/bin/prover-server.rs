@@ -163,21 +163,23 @@ fn verify_consent(
 
         if curve_oid == "1.2.840.10045.3.1.7" {
             // P-256
-            use p256::ecdsa::{VerifyingKey, signature::Verifier, Signature};
+            use p256::ecdsa::{VerifyingKey, Signature};
+            use p256::ecdsa::signature::hazmat::PrehashVerifier;
             let vk = VerifyingKey::from_sec1_bytes(pub_key.subject_public_key.as_ref())
                 .map_err(|e| format!("P-256 parse: {}", e))?;
             let sig = Signature::from_der(consent_sig)
                 .map_err(|e| format!("P-256 sig parse: {}", e))?;
-            vk.verify(&prehash, &sig)
+            vk.verify_prehash(&prehash, &sig)
                 .map_err(|e| format!("P-256 consent verify failed: {}", e))
         } else if curve_oid == "1.3.132.0.34" {
             // P-384
-            use p384::ecdsa::{VerifyingKey, signature::Verifier, Signature};
+            use p384::ecdsa::{VerifyingKey, Signature};
+            use p384::ecdsa::signature::hazmat::PrehashVerifier;
             let vk = VerifyingKey::from_sec1_bytes(pub_key.subject_public_key.as_ref())
                 .map_err(|e| format!("P-384 parse: {}", e))?;
             let sig = Signature::from_der(consent_sig)
                 .map_err(|e| format!("P-384 sig parse: {}", e))?;
-            vk.verify(&prehash, &sig)
+            vk.verify_prehash(&prehash, &sig)
                 .map_err(|e| format!("P-384 consent verify failed: {}", e))
         } else {
             Err(format!("Unsupported EC curve: {}", curve_oid))
