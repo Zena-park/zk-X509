@@ -11,6 +11,13 @@ contract MockSP1Verifier is ISP1Verifier {
     function verifyProof(bytes32, bytes calldata, bytes calldata) external pure {}
 }
 
+/// @notice Mock factory that returns a configurable vkey.
+contract MockRegistryFactory {
+    bytes32 public currentProgramVKey;
+    constructor(bytes32 _vkey) { currentProgramVKey = _vkey; }
+    function setVKey(bytes32 _vkey) external { currentProgramVKey = _vkey; }
+}
+
 contract IdentityRegistryTest is Test {
     IdentityRegistry public registry;
     MockSP1Verifier public mockVerifier;
@@ -49,7 +56,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (verifier, vkey, maxWallets, mask, 3600, _owner)
+            (verifier, vkey, maxWallets, mask, 3600, _owner, address(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         return IdentityRegistry(address(proxy));
@@ -205,6 +212,38 @@ contract IdentityRegistryTest is Test {
         vm.prank(alice);
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
         registry.pause();
+    }
+
+    function test_UpdateProgramVKey() public {
+        bytes32 newVKey = bytes32(uint256(0xBEEF));
+        registry.updateProgramVKey(newVKey);
+        assertEq(registry.PROGRAM_V_KEY(), newVKey);
+    }
+
+    function test_RevertUpdateProgramVKeyZero() public {
+        vm.expectRevert(IdentityRegistry.ZeroProgramVKey.selector);
+        registry.updateProgramVKey(bytes32(0));
+    }
+
+    function test_RevertUpdateProgramVKeyNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        registry.updateProgramVKey(bytes32(uint256(0xBEEF)));
+    }
+
+    function test_RevertUpdateProgramVKeyWhenFactoryMode() public {
+        // Deploy with factory set (simulating factory-created registry)
+        MockRegistryFactory mockFactory = new MockRegistryFactory(PROGRAM_V_KEY);
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory))
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        IdentityRegistry factoryRegistry = IdentityRegistry(address(proxy));
+
+        vm.expectRevert(IdentityRegistry.VKeyManagedByFactory.selector);
+        factoryRegistry.updateProgramVKey(bytes32(uint256(0xBEEF)));
     }
 
     function test_RevokeIdentity() public {
@@ -436,7 +475,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 0, 0, 3600, address(this))
+            (address(mockVerifier), PROGRAM_V_KEY, 0, 0, 3600, address(this), address(0))
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.ZeroMaxWallets.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -447,7 +486,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(0xDEAD), PROGRAM_V_KEY, 1, 0, 3600, address(this))
+            (address(0xDEAD), PROGRAM_V_KEY, 1, 0, 3600, address(this), address(0))
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.VerifierNotContract.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -457,7 +496,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this))
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0))
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.ZeroProgramVKey.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -537,7 +576,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this))
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry customReg = IdentityRegistry(address(proxy));
@@ -549,7 +588,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this))
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry shortAgeRegistry = IdentityRegistry(address(proxy));
@@ -943,7 +982,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, 3600, address(this))
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, 3600, address(this), address(0))
         );
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.InvalidDisclosureMask.selector, uint8(0x10))
@@ -964,5 +1003,67 @@ contract IdentityRegistryTest is Test {
         registry.updateCaMerkleRoot(newRoot);
         assertEq(registry.previousCaMerkleRoot(), oldRoot); // still oldRoot
         assertEq(registry.caMerkleRootUpdatedAt(), updatedAt); // timestamp unchanged
+    }
+
+    function test_FactoryModeUsesFactoryVKey() public {
+        bytes32 factoryVKey = bytes32(uint256(0xF00D));
+
+        // Deploy mock factory with a known vkey
+        MockRegistryFactory mockFactory = new MockRegistryFactory(factoryVKey);
+
+        // Deploy registry in factory mode (using standard mock verifier)
+        IdentityRegistry impl = new IdentityRegistry();
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory))
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        IdentityRegistry factoryRegistry = IdentityRegistry(address(proxy));
+        factoryRegistry.updateCaMerkleRoot(CA_MERKLE_ROOT);
+
+        // Expect verifyProof to be called with the factory's vkey (not a stored one)
+        bytes memory publicValues = _pvIdxFor(NULLIFIER, CA_MERKLE_ROOT, alice, 0, address(factoryRegistry));
+        vm.expectCall(
+            address(mockVerifier),
+            abi.encodeCall(ISP1Verifier.verifyProof, (factoryVKey, publicValues, hex"1234"))
+        );
+
+        // Register via factory-mode registry
+        vm.prank(alice);
+        factoryRegistry.register(hex"1234", publicValues);
+
+        // effectiveProgramVKey() should return factory's vkey
+        assertEq(factoryRegistry.effectiveProgramVKey(), factoryVKey);
+
+        // PROGRAM_V_KEY should be bytes32(0) (not storing factory's vkey)
+        assertEq(factoryRegistry.PROGRAM_V_KEY(), bytes32(0));
+
+        // Update factory vkey and verify it's reflected
+        bytes32 newVKey = bytes32(uint256(0xBEEF));
+        mockFactory.setVKey(newVKey);
+        assertEq(factoryRegistry.effectiveProgramVKey(), newVKey);
+    }
+
+    function test_StandaloneModeEffectiveProgramVKey() public {
+        // In standalone mode, effectiveProgramVKey() == PROGRAM_V_KEY
+        assertEq(registry.effectiveProgramVKey(), PROGRAM_V_KEY);
+
+        // After update, effectiveProgramVKey() reflects the new value
+        bytes32 newVKey = bytes32(uint256(0xBEEF));
+        registry.updateProgramVKey(newVKey);
+        assertEq(registry.effectiveProgramVKey(), newVKey);
+    }
+
+    function test_RevertInitializeFactoryNotContract() public {
+        IdentityRegistry impl = new IdentityRegistry();
+        // address(0xFACE) is an EOA, not a contract
+        vm.expectRevert(IdentityRegistry.FactoryNotContract.selector);
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(
+                IdentityRegistry.initialize,
+                (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0xFACE))
+            )
+        );
     }
 }
