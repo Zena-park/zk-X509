@@ -49,6 +49,15 @@ contract RegistryFactoryTest is Test {
         assertEq(registry.MIN_DISCLOSURE_MASK(), 0);
     }
 
+    function test_CreateRegistryWithDelegatedProving() public {
+        vm.prank(alice);
+        address reg = factory.createRegistry("KYC Service", 1, 0x03, 3600, true);
+
+        IdentityRegistry registry = IdentityRegistry(reg);
+        assertTrue(registry.delegatedProvingRequired());
+        assertEq(registry.proverUrl(), ""); // URL set later by owner
+    }
+
     function test_CreateRegistryWithDisclosure() public {
         vm.prank(alice);
         address reg = factory.createRegistry("DeFi KYC", 3, 0x01, 3600, false);

@@ -55,7 +55,6 @@ struct DelegatedProveRequest {
     #[serde(default)]
     crl_data: Option<String>,    // base64, optional
     #[serde(default)]
-    #[serde(default)]
     _crl_merkle_root: Option<String>,
     timestamp: u64,
 }
@@ -326,9 +325,12 @@ async fn prove_handler(
         chain_id: req.chain_id,
     });
 
+    // TODO: pre-initialize client + pk at startup for better performance
+    // (SP1 ProvingKey is a trait object, needs refactoring to share across requests)
     let start = Instant::now();
     let client = ProverClient::from_env();
-    let pk = client.setup(ZK_X509_ELF).expect("failed to setup elf");
+    let pk = client.setup(ZK_X509_ELF)
+        .map_err(|e| err500(format!("Prover setup failed: {}", e)))?;
 
     let proof: SP1ProofWithPublicValues = client
         .prove(&pk, stdin)

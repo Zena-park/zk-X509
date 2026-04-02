@@ -104,7 +104,10 @@ contract IdentityRegistry is Initializable {
     string public proverUrl;
 
     /// @dev Reserved storage gap for future upgradeable state variables.
-    uint256[47] private __gap;
+    // factory (address) + delegatedProvingRequired (bool) pack into 1 slot
+    // proverUrl (string) = 1 slot
+    // Total new slots: 2, so gap = 50 - 2 = 48
+    uint256[48] private __gap;
 
     // ============ Events ============
 

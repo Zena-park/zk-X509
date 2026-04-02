@@ -1066,4 +1066,41 @@ contract IdentityRegistryTest is Test {
             )
         );
     }
+
+    // ============ Delegated Proving Tests ============
+
+    function test_SetDelegatedProving() public {
+        registry.setDelegatedProving(true, "https://prover.example.com");
+        assertTrue(registry.delegatedProvingRequired());
+        assertEq(registry.proverUrl(), "https://prover.example.com");
+    }
+
+    function test_SetDelegatedProvingDisable() public {
+        registry.setDelegatedProving(true, "https://prover.example.com");
+        registry.setDelegatedProving(false, "");
+        assertFalse(registry.delegatedProvingRequired());
+        assertEq(registry.proverUrl(), "");
+    }
+
+    function test_RevertSetDelegatedProvingNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        registry.setDelegatedProving(true, "https://evil.com");
+    }
+
+    function test_InitializeWithDelegatedProving() public {
+        IdentityRegistry dp = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0, address(this));
+        assertFalse(dp.delegatedProvingRequired());
+
+        // Deploy with delegated proving enabled via factory
+        IdentityRegistry impl = new IdentityRegistry();
+        MockRegistryFactory mockFactory = new MockRegistryFactory(PROGRAM_V_KEY);
+        bytes memory initData = abi.encodeCall(
+            IdentityRegistry.initialize,
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), true)
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        IdentityRegistry dpReg = IdentityRegistry(address(proxy));
+        assertTrue(dpReg.delegatedProvingRequired());
+    }
 }

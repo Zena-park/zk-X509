@@ -95,21 +95,24 @@ pub fn fetch_delegated_proving_config(rpc_url: &str, registry: &[u8; 20]) -> Res
 }
 
 /// Decode an ABI-encoded string (offset + length + data).
+/// Uses checked arithmetic to prevent overflow panics on malformed data.
 fn decode_abi_string(raw: &[u8]) -> Result<String, String> {
     if raw.len() < 64 {
         return Ok(String::new());
     }
-    // offset word at [0..32], length at [offset..offset+32]
     let offset = u64::from_be_bytes(raw[24..32].try_into().unwrap()) as usize;
-    if raw.len() < offset + 32 {
+    let len_start = offset.checked_add(24).ok_or("offset overflow")?;
+    let len_end = offset.checked_add(32).ok_or("offset overflow")?;
+    if raw.len() < len_end {
         return Ok(String::new());
     }
-    let len = u64::from_be_bytes(raw[offset + 24..offset + 32].try_into().unwrap()) as usize;
-    let data_start = offset + 32;
-    if raw.len() < data_start + len {
+    let len = u64::from_be_bytes(raw[len_start..len_end].try_into().unwrap()) as usize;
+    let data_start = offset.checked_add(32).ok_or("data_start overflow")?;
+    let data_end = data_start.checked_add(len).ok_or("data_end overflow")?;
+    if raw.len() < data_end {
         return Ok(String::new());
     }
-    String::from_utf8(raw[data_start..data_start + len].to_vec())
+    String::from_utf8(raw[data_start..data_end].to_vec())
         .map_err(|e| format!("Invalid UTF-8 in proverUrl: {}", e))
 }
 
