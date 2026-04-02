@@ -5,7 +5,7 @@
 | Tool | Role |
 |------|------|
 | **CA Whitelist** | Which CA issued the certificate (country, institution level) |
-| **Disclosure Filter** | Which attributes to require and what values to match |
+| **Disclosure Filter** | Which attributes to require and what values to match *(planned, #56 — not yet implemented)* |
 | **maxWallets** | Wallets per certificate (Sybil resistance strength) |
 | **Delegated Proving** | Service verifies user identity directly (KYC/compliance) |
 | **Auto Expiry** | On-chain identity lapses when certificate expires |
@@ -79,7 +79,6 @@
 | Service | Configuration |
 |---------|--------------|
 | Region-locked server | Country filter |
-| Age verification | Public CA (real-name verified) |
 | Tournament (1 account) | maxWallets = 1 |
 
 ### Real Estate / Finance
@@ -102,8 +101,8 @@ Korean NPKI certificates are issued by the same CA for individuals, sole proprie
 
 | Entity | O Field | CN Field | Detection |
 |--------|---------|----------|-----------|
-| Individual | absent (`0x0`) | (hidden) | `org == 0x0` |
-| Sole Proprietor | business name | personal name | `org != cn` |
-| Corporation | company name | company name/representative | `org ≈ cn` |
+| Individual | absent (`0x0`) | (not disclosed) | `org == bytes32(0)` |
+| Sole Proprietor | business name (e.g., `0x홍길동떡집...`) | personal name | `org != bytes32(0)` and `org != cn` (both must be disclosed) |
+| Corporation | company name (e.g., `0x삼성전자...`) | company name/representative | `org != bytes32(0)` and CN starts with org value |
 
-No serialNumber parsing needed — O and CN fields are sufficient.
+**Note:** All disclosure values are UTF-8 right-padded to bytes32. Entity type detection requires both O and CN fields to be disclosed (`minDisclosureMask >= 0x0A`). Individual vs business distinction requires only O field (`minDisclosureMask bit 1`). No serialNumber parsing needed.

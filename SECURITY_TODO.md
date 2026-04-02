@@ -81,12 +81,23 @@
 
 ```solidity
 // 필터 값 (bytes32(0) = 제한 없음, 값이 있으면 정확히 일치해야 함)
+// 값은 UTF-8 right-padded to bytes32 (e.g., "KR" = 0x4b52000...000)
 bytes32 public requiredCountry;
 bytes32 public requiredOrg;
 bytes32 public requiredOrgUnit;
 bytes32 public requiredCommonName;
 
+// Custom errors
+error CountryMismatch(bytes32 proof, bytes32 required);
+error OrgMismatch(bytes32 proof, bytes32 required);
+error OrgUnitMismatch(bytes32 proof, bytes32 required);
+error CommonNameMismatch(bytes32 proof, bytes32 required);
+error FilterWithoutDisclosure(uint8 filterBit, uint8 disclosureMask);
+
+event RequiredDisclosureValuesUpdated(bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 cn);
+
 // 서비스 운영자가 설정 (owner only)
+// 주의: 필터 설정 시 해당 disclosure bit이 minDisclosureMask에 켜져있어야 함
 function setRequiredDisclosureValues(
     bytes32 _country, bytes32 _org, bytes32 _orgUnit, bytes32 _cn
 ) external onlyOwner;
@@ -97,12 +108,16 @@ function setRequiredDisclosureValues(
 ```solidity
 // 기존: disclosure mask 체크 (필드가 비어있지 않은지)
 // 추가: 필터 값 체크 (필드 값이 일치하는지)
-if (requiredCountry != bytes32(0))
-    require(pv.country == requiredCountry, "CountryMismatch");
-if (requiredOrg != bytes32(0))
-    require(pv.org == requiredOrg, "OrgMismatch");
+if (requiredCountry != bytes32(0)) {
+    if (pv.country != requiredCountry) revert CountryMismatch(pv.country, requiredCountry);
+}
+if (requiredOrg != bytes32(0)) {
+    if (pv.org != requiredOrg) revert OrgMismatch(pv.org, requiredOrg);
+}
 // ... orgUnit, commonName 동일
 ```
+
+**일관성 검증:** `setRequiredDisclosureValues()` 호출 시 필터 값이 설정된 필드는 `minDisclosureMask`에 해당 bit이 켜져있어야 함. 그렇지 않으면 사용자가 해당 필드를 공개하지 않아 항상 revert됨.
 
 **Entity Type 필터 (개인/사업자 구분):**
 - requiredOrg가 설정되어 있으면 → 해당 기관만 허용
@@ -117,8 +132,8 @@ if (requiredOrg != bytes32(0))
 #### ~~57. 한국 NPKI 개인사업자 vs 법인 세부 구분~~ → 불필요
 - O + CN 조합으로 구분 가능 (serialNumber 파싱 불필요)
 - 개인: O 없음
-- 개인사업자: O ≠ CN (O=사업명, CN=개인명)
-- 법인: O ≈ CN (O=회사명, CN=회사명/대표자)
+- 개인사업자: O ≠ CN (O=사업명, CN=개인명) — 두 필드 모두 disclosure 필요
+- 법인: CN이 O 값으로 시작 (O=회사명, CN=회사명/대표자) — 두 필드 모두 disclosure 필요
 
 ### MEDIUM — 미해결
 
