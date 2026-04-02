@@ -344,14 +344,14 @@ async fn prove_handler(
     let proving_time_ms = start.elapsed().as_millis() as u64;
 
     // 5. Encode proof for on-chain submission
+    let public_values = prove_result.public_values.as_slice().to_vec();
     let proof_bytes = prove_result.bytes();
-    let public_values = prove_result.public_values.as_slice();
 
     tracing::info!("Proof generated: proving_time={}ms", proving_time_ms);
 
     Ok(Json(ProveResponse {
         proof: format!("0x{}", hex::encode(&proof_bytes)),
-        public_values: format!("0x{}", hex::encode(public_values)),
+        public_values: format!("0x{}", hex::encode(&public_values)),
         proving_time_ms,
     }))
 }
