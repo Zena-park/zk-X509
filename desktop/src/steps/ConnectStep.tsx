@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type Dispatch } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Plug,
@@ -15,15 +15,15 @@ import type { AppState, Action, SettingsResult } from "../App";
 type Props = {
   state: AppState;
   setField: (field: keyof AppState, value: unknown) => void;
-  dispatch: React.Dispatch<Action>;
+  dispatch: Dispatch<Action>;
 };
 
 export default function ConnectStep({ state, setField, dispatch }: Props) {
   // Check Docker on mount
   useEffect(() => {
-    invoke<boolean>("check_docker").then((ok) =>
-      setField("dockerAvailable", ok),
-    );
+    invoke<boolean>("check_docker")
+      .then((ok) => setField("dockerAvailable", ok))
+      .catch(() => setField("dockerAvailable", false));
   }, [setField]);
 
   const handleConnect = async () => {

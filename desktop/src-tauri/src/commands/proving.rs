@@ -101,63 +101,67 @@ pub async fn generate_proof(
         id.clone_box()
     };
 
-    let cert_der = identity.cert_der()?;
-
-    emit_progress(&app, "signing", "Generating signatures...");
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    // Sign ownership + nullifier (OS keychain — private key never in memory)
-    let ownership_hash = zk_x509_script::ownership::ownership_challenge_hash(
-        &cert_der,
-        &registrant_bytes,
-        params.wallet_index,
-        timestamp,
-        params.chain_id,
-    )?;
-    let ownership_sig = identity.sign_prehash(&ownership_hash)?;
-
-    let nullifier_hash =
-        zk_x509_script::ownership::nullifier_challenge_hash(&registry_bytes, params.chain_id);
-    let nullifier_sig = identity.sign_prehash(&nullifier_hash)?;
-
-    emit_progress(&app, "ca-merkle", "Building CA Merkle tree...");
-
-    let rpc_url = params.rpc_url.clone();
-    let chain_id = params.chain_id;
-    let ca_pub_key = resolve_ca(&cert_der, &rpc_url, &registry_bytes, chain_id)?;
-
-    let (ca_merkle_root, ca_merkle_proof) =
-        zk_x509_script::onchain::build_ca_merkle(&rpc_url, &registry_bytes, &ca_pub_key);
-
-    let cert_chain = vec![ca_pub_key];
-    let crl_der: Vec<u8> = Vec::new();
-
-    let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
-        cert_der: &cert_der,
-        ownership_sig: &ownership_sig,
-        nullifier_sig: &nullifier_sig,
-        cert_chain: &cert_chain,
-        timestamp,
-        crl_der: &crl_der,
-        registrant: &registrant_bytes,
-        wallet_index: params.wallet_index,
-        max_wallets: params.max_wallets,
-        disclosure_mask: params.disclosure_mask,
-        ca_merkle_proof: &ca_merkle_proof,
-        ca_merkle_root,
-        registry_address: &registry_bytes,
-        chain_id,
-    });
-
-    emit_progress(&app, "proving", "Generating ZK proof...");
     let start = Instant::now();
     let mode = params.mode.clone();
 
+    // All blocking work (signing, CA resolution, proof generation) runs off
+    // the async executor to avoid starving the Tokio runtime.
     let result = tokio::task::spawn_blocking(move || {
+        let cert_der = identity.cert_der()?;
+
+        emit_progress(&app, "signing", "Generating signatures...");
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Sign ownership + nullifier (OS keychain — private key never in memory)
+        let ownership_hash = zk_x509_script::ownership::ownership_challenge_hash(
+            &cert_der,
+            &registrant_bytes,
+            params.wallet_index,
+            timestamp,
+            params.chain_id,
+        )?;
+        let ownership_sig = identity.sign_prehash(&ownership_hash)?;
+
+        let nullifier_hash =
+            zk_x509_script::ownership::nullifier_challenge_hash(&registry_bytes, params.chain_id);
+        let nullifier_sig = identity.sign_prehash(&nullifier_hash)?;
+
+        emit_progress(&app, "ca-merkle", "Building CA Merkle tree...");
+
+        let ca_pub_key = resolve_ca(&cert_der, &params.rpc_url, &registry_bytes, params.chain_id)?;
+
+        let (ca_merkle_root, ca_merkle_proof) =
+            zk_x509_script::onchain::build_ca_merkle(&params.rpc_url, &registry_bytes, &ca_pub_key);
+
+        let cert_chain = vec![ca_pub_key];
+        // CRL is intentionally empty: the ZK circuit validates certificate expiry
+        // via the timestamp field; on-chain CRL checking is planned for a future
+        // registry upgrade. An empty CRL causes the circuit to skip revocation checks.
+        let crl_der: Vec<u8> = Vec::new();
+
+        let stdin = zk_x509_script::build_stdin(&zk_x509_script::StdinParams {
+            cert_der: &cert_der,
+            ownership_sig: &ownership_sig,
+            nullifier_sig: &nullifier_sig,
+            cert_chain: &cert_chain,
+            timestamp,
+            crl_der: &crl_der,
+            registrant: &registrant_bytes,
+            wallet_index: params.wallet_index,
+            max_wallets: params.max_wallets,
+            disclosure_mask: params.disclosure_mask,
+            ca_merkle_proof: &ca_merkle_proof,
+            ca_merkle_root,
+            registry_address: &registry_bytes,
+            chain_id: params.chain_id,
+        });
+
+        emit_progress(&app, "proving", "Generating ZK proof...");
+
         let client = ProverClient::from_env();
 
         if mode == "execute" {
@@ -166,6 +170,7 @@ pub async fn generate_proof(
                 .run()
                 .map_err(|e| format!("Execute failed: {}", e))?;
 
+            emit_progress(&app, "done", "Proof generated!");
             Ok::<ProofResult, String>(ProofResult {
                 proof: "0x".to_string(),
                 public_values: format!("0x{}", hex::encode(output.as_slice())),
@@ -185,6 +190,7 @@ pub async fn generate_proof(
             let pv_bytes = proof.public_values.as_slice().to_vec();
             let proof_bytes = proof.bytes();
 
+            emit_progress(&app, "done", "Proof generated!");
             Ok(ProofResult {
                 proof: format!("0x{}", hex::encode(&proof_bytes)),
                 public_values: format!("0x{}", hex::encode(&pv_bytes)),
@@ -195,7 +201,6 @@ pub async fn generate_proof(
     .await
     .map_err(|e| format!("Task join error: {}", e))??;
 
-    emit_progress(&app, "done", "Proof generated!");
     Ok(result)
 }
 
@@ -229,67 +234,70 @@ pub async fn delegated_prove(
         id.clone_box()
     };
 
-    let cert_der = identity.cert_der()?;
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    emit_progress(&app, "consent", "Signing consent...");
-
-    let consent_message = format!(
-        "zk-x509-delegated-proving-consent\nProver: {}\nRegistry: {}\nChain ID: {}\nWallet: {}\nTimestamp: {}",
-        params.prover_url,
-        params.registry_address.to_lowercase(),
-        params.chain_id,
-        params.registrant.to_lowercase(),
-        timestamp,
-    );
-    let consent_hash: [u8; 32] = Sha256::digest(consent_message.as_bytes()).into();
-    let consent_sig = identity.sign_prehash(&consent_hash)?;
-
-    emit_progress(&app, "signing", "Generating ownership signatures...");
-
-    let ownership_hash = zk_x509_script::ownership::ownership_challenge_hash(
-        &cert_der, &registrant_bytes, params.wallet_index, timestamp, params.chain_id,
-    )?;
-    let ownership_sig = identity.sign_prehash(&ownership_hash)?;
-
-    let nullifier_hash =
-        zk_x509_script::ownership::nullifier_challenge_hash(&registry_bytes, params.chain_id);
-    let nullifier_sig = identity.sign_prehash(&nullifier_hash)?;
-
-    emit_progress(&app, "ca-merkle", "Building CA Merkle tree...");
-
-    let ca_pub_key = resolve_ca(&cert_der, &params.rpc_url, &registry_bytes, params.chain_id)?;
-    let (ca_merkle_root, ca_merkle_proof) =
-        zk_x509_script::onchain::build_ca_merkle(&params.rpc_url, &registry_bytes, &ca_pub_key);
-
-    use base64::Engine;
-    let cert_chain_b64 = vec![base64::engine::general_purpose::STANDARD.encode(&ca_pub_key)];
-
-    let body = serde_json::json!({
-        "consent_signature": format!("0x{}", hex::encode(&consent_sig)),
-        "cert_der": base64::engine::general_purpose::STANDARD.encode(&cert_der),
-        "cert_chain": cert_chain_b64,
-        "ownership_sig": format!("0x{}", hex::encode(&ownership_sig)),
-        "nullifier_sig": format!("0x{}", hex::encode(&nullifier_sig)),
-        "registrant": params.registrant,
-        "wallet_index": params.wallet_index,
-        "max_wallets": params.max_wallets,
-        "disclosure_mask": params.disclosure_mask,
-        "chain_id": params.chain_id,
-        "registry_address": params.registry_address,
-        "ca_merkle_root": format!("0x{}", hex::encode(ca_merkle_root)),
-        "ca_merkle_proof": ca_merkle_proof.iter().map(|h| format!("0x{}", hex::encode(h))).collect::<Vec<_>>(),
-        "timestamp": timestamp,
-    });
-
-    emit_progress(&app, "proving", "Sending to prover server...");
     let start = Instant::now();
-    let url = format!("{}/api/prove", params.prover_url.trim_end_matches('/'));
 
+    // All blocking work (consent signing, ownership signing, CA resolution,
+    // remote prover call) runs off the async executor.
     let result = tokio::task::spawn_blocking(move || {
+        let cert_der = identity.cert_der()?;
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        emit_progress(&app, "consent", "Signing consent...");
+
+        let consent_message = format!(
+            "zk-x509-delegated-proving-consent\nProver: {}\nRegistry: {}\nChain ID: {}\nWallet: {}\nTimestamp: {}",
+            params.prover_url,
+            params.registry_address.to_lowercase(),
+            params.chain_id,
+            params.registrant.to_lowercase(),
+            timestamp,
+        );
+        let consent_hash: [u8; 32] = Sha256::digest(consent_message.as_bytes()).into();
+        let consent_sig = identity.sign_prehash(&consent_hash)?;
+
+        emit_progress(&app, "signing", "Generating ownership signatures...");
+
+        let ownership_hash = zk_x509_script::ownership::ownership_challenge_hash(
+            &cert_der, &registrant_bytes, params.wallet_index, timestamp, params.chain_id,
+        )?;
+        let ownership_sig = identity.sign_prehash(&ownership_hash)?;
+
+        let nullifier_hash =
+            zk_x509_script::ownership::nullifier_challenge_hash(&registry_bytes, params.chain_id);
+        let nullifier_sig = identity.sign_prehash(&nullifier_hash)?;
+
+        emit_progress(&app, "ca-merkle", "Building CA Merkle tree...");
+
+        let ca_pub_key = resolve_ca(&cert_der, &params.rpc_url, &registry_bytes, params.chain_id)?;
+        let (ca_merkle_root, ca_merkle_proof) =
+            zk_x509_script::onchain::build_ca_merkle(&params.rpc_url, &registry_bytes, &ca_pub_key);
+
+        use base64::Engine;
+        let cert_chain_b64 = vec![base64::engine::general_purpose::STANDARD.encode(&ca_pub_key)];
+
+        let body = serde_json::json!({
+            "consent_signature": format!("0x{}", hex::encode(&consent_sig)),
+            "cert_der": base64::engine::general_purpose::STANDARD.encode(&cert_der),
+            "cert_chain": cert_chain_b64,
+            "ownership_sig": format!("0x{}", hex::encode(&ownership_sig)),
+            "nullifier_sig": format!("0x{}", hex::encode(&nullifier_sig)),
+            "registrant": params.registrant,
+            "wallet_index": params.wallet_index,
+            "max_wallets": params.max_wallets,
+            "disclosure_mask": params.disclosure_mask,
+            "chain_id": params.chain_id,
+            "registry_address": params.registry_address,
+            "ca_merkle_root": format!("0x{}", hex::encode(ca_merkle_root)),
+            "ca_merkle_proof": ca_merkle_proof.iter().map(|h| format!("0x{}", hex::encode(h))).collect::<Vec<_>>(),
+            "timestamp": timestamp,
+        });
+
+        emit_progress(&app, "proving", "Sending to prover server...");
+        let url = format!("{}/api/prove", params.prover_url.trim_end_matches('/'));
+
         let resp: serde_json::Value = ureq::post(&url)
             .header("Content-Type", "application/json")
             .send_json(&body)
@@ -307,6 +315,7 @@ pub async fn delegated_prove(
             .ok_or("Missing public_values in response")?
             .to_string();
 
+        emit_progress(&app, "done", "Proof received!");
         Ok::<ProofResult, String>(ProofResult {
             proof,
             public_values,
@@ -316,6 +325,5 @@ pub async fn delegated_prove(
     .await
     .map_err(|e| format!("Task join error: {}", e))??;
 
-    emit_progress(&app, "done", "Proof received!");
     Ok(result)
 }

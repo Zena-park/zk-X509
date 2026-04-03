@@ -1,3 +1,4 @@
+import { type Dispatch } from "react";
 import {
   Settings2,
   ArrowRight,
@@ -10,7 +11,7 @@ import type { AppState, Action } from "../App";
 type Props = {
   state: AppState;
   setField: (field: keyof AppState, value: unknown) => void;
-  dispatch: React.Dispatch<Action>;
+  dispatch: Dispatch<Action>;
 };
 
 const DISCLOSURE_FIELDS = [

@@ -1,3 +1,4 @@
+import { type Dispatch } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ShieldCheck,
@@ -13,7 +14,7 @@ import type { AppState, Action, CertInfo } from "../App";
 type Props = {
   state: AppState;
   setField: (field: keyof AppState, value: unknown) => void;
-  dispatch: React.Dispatch<Action>;
+  dispatch: Dispatch<Action>;
 };
 
 function sourceBadge(source: string) {
@@ -36,9 +37,8 @@ export default function CertificateStep({
     try {
       const certs = await invoke<CertInfo[]>("scan_certificates");
       setField("certificates", certs);
-      if (certs.length === 1) {
-        setField("selectedCertIndex", 0);
-      }
+      // Reset selection: auto-select if exactly one cert, otherwise clear
+      setField("selectedCertIndex", certs.length === 1 ? 0 : null);
     } catch (e) {
       setField("error", String(e));
     } finally {

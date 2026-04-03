@@ -11,8 +11,11 @@ pub struct SettingsResult {
 pub async fn configure_settings(
     rpc_url: String,
     registry_address: String,
-    _chain_id: u64,
+    chain_id: u64,
 ) -> Result<SettingsResult, String> {
+    // chain_id is accepted for API consistency (used by the UI for proof params);
+    // registry lookup is chain-agnostic since the RPC endpoint determines the network.
+    let _ = chain_id;
     let registry = zk_x509_script::parse_eth_address(&registry_address)?;
 
     tokio::task::spawn_blocking(move || {

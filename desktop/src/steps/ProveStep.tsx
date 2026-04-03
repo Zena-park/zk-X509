@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type Dispatch } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { motion } from "framer-motion";
@@ -18,10 +18,11 @@ import type { AppState, Action, ProofResult, ProofProgress } from "../App";
 type Props = {
   state: AppState;
   setField: (field: keyof AppState, value: unknown) => void;
-  dispatch: React.Dispatch<Action>;
+  dispatch: Dispatch<Action>;
 };
 
 const STAGES = [
+  { key: "consent", label: "Signing Consent" },
   { key: "signing", label: "Signing" },
   { key: "ca-merkle", label: "CA Merkle Tree" },
   { key: "proving", label: "Generating Proof" },
@@ -30,7 +31,7 @@ const STAGES = [
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -67,8 +68,8 @@ function CopyButton({ text }: { text: string }) {
 
 export default function ProveStep({ state, setField, dispatch }: Props) {
   const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval>>(null);
-  const startedRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const provingRef = useRef(false);
   // Snapshot proof params at mount to avoid stale closure issues
   const paramsRef = useRef({
     proofMode: state.proofMode,
@@ -84,6 +85,10 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
   });
 
   const startProof = async () => {
+    // Guard against StrictMode double-invocation and concurrent retries
+    if (provingRef.current) return;
+    provingRef.current = true;
+
     setField("proofStatus", "proving");
     setField("proofProgress", null);
     setField("proofResult", null);
@@ -135,15 +140,13 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
       setField("proofStatus", "error");
     } finally {
       if (timerRef.current) clearInterval(timerRef.current);
+      provingRef.current = false;
     }
   };
 
   // Start proof on mount
   useEffect(() => {
-    if (!startedRef.current) {
-      startedRef.current = true;
-      startProof();
-    }
+    startProof();
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -173,7 +176,13 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
     };
   }, [setField]);
 
-  const currentStageIndex = STAGES.findIndex(
+  // Filter stages: hide "consent" for non-delegated proving
+  const visibleStages =
+    paramsRef.current.proofMode === "delegated"
+      ? STAGES
+      : STAGES.filter((s) => s.key !== "consent");
+
+  const currentStageIndex = visibleStages.findIndex(
     (s) => s.key === state.proofProgress?.stage,
   );
 
@@ -205,7 +214,7 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
 
           {/* Stage pipeline */}
           <div className="flex flex-col gap-1">
-            {STAGES.map((stage, i) => {
+            {visibleStages.map((stage, i) => {
               const done = i < currentStageIndex;
               const active = i === currentStageIndex;
               const pending = i > currentStageIndex;
@@ -287,10 +296,7 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
               Back to Configure
             </button>
             <button
-              onClick={() => {
-                startedRef.current = false;
-                startProof();
-              }}
+              onClick={startProof}
               className="flex items-center gap-1.5 bg-tertiary/10 text-tertiary border border-tertiary/20 font-label text-sm font-semibold rounded-lg py-2 px-3 hover:bg-tertiary/20 transition"
             >
               <RotateCcw className="w-3.5 h-3.5" />
