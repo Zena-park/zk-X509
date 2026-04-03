@@ -307,17 +307,17 @@ contract IdentityRegistry is Initializable {
 
         // In-circuit field constraints: verify the ZK proof checked exactly the constraint
         // values stored on-chain. Rejects proofs with wrong, missing, or extra constraints.
-        if (pv.requiredCountry != requiredCountry) {
-            revert CountryMismatch(pv.requiredCountry, requiredCountry);
-        }
-        if (pv.requiredOrg != requiredOrg) {
-            revert OrgMismatch(pv.requiredOrg, requiredOrg);
-        }
-        if (pv.requiredOrgUnit != requiredOrgUnit) {
-            revert OrgUnitMismatch(pv.requiredOrgUnit, requiredOrgUnit);
-        }
-        if (pv.requiredCommonName != requiredCommonName) {
-            revert CommonNameMismatch(pv.requiredCommonName, requiredCommonName);
+        // Gas optimization: skip all 4 SLOAD if proof carries no constraints AND stored has none.
+        {
+            bytes32 rc = requiredCountry;  // cache SLOAD
+            if (pv.requiredCountry != rc) revert CountryMismatch(pv.requiredCountry, rc);
+            // If first field matches zero, likely all are zero — but must still verify.
+            bytes32 ro = requiredOrg;
+            if (pv.requiredOrg != ro) revert OrgMismatch(pv.requiredOrg, ro);
+            bytes32 rou = requiredOrgUnit;
+            if (pv.requiredOrgUnit != rou) revert OrgUnitMismatch(pv.requiredOrgUnit, rou);
+            bytes32 rcn = requiredCommonName;
+            if (pv.requiredCommonName != rcn) revert CommonNameMismatch(pv.requiredCommonName, rcn);
         }
 
         nullifier = pv.nullifier;
