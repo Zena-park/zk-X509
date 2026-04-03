@@ -305,19 +305,18 @@ contract IdentityRegistry is Initializable {
             }
         }
 
-        // In-circuit field constraints: verify the ZK proof checked the correct constraint values.
-        // The circuit asserts cert field == required value internally; here we only confirm
-        // the circuit was given OUR required values (not forged ones).
-        if (requiredCountry != bytes32(0) && pv.requiredCountry != requiredCountry) {
+        // In-circuit field constraints: verify the ZK proof checked exactly the constraint
+        // values stored on-chain. Rejects proofs with wrong, missing, or extra constraints.
+        if (pv.requiredCountry != requiredCountry) {
             revert CountryMismatch(pv.requiredCountry, requiredCountry);
         }
-        if (requiredOrg != bytes32(0) && pv.requiredOrg != requiredOrg) {
+        if (pv.requiredOrg != requiredOrg) {
             revert OrgMismatch(pv.requiredOrg, requiredOrg);
         }
-        if (requiredOrgUnit != bytes32(0) && pv.requiredOrgUnit != requiredOrgUnit) {
+        if (pv.requiredOrgUnit != requiredOrgUnit) {
             revert OrgUnitMismatch(pv.requiredOrgUnit, requiredOrgUnit);
         }
-        if (requiredCommonName != bytes32(0) && pv.requiredCommonName != requiredCommonName) {
+        if (pv.requiredCommonName != requiredCommonName) {
             revert CommonNameMismatch(pv.requiredCommonName, requiredCommonName);
         }
 
