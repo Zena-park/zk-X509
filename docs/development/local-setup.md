@@ -102,7 +102,7 @@ Services running:
 | `make clean` | 서비스 중지 + 볼륨 삭제 |
 | `make status` | 서비스 상태 확인 |
 | `make logs` | 로그 확인 (`make logs s=prover`) |
-| `make elf` | Docker에서 ELF 추출 (로컬 vkey 일치용) |
+| `make elf` | Docker에서 ELF 추출 — `make app`/`make run` 전에 한 번 실행 (vkey 일치 보장) |
 | `make app` | macOS .app 번들 빌드 (`dist/zk-X509.app`) |
 | `make run` | 데스크탑 앱(interactive) 실행 — 키체인 인증서 스캔, 증명 생성, proof/publicValues 출력 |
 | `make addresses` | 배포된 컨트랙트 주소 확인 |
