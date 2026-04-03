@@ -182,7 +182,6 @@ contract IdentityRegistry is Initializable {
     error OrgMismatch(bytes32 proof, bytes32 required);
     error OrgUnitMismatch(bytes32 proof, bytes32 required);
     error CommonNameMismatch(bytes32 proof, bytes32 required);
-    error FilterWithoutDisclosure(uint8 filterBit, uint8 disclosureMask);
     error FactoryNotContract();
 
     // ============ Modifiers ============
