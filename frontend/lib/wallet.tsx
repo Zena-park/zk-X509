@@ -21,6 +21,7 @@ interface ContractState {
   crlMerkleRoot: string;
   maxProofAge: bigint;
   MAX_WALLETS_PER_CERT: number;
+  delegatedProvingRequired: boolean;
 }
 
 interface WalletContext {
@@ -105,11 +106,12 @@ export function WalletProvider({ children, registryOverride }: { children: React
         setReadContract(ro);
         setWriteContract(rw);
 
-        const [owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT] =
+        const [owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT, delegatedProvingRequired] =
           await Promise.all([
             ro.owner(), ro.paused(), ro.caMerkleRoot(), ro.crlMerkleRoot(), ro.maxProofAge(), ro.MAX_WALLETS_PER_CERT(),
+            ro.delegatedProvingRequired().catch(() => false),
           ]);
-        setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT: Number(MAX_WALLETS_PER_CERT) });
+        setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT: Number(MAX_WALLETS_PER_CERT), delegatedProvingRequired: Boolean(delegatedProvingRequired) });
         setIsOwner(owner.toLowerCase() === account.toLowerCase());
       } catch (e) {
         console.error("Failed to load contract:", e);

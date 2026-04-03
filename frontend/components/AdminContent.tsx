@@ -490,6 +490,7 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
           readContract.proverUrl(),
         ]);
         setDpRequired(required);
+        setDpOrigRequired(required);
         setDpProverUrl(url);
         setDpProverUrlInput(url);
       } catch {
@@ -1625,16 +1626,16 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
                     }
                     onClick={async () => {
                       if (!writeContract) return;
-                      setDpTx({ status: "pending" });
+                      setDpTx({ kind: "pending" });
                       try {
                         const tx = await writeContract.setDelegatedProving(dpRequired, dpProverUrlInput);
-                        setDpTx({ status: "confirming", hash: tx.hash });
+                        setDpTx({ kind: "confirming", hash: tx.hash });
                         await tx.wait();
-                        setDpTx({ status: "confirmed", hash: tx.hash });
+                        setDpTx({ kind: "success", hash: tx.hash });
                         setDpProverUrl(dpProverUrlInput);
                         refresh();
                       } catch (e: unknown) {
-                        setDpTx({ status: "error", error: e instanceof Error ? e.message : "Failed" });
+                        setDpTx({ kind: "error", message: e instanceof Error ? e.message : "Failed" });
                       }
                     }}
                   >
