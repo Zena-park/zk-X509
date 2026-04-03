@@ -83,7 +83,14 @@ fn resolve_ca(
         return Ok(ca_certs[idx].spki_der.clone());
     }
 
-    Err("No matching CA found. Check the CA whitelist.".to_string())
+    let ca_count = on_chain_leaves.as_ref().map(|l| l.len()).unwrap_or(0);
+
+    Err(format!(
+        "No matching CA found for this certificate. \
+         The registry has {} registered CA(s). \
+         The issuing CA must be registered via addCA() before this certificate can be used.",
+        ca_count
+    ))
 }
 
 #[tauri::command]
@@ -175,7 +182,26 @@ pub async fn generate_proof(
             let (output, _report) = client
                 .execute(ZK_X509_ELF, stdin)
                 .run()
-                .map_err(|e| format!("Execute failed: {}", e))?;
+                .map_err(|e| {
+                    let msg = e.to_string();
+                    if msg.contains("Country constraint failed") {
+                        "Proof failed: Your certificate's country does not match the registry's required country.".to_string()
+                    } else if msg.contains("Org constraint failed") {
+                        "Proof failed: Your certificate's organization does not match the registry's required organization.".to_string()
+                    } else if msg.contains("OrgUnit constraint failed") {
+                        "Proof failed: Your certificate's organizational unit does not match the registry's requirement.".to_string()
+                    } else if msg.contains("CommonName constraint failed") {
+                        "Proof failed: Your certificate's common name does not match the registry's requirement.".to_string()
+                    } else if msg.contains("wallet_index must be < max_wallets") {
+                        "Proof failed: Wallet index exceeds the maximum allowed by this registry.".to_string()
+                    } else if msg.contains("Certificate chain must not be empty") {
+                        "Proof failed: No CA certificate chain provided.".to_string()
+                    } else if msg.contains("artifact not found") || msg.contains("Artifact") {
+                        "Proving failed: SP1 prover artifacts not available. Try using 'execute' mode instead of 'groth16'.".to_string()
+                    } else {
+                        format!("Proving failed: {}", msg)
+                    }
+                })?;
 
             emit_progress(&app, "done", "Proof generated!");
             Ok::<ProofResult, String>(ProofResult {
@@ -186,7 +212,7 @@ pub async fn generate_proof(
         } else {
             let pk = client
                 .setup(ZK_X509_ELF)
-                .map_err(|e| format!("Setup failed: {}", e))?;
+                .map_err(|e| format!("Proving setup failed (Docker may be required for Groth16): {}", e))?;
 
             let proof: SP1ProofWithPublicValues = client
                 .prove(&pk, stdin)
