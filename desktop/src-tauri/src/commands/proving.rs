@@ -83,13 +83,15 @@ fn resolve_ca(
         return Ok(ca_certs[idx].spki_der.clone());
     }
 
-    let ca_count = on_chain_leaves.as_ref().map(|l| l.len()).unwrap_or(0);
+    let ca_info = match on_chain_leaves.as_ref() {
+        Some(leaves) => format!("The registry has {} registered CA(s)", leaves.len()),
+        None => "Could not fetch the registry's CA list".to_string(),
+    };
 
     Err(format!(
-        "No matching CA found for this certificate. \
-         The registry has {} registered CA(s). \
+        "No matching CA found for this certificate. {}. \
          The issuing CA must be registered via addCA() before this certificate can be used.",
-        ca_count
+        ca_info
     ))
 }
 
@@ -112,8 +114,8 @@ fn map_proof_error(msg: &str) -> String {
          • Certificate country/org does not match registry constraints\n\
          • Certificate is expired\n\
          • CA is not in the registry's whitelist".into()
-    } else if msg.contains("artifact not found") || msg.contains("Artifact") {
-        "Proving failed: SP1 prover artifacts not available. Try using 'execute' mode instead of 'groth16'.".into()
+    } else if msg.contains("artifact") {
+        "Proving failed: SP1 prover artifacts not available. For Groth16 mode, Docker must be running.".into()
     } else {
         format!("Proving failed: An unexpected error occurred: {}", msg)
     }
