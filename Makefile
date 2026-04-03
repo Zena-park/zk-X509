@@ -52,6 +52,8 @@ app:               ## Build macOS .app bundle with Docker-matched vkey
 	 rm -rf "$$APP_DIR" && \
 	 mkdir -p "$$APP_DIR/Contents/MacOS" "$$APP_DIR/Contents/Resources" && \
 	 cp script/app-resources/Info.plist "$$APP_DIR/Contents/" && \
+	 (test -f script/app-resources/AppIcon.icns && \
+	  cp script/app-resources/AppIcon.icns "$$APP_DIR/Contents/Resources/" || true) && \
 	 cp target/release/interactive "$$APP_DIR/Contents/MacOS/interactive" && \
 	 cp script/app-resources/launcher.sh "$$APP_DIR/Contents/MacOS/launcher" && \
 	 chmod +x "$$APP_DIR/Contents/MacOS/launcher" && \

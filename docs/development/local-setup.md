@@ -92,9 +92,7 @@ Services running:
    Anvil RPC  → http://localhost:8545
    Chain ID   → 31337
 
-Extracting vkey for local consistency...
-   VKEY=0x001fcda5...
-   Run 'make elf' to extract full ELF for local builds
+{"factory": "0xA51c...", "verifier": "0xB7f8..."}
 ```
 
 | 명령어 | 설명 |
