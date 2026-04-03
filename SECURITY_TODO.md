@@ -50,10 +50,10 @@
 | — | vkey 자동 감지 + E2E 테스트 가이드 | [#102](https://github.com/tokamak-network/zk-X509/pull/102) |
 | — | prover-server 버그 수정 (spawn_blocking, empty PV) | [#103](https://github.com/tokamak-network/zk-X509/pull/103) |
 | 42 | 컨트랙트 업그레이드 → Beacon Proxy 패턴으로 해결 | [#100](https://github.com/tokamak-network/zk-X509/pull/100) |
-| — | Docker prover + vkey 일치 + Windows 빌드 + PREBUILT_ELF | [#106](https://github.com/tokamak-network/zk-X509/pull/106) |
-| — | Disclosure 이벤트 emit + Members Explorer + 필터링 UI | [#107](https://github.com/tokamak-network/zk-X509/pull/107) |
+| 53 | Docker prover + vkey 일치 + Windows 빌드 + PREBUILT_ELF | [#106](https://github.com/tokamak-network/zk-X509/pull/106) |
+| 54 | Disclosure 이벤트 emit + Members Explorer + 필터링 UI | [#107](https://github.com/tokamak-network/zk-X509/pull/107) |
 | 56 | Disclosure 값 필터링 (2단계 인증 정책: mask + exact match) | [#108](https://github.com/tokamak-network/zk-X509/pull/108) |
-| ~~57~~ | ~~한국 NPKI 개인사업자 vs 법인 구분~~ → O+CN 조합으로 구분 가능, 별도 구현 불필요 | — |
+| ~~57~~ | ~~한국 NPKI 개인사업자 vs 법인 구분~~ → 불필요 (O+CN 조합으로 구분 가능) | — |
 
 ## 미해결
 
