@@ -53,7 +53,7 @@
 | 54 | Docker prover + vkey 일치 + Windows 빌드 + PREBUILT_ELF | [#106](https://github.com/tokamak-network/zk-X509/pull/106) |
 | 55 | Disclosure 이벤트 emit + Members Explorer + 필터링 UI | [#107](https://github.com/tokamak-network/zk-X509/pull/107) |
 | 56 | Disclosure 값 필터링 (2단계 인증 정책: mask + exact match) | [#108](https://github.com/tokamak-network/zk-X509/pull/108) |
-| ~~57~~ | ~~한국 NPKI 개인사업자 vs 법인 구분~~ → 불필요 (O+CN 조합으로 구분 가능) | — |
+| ~~57~~ | ~~한국 NPKI 개인사업자 vs 법인 구분~~ → 불필요 (CA 화이트리스트로 구분, 별도 CA 발급) | — |
 
 ## 미해결
 

@@ -86,3 +86,15 @@ export function parseContractError(err: unknown): string {
   }
   return msg.length > 200 ? msg.slice(0, 200) + "..." : msg;
 }
+
+const CONSTRAINT_LABELS = ["C", "O", "OU", "CN"] as const;
+
+/** Format field constraint values into display strings like ["C=KR", "O=Samsung"]. */
+export function formatFieldConstraints(values: string[]): string[] {
+  const result: string[] = [];
+  values.forEach((v, i) => {
+    const s = bytes32ToString(v);
+    if (s) result.push(`${CONSTRAINT_LABELS[i]}=${s}`);
+  });
+  return result;
+}

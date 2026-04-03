@@ -22,6 +22,7 @@ import {
 } from "@/lib/contract";
 import { getRegistryMetadata, getListedRegistries, type RegistryMetadata } from "@/lib/platform";
 import { useReadProvider } from "@/lib/useReadProvider";
+import { bytes32ToString, formatFieldConstraints } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Trust Badge                                                        */
@@ -41,6 +42,7 @@ interface RegistryCard {
   metadata: RegistryMetadata | null;
   verified: boolean;
   verifiedUntil: Date | null;
+  constraints: string[]; // e.g. ["C=KR", "O=Tokamak"]
 }
 
 const DISCLOSURE_FIELDS = [
@@ -142,10 +144,16 @@ export default function DashboardPage() {
                 provider,
               );
 
-              const [caCount, paused] = await Promise.all([
+              const [caCount, paused, reqC, reqO, reqOU, reqCN] = await Promise.all([
                 registry.getCaCount(),
                 registry.paused(),
+                registry.requiredCountry().catch(() => ethers.ZeroHash),
+                registry.requiredOrg().catch(() => ethers.ZeroHash),
+                registry.requiredOrgUnit().catch(() => ethers.ZeroHash),
+                registry.requiredCommonName().catch(() => ethers.ZeroHash),
               ]);
+
+              const constraints = formatFieldConstraints([reqC, reqO, reqOU, reqCN]);
 
               const name: string = info.name ?? info[1];
               const maxWallets: number = Number(info.maxWallets ?? info[2]);
@@ -187,6 +195,7 @@ export default function DashboardPage() {
                 metadata,
                 verified,
                 verifiedUntil,
+                constraints,
               });
             } catch (e) {
               console.error(`Failed to load service ${addr}:`, e);
@@ -491,6 +500,17 @@ function RegistrySection({
                   <p className="text-lg font-headline font-bold text-on-surface">{reg.caCount}</p>
                 </div>
               </div>
+
+              {/* Constraints badges */}
+              {reg.constraints.length > 0 && (
+                <div className="relative flex flex-wrap gap-1.5 mb-3">
+                  {reg.constraints.map((c) => (
+                    <span key={c} className="px-2 py-0.5 bg-secondary/10 text-secondary text-[10px] font-mono rounded-full border border-secondary/20">
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {/* Status + Actions */}
               <div className="relative flex items-center justify-between mt-auto pt-3 border-t border-outline-variant/10">

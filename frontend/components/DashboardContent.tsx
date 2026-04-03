@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { ShieldCheck, Wallet, Send, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useWallet } from "@/lib/wallet";
-import { truncateHex, isValidHex, parseContractError } from "@/lib/utils";
+import { truncateHex, isValidHex, parseContractError, formatFieldConstraints } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -23,6 +23,27 @@ export default function DashboardContent() {
   const [verified, setVerified] = useState<boolean | null>(null);
   const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [identityLoading, setIdentityLoading] = useState(false);
+
+  /* ---------- constraints state ---------- */
+  const [constraints, setConstraints] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!readContract) { setConstraints([]); return; }
+    (async () => {
+      try {
+        const ethers = await import("ethers");
+        const [reqC, reqO, reqOU, reqCN] = await Promise.all([
+          readContract.requiredCountry().catch(() => ethers.ZeroHash),
+          readContract.requiredOrg().catch(() => ethers.ZeroHash),
+          readContract.requiredOrgUnit().catch(() => ethers.ZeroHash),
+          readContract.requiredCommonName().catch(() => ethers.ZeroHash),
+        ]);
+        setConstraints(formatFieldConstraints([reqC, reqO, reqOU, reqCN]));
+      } catch {
+        setConstraints([]);
+      }
+    })();
+  }, [readContract]);
 
   /* ---------- form state ---------- */
   const [mode, setMode] = useState<"register" | "reRegister">("register");
@@ -326,6 +347,24 @@ export default function DashboardContent() {
               </button>
             </div>
           </div>
+
+          {/* Constraints notice */}
+          {constraints.length > 0 && (
+            <div className="flex items-start gap-2.5 p-3 rounded-xl border border-secondary/20 bg-secondary/5 mb-2">
+              <ShieldCheck className="w-4 h-4 text-secondary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-headline font-bold text-secondary mb-1">Required Field Constraints</p>
+                <p className="text-[11px] text-on-surface-variant mb-1.5">Your certificate must match these values to register.</p>
+                <div className="flex flex-wrap gap-1">
+                  {constraints.map((c) => (
+                    <span key={c} className="px-1.5 py-0.5 bg-secondary/10 text-secondary text-[10px] font-mono rounded border border-secondary/15">
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Inputs */}
           <div className="space-y-4">

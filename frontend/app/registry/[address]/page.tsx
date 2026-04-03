@@ -22,9 +22,10 @@ import {
   Info,
   AlertTriangle,
   Search,
+  Shield,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
-import { truncateHex } from "@/lib/utils";
+import { truncateHex, formatFieldConstraints } from "@/lib/utils";
 import {
   getRegistryMetadata,
   getAnnouncements,
@@ -52,6 +53,7 @@ interface RegistryInfo {
   paused: boolean;
   delegatedProving: boolean;
   proverUrl: string;
+  constraints: string[]; // e.g. ["C=KR", "O=Tokamak"]
 }
 
 type PageTab = "register" | "members" | "manage" | "info";
@@ -186,6 +188,15 @@ function RegistryDetailContent() {
           // may not exist on older contracts
         }
 
+        // Fetch field constraints (individual catch per field for resilience)
+        const [reqC, reqO, reqOU, reqCN] = await Promise.all([
+          contract.requiredCountry().catch(() => ethers.ZeroHash),
+          contract.requiredOrg().catch(() => ethers.ZeroHash),
+          contract.requiredOrgUnit().catch(() => ethers.ZeroHash),
+          contract.requiredCommonName().catch(() => ethers.ZeroHash),
+        ]);
+        const constraints = formatFieldConstraints([reqC, reqO, reqOU, reqCN]);
+
         setInfo({
           name: serviceName,
           owner,
@@ -195,6 +206,7 @@ function RegistryDetailContent() {
           paused,
           delegatedProving,
           proverUrl,
+          constraints,
         });
 
         // Load off-chain platform data (non-blocking)
@@ -446,6 +458,28 @@ function RegistryDetailContent() {
                     This service requires proof generation via the operator&apos;s prover server for compliance.
                     {info.proverUrl ? ` Prover: ${info.proverUrl}` : " Prover not yet configured."}
                   </p>
+                </div>
+              </div>
+            )}
+
+            {/* Field Constraints Banner */}
+            {info.constraints.length > 0 && (
+              <div className="flex items-start gap-3 p-4 rounded-2xl border border-secondary/20 bg-secondary/5 mb-4">
+                <Shield className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-headline font-bold text-secondary">
+                    Field Constraints
+                  </p>
+                  <p className="text-xs text-on-surface-variant mt-0.5 mb-2">
+                    Your certificate must match these values. Verified inside the ZK proof.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {info.constraints.map((c) => (
+                      <span key={c} className="px-2 py-0.5 bg-secondary/10 text-secondary text-xs font-mono rounded-full border border-secondary/20">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
