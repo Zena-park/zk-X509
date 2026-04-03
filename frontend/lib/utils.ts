@@ -22,12 +22,14 @@ export function isValidHex(v: string): boolean {
 
 /** Decode a bytes32 hex string to a UTF-8 string, stripping trailing null bytes. */
 export function bytes32ToString(hex: string): string {
-  if (!hex || hex === "0x" + "0".repeat(64)) return "";
+  if (!hex) return "";
   const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (stripped.length === 0 || !/^[0-9a-fA-F]+$/.test(stripped)) return "";
+  if (/^0+$/.test(stripped)) return "";
   const bytes: number[] = [];
-  for (let i = 0; i < stripped.length; i += 2) {
+  for (let i = 0; i + 1 < stripped.length; i += 2) {
     const b = parseInt(stripped.slice(i, i + 2), 16);
-    if (b === 0) break;
+    if (Number.isNaN(b) || b === 0) break;
     bytes.push(b);
   }
   return new TextDecoder().decode(new Uint8Array(bytes));

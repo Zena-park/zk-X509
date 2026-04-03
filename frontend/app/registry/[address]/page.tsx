@@ -93,9 +93,11 @@ function RegistryDetailContent() {
   const address = params.address;
   const { isOwner, chainId: walletChainId } = useWallet();
 
-  const validTabs: PageTab[] = ["register", "members", "manage", "info"];
+  const validTabs: PageTab[] = ["register", "manage", "info"];
   const raw = searchParams.get("tab");
-  const activeTab: PageTab = raw && validTabs.includes(raw as PageTab) ? (raw as PageTab) : "register";
+  // "members" tab validity is checked after info loads (depends on minDisclosureMask)
+  const rawTab = raw as PageTab | null;
+  const activeTab: PageTab = rawTab && (validTabs.includes(rawTab) || rawTab === "members") ? rawTab : "register";
 
   const setActiveTab = useCallback(
     (tab: PageTab) => {
@@ -352,7 +354,7 @@ function RegistryDetailContent() {
         )}
 
         {/* ==================== MEMBERS TAB ==================== */}
-        {activeTab === "members" && (
+        {activeTab === "members" && info.minDisclosureMask > 0 && (
           <motion.div
             key="members"
             initial={{ opacity: 0, y: 12 }}

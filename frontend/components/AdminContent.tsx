@@ -798,8 +798,10 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
           });
         }
         setExplorerEnabled(explorerSettings.explorerEnabled);
-        setExplorerVisibleFields(explorerSettings.explorerVisibleFields);
-        setExplorerFilterableFields(explorerSettings.explorerFilterableFields);
+        const visible = [...new Set(explorerSettings.explorerVisibleFields)];
+        setExplorerVisibleFields(visible);
+        const visibleSet = new Set(visible);
+        setExplorerFilterableFields([...new Set(explorerSettings.explorerFilterableFields.filter((f) => visibleSet.has(f)))]);
         setSvcAnnouncements(anncs);
         setSvcCaGuides(guides);
 

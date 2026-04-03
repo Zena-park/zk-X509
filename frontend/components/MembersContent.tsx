@@ -16,6 +16,7 @@ interface MemberEntry {
   orgUnit: string;
   commonName: string;
   blockNumber: number;
+  logIndex: number;
 }
 
 const FIELD_KEYS = ["country", "org", "orgUnit", "commonName"] as const;
@@ -39,69 +40,83 @@ export default function MembersContent({ registryAddress, minDisclosureMask }: P
   const [settings, setSettings] = useState<ExplorerSettings | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
 
-  // Fetch explorer settings
+  // Fetch explorer settings with cleanup
   useEffect(() => {
-    getExplorerSettings(registryAddress).then(setSettings);
+    let cancelled = false;
+    getExplorerSettings(registryAddress).then((s) => {
+      if (!cancelled) setSettings(s);
+    });
+    return () => { cancelled = true; };
   }, [registryAddress]);
 
-  // Fetch members from on-chain events
+  // Fetch members from on-chain events with cleanup + parallel queries
   useEffect(() => {
-    if (!provider || !settings?.explorerEnabled) return;
+    if (!provider || !settings?.explorerEnabled || minDisclosureMask === 0) return;
+    let cancelled = false;
 
     async function fetchMembers() {
       setLoading(true);
       setError(null);
       try {
         const contract = new ethers.Contract(registryAddress, IDENTITY_REGISTRY_ABI, provider);
-        const registerFilter = contract.filters.UserRegistered();
-        const events = await contract.queryFilter(registerFilter);
 
-        // Build member map (latest event per user wins)
+        // Parallel event queries
+        const [registerEvents, reRegEvents] = await Promise.all([
+          contract.queryFilter(contract.filters.UserRegistered()),
+          contract.queryFilter(contract.filters.UserReRegistered()),
+        ]);
+
+        // Merge and sort all events by block + logIndex for correct ordering
+        type TaggedEvent = { type: "register" | "reregister"; log: ethers.EventLog };
+        const allEvents: TaggedEvent[] = [];
+        for (const e of registerEvents) {
+          const log = e as ethers.EventLog;
+          if (log.args) allEvents.push({ type: "register", log });
+        }
+        for (const e of reRegEvents) {
+          const log = e as ethers.EventLog;
+          if (log.args) allEvents.push({ type: "reregister", log });
+        }
+        allEvents.sort((a, b) =>
+          a.log.blockNumber !== b.log.blockNumber
+            ? a.log.blockNumber - b.log.blockNumber
+            : a.log.index - b.log.index
+        );
+
+        // Process events in order to build correct member state
         const memberMap = new Map<string, MemberEntry>();
-        for (const event of events) {
-          const log = event as ethers.EventLog;
-          if (!log.args) continue;
+        for (const { type, log } of allEvents) {
           const entry: MemberEntry = {
-            user: log.args.user,
+            user: type === "reregister" ? log.args.newUser : log.args.user,
             nullifier: log.args.nullifier,
             country: bytes32ToString(log.args.country),
             org: bytes32ToString(log.args.org),
             orgUnit: bytes32ToString(log.args.orgUnit),
             commonName: bytes32ToString(log.args.commonName),
             blockNumber: log.blockNumber,
+            logIndex: log.index,
           };
+          if (type === "reregister") {
+            const oldUser = (log.args.oldUser as string).toLowerCase();
+            memberMap.delete(oldUser);
+          }
           memberMap.set(entry.user.toLowerCase(), entry);
         }
 
-        // Handle re-registrations: update user mapping
-        const reRegFilter = contract.filters.UserReRegistered();
-        const reRegEvents = await contract.queryFilter(reRegFilter);
-        for (const event of reRegEvents) {
-          const log = event as ethers.EventLog;
-          if (!log.args) continue;
-          const oldUser = (log.args.oldUser as string).toLowerCase();
-          const newUser = (log.args.newUser as string).toLowerCase();
-          memberMap.delete(oldUser);
-          memberMap.set(newUser, {
-            user: log.args.newUser,
-            nullifier: log.args.nullifier,
-            country: bytes32ToString(log.args.country),
-            org: bytes32ToString(log.args.org),
-            orgUnit: bytes32ToString(log.args.orgUnit),
-            commonName: bytes32ToString(log.args.commonName),
-            blockNumber: log.blockNumber,
-          });
+        if (!cancelled) {
+          setMembers(Array.from(memberMap.values()).sort((a, b) => b.blockNumber - a.blockNumber));
         }
-
-        setMembers(Array.from(memberMap.values()).sort((a, b) => b.blockNumber - a.blockNumber));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load members");
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load members");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     fetchMembers();
-  }, [provider, registryAddress, settings?.explorerEnabled]);
+    return () => { cancelled = true; };
+  }, [provider, registryAddress, settings?.explorerEnabled, minDisclosureMask]);
 
   // Visible fields (intersection of settings + disclosure mask)
   const visibleFields = useMemo(() => {
@@ -117,6 +132,17 @@ export default function MembersContent({ registryAddress, minDisclosureMask }: P
     return visibleFields.filter((f) => settings.explorerFilterableFields.includes(f));
   }, [settings, visibleFields]);
 
+  // Prune stale filters when filterableFields changes
+  useEffect(() => {
+    setFilters((prev) => {
+      const pruned: Record<string, string> = {};
+      for (const f of filterableFields) {
+        if (prev[f]) pruned[f] = prev[f];
+      }
+      return pruned;
+    });
+  }, [filterableFields]);
+
   // Unique values for filter dropdowns
   const filterOptions = useMemo(() => {
     const opts: Record<string, string[]> = {};
@@ -131,16 +157,17 @@ export default function MembersContent({ registryAddress, minDisclosureMask }: P
     return opts;
   }, [members, filterableFields]);
 
-  // Apply filters
+  // Apply filters (only filterable fields)
   const filteredMembers = useMemo(() => {
     return members.filter((m) => {
-      for (const [field, value] of Object.entries(filters)) {
+      for (const field of filterableFields) {
+        const value = filters[field];
         if (!value) continue;
         if ((m[field as keyof MemberEntry] as string) !== value) return false;
       }
       return true;
     });
-  }, [members, filters]);
+  }, [members, filters, filterableFields]);
 
   // Not enabled
   if (settings && !settings.explorerEnabled) {

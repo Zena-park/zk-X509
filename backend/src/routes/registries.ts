@@ -120,14 +120,23 @@ router.put("/:address", (req, res) => {
     entry.tags = tags.filter((tag: unknown): tag is string => typeof tag === "string");
   }
   if (listed !== undefined) entry.listed = typeof listed === "string" ? listed.toLowerCase() === "true" : Boolean(listed);
-  if (explorerEnabled !== undefined) entry.explorerEnabled = Boolean(explorerEnabled);
+  if (explorerEnabled !== undefined) {
+    entry.explorerEnabled = typeof explorerEnabled === "string"
+      ? explorerEnabled.toLowerCase() === "true"
+      : Boolean(explorerEnabled);
+  }
   if (Array.isArray(explorerVisibleFields)) {
-    entry.explorerVisibleFields = explorerVisibleFields.filter((f: unknown): f is string =>
-      typeof f === "string" && VALID_DISCLOSURE_FIELDS.includes(f));
+    entry.explorerVisibleFields = [...new Set(
+      explorerVisibleFields.filter((f: unknown): f is string =>
+        typeof f === "string" && VALID_DISCLOSURE_FIELDS.includes(f))
+    )];
   }
   if (Array.isArray(explorerFilterableFields)) {
-    entry.explorerFilterableFields = explorerFilterableFields.filter((f: unknown): f is string =>
-      typeof f === "string" && VALID_DISCLOSURE_FIELDS.includes(f));
+    const visible = new Set(entry.explorerVisibleFields ?? VALID_DISCLOSURE_FIELDS);
+    entry.explorerFilterableFields = [...new Set(
+      explorerFilterableFields.filter((f: unknown): f is string =>
+        typeof f === "string" && VALID_DISCLOSURE_FIELDS.includes(f) && visible.has(f))
+    )];
   }
 
   writeDB(db);
