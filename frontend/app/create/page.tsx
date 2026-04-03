@@ -411,10 +411,10 @@ export default function CreateRegistryPage() {
         {/* Field Constraints */}
         <div className="space-y-3">
           <label className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest px-1">
-            Field Constraints (Optional)
+            Field Constraints
           </label>
           <p className="text-on-surface-variant text-xs px-1">
-            Require exact field values. The ZK proof verifies the match inside the circuit — disclosure is not required.
+            Only certificates matching these values can register. Leave empty to accept any value. Verified inside the ZK proof — disclosure is not required.
           </p>
           <div className="grid grid-cols-2 gap-3">
             {DISCLOSURE_FIELDS.map((field, i) => (
