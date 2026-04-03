@@ -103,8 +103,6 @@ fn map_proof_error(msg: &str) -> String {
         "Proof failed: Your certificate's organizational unit does not match the registry's requirement.".into()
     } else if msg.contains("CommonName constraint failed") {
         "Proof failed: Your certificate's common name does not match the registry's requirement.".into()
-    } else if msg.contains("KR entity filter") {
-        "Proof failed: This registry requires a Korean business certificate (sole proprietor or corporation).".into()
     } else if msg.contains("wallet_index must be < max_wallets") {
         "Proof failed: Wallet index exceeds the maximum allowed by this registry.".into()
     } else if msg.contains("Certificate chain must not be empty") {
