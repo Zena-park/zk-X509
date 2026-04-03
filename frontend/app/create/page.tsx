@@ -198,15 +198,19 @@ export default function CreateRegistryPage() {
       if (creationFee > BigInt(0) && isNativeFee) {
         txOptions.value = creationFee;
       }
-      // Convert required field values to bytes32 (UTF-8 left-aligned, max 31 bytes)
+      // Convert required field values to bytes32: UTF-8 left-aligned, zero-padded to 32 bytes.
+      // Matches the circuit's to_bytes32() encoding exactly.
       const toBytes32 = (s: string): string => {
         if (!s) return ethers.ZeroHash;
-        // Truncate to fit 31 bytes (encodeBytes32String limit) at character boundary
+        const encoder = new TextEncoder();
         let truncated = s;
-        while (new TextEncoder().encode(truncated).length > 31) {
+        while (encoder.encode(truncated).length > 32) {
           truncated = truncated.slice(0, -1);
         }
-        return ethers.encodeBytes32String(truncated);
+        const utf8 = encoder.encode(truncated);
+        const padded = new Uint8Array(32);
+        padded.set(utf8);
+        return ethers.hexlify(padded);
       };
       const reqCountry = toBytes32(requiredValues[0]);
       const reqOrg = toBytes32(requiredValues[1]);

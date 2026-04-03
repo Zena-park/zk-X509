@@ -282,6 +282,9 @@ fn main() {
         wallet_index,
         max_wallets,
         disclosure_mask,
+        // Field constraints: interactive mode uses zero (no constraints).
+        // For production use with constrained registries, use main/evm binaries
+        // which fetch constraints from on-chain.
         required_country: [0u8; 32],
         required_org: [0u8; 32],
         required_org_unit: [0u8; 32],
