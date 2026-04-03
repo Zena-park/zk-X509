@@ -445,7 +445,7 @@ export default function CreateRegistryPage() {
               Constraints are verified inside the ZK proof. Users don&apos;t need to disclose these fields publicly.
             </p>
           )}
-          {requiredValues.some(v => new TextEncoder().encode(v).length > 32) && (
+          {requiredValues.some(v => v.length > 0 && new TextEncoder().encode(v).length > 32) && (
             <p className="text-error text-xs px-1">
               Values exceeding 32 UTF-8 bytes will be truncated.
             </p>

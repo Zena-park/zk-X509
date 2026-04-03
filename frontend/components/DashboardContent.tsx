@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { ShieldCheck, Wallet, Send, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useWallet } from "@/lib/wallet";
-import { truncateHex, isValidHex, parseContractError } from "@/lib/utils";
+import { truncateHex, isValidHex, parseContractError, formatFieldConstraints } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -28,25 +28,19 @@ export default function DashboardContent() {
   const [constraints, setConstraints] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!readContract) return;
+    if (!readContract) { setConstraints([]); return; }
     (async () => {
       try {
-        const { bytes32ToString } = await import("@/lib/utils");
+        const ethers = await import("ethers");
         const [reqC, reqO, reqOU, reqCN] = await Promise.all([
-          readContract.requiredCountry(),
-          readContract.requiredOrg(),
-          readContract.requiredOrgUnit(),
-          readContract.requiredCommonName(),
+          readContract.requiredCountry().catch(() => ethers.ZeroHash),
+          readContract.requiredOrg().catch(() => ethers.ZeroHash),
+          readContract.requiredOrgUnit().catch(() => ethers.ZeroHash),
+          readContract.requiredCommonName().catch(() => ethers.ZeroHash),
         ]);
-        const labels = ["C", "O", "OU", "CN"];
-        const result: string[] = [];
-        [reqC, reqO, reqOU, reqCN].forEach((v: string, i: number) => {
-          const s = bytes32ToString(v);
-          if (s) result.push(`${labels[i]}=${s}`);
-        });
-        setConstraints(result);
+        setConstraints(formatFieldConstraints([reqC, reqO, reqOU, reqCN]));
       } catch {
-        // may not exist on older contracts
+        setConstraints([]);
       }
     })();
   }, [readContract]);

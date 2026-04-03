@@ -22,7 +22,7 @@ import {
 } from "@/lib/contract";
 import { getRegistryMetadata, getListedRegistries, type RegistryMetadata } from "@/lib/platform";
 import { useReadProvider } from "@/lib/useReadProvider";
-import { bytes32ToString } from "@/lib/utils";
+import { bytes32ToString, formatFieldConstraints } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Trust Badge                                                        */
@@ -153,12 +153,7 @@ export default function DashboardPage() {
                 registry.requiredCommonName().catch(() => ethers.ZeroHash),
               ]);
 
-              const constraints: string[] = [];
-              const labels = ["C", "O", "OU", "CN"];
-              [reqC, reqO, reqOU, reqCN].forEach((v, i) => {
-                const s = bytes32ToString(v);
-                if (s) constraints.push(`${labels[i]}=${s}`);
-              });
+              const constraints = formatFieldConstraints([reqC, reqO, reqOU, reqCN]);
 
               const name: string = info.name ?? info[1];
               const maxWallets: number = Number(info.maxWallets ?? info[2]);

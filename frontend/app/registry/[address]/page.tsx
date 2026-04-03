@@ -25,7 +25,7 @@ import {
   Shield,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
-import { truncateHex } from "@/lib/utils";
+import { truncateHex, formatFieldConstraints } from "@/lib/utils";
 import {
   getRegistryMetadata,
   getAnnouncements,
@@ -188,24 +188,14 @@ function RegistryDetailContent() {
           // may not exist on older contracts
         }
 
-        // Fetch field constraints
-        const constraints: string[] = [];
-        try {
-          const [reqC, reqO, reqOU, reqCN] = await Promise.all([
-            contract.requiredCountry(),
-            contract.requiredOrg(),
-            contract.requiredOrgUnit(),
-            contract.requiredCommonName(),
-          ]);
-          const { bytes32ToString } = await import("@/lib/utils");
-          const labels = ["C", "O", "OU", "CN"];
-          [reqC, reqO, reqOU, reqCN].forEach((v: string, i: number) => {
-            const s = bytes32ToString(v);
-            if (s) constraints.push(`${labels[i]}=${s}`);
-          });
-        } catch {
-          // may not exist on older contracts
-        }
+        // Fetch field constraints (individual catch per field for resilience)
+        const [reqC, reqO, reqOU, reqCN] = await Promise.all([
+          contract.requiredCountry().catch(() => ethers.ZeroHash),
+          contract.requiredOrg().catch(() => ethers.ZeroHash),
+          contract.requiredOrgUnit().catch(() => ethers.ZeroHash),
+          contract.requiredCommonName().catch(() => ethers.ZeroHash),
+        ]);
+        const constraints = formatFieldConstraints([reqC, reqO, reqOU, reqCN]);
 
         setInfo({
           name: serviceName,
