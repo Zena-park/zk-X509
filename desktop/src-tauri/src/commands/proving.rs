@@ -300,6 +300,9 @@ pub async fn delegated_prove(
             .ok_or("Missing pubkey in response")?;
         let pubkey_bytes = hex::decode(pubkey_hex.strip_prefix("0x").unwrap_or(pubkey_hex))
             .map_err(|e| format!("Invalid pubkey hex: {}", e))?;
+        if pubkey_bytes.len() != 65 || pubkey_bytes[0] != 0x04 {
+            return Err("Invalid prover public key (expected 65-byte uncompressed secp256k1)".into());
+        }
 
         // Build sensitive payload and encrypt with ECIES
         let sensitive = serde_json::json!({
