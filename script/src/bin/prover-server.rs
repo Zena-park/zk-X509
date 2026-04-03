@@ -133,7 +133,7 @@ struct AppState {
 
 impl AppState {
     fn new() -> Self {
-        // Load from PROVER_ECIES_KEY env var, or generate a random key
+        // Load from PROVER_ECIES_KEY env var, or load/generate from file
         let sk_bytes: [u8; 32] = if let Ok(hex_key) = std::env::var("PROVER_ECIES_KEY") {
             let bytes = hex::decode(hex_key.strip_prefix("0x").unwrap_or(&hex_key))
                 .expect("PROVER_ECIES_KEY must be valid hex (32 bytes)");
@@ -141,12 +141,29 @@ impl AppState {
             arr.copy_from_slice(&bytes);
             arr
         } else {
-            use sha2::Digest;
-            // Derive deterministic key from PROVER_URL so it's stable across restarts
-            let url = std::env::var("PROVER_URL").unwrap_or_default();
-            let seed = format!("zk-x509-ecies-key-{}", url);
-            let hash: [u8; 32] = Sha256::digest(seed.as_bytes()).into();
-            hash
+            // Persist key to file so it survives restarts
+            let key_path = std::path::PathBuf::from(
+                std::env::var("PROVER_LOG_DIR").unwrap_or_else(|_| "./logs".to_string())
+            ).join(".ecies_key");
+
+            if key_path.exists() {
+                let hex_key = std::fs::read_to_string(&key_path)
+                    .expect("Failed to read ECIES key file");
+                let bytes = hex::decode(hex_key.trim())
+                    .expect("Invalid hex in ECIES key file");
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                arr
+            } else {
+                // Generate random key
+                let mut key = [0u8; 32];
+                getrandom::getrandom(&mut key).expect("Failed to generate random key");
+                std::fs::create_dir_all(key_path.parent().unwrap()).ok();
+                std::fs::write(&key_path, hex::encode(key))
+                    .expect("Failed to save ECIES key");
+                eprintln!("Generated new ECIES key: {}", key_path.display());
+                key
+            }
         };
 
         let pk = ecies::PublicKey::from_secret_key(&ecies::SecretKey::parse_slice(&sk_bytes).unwrap());
