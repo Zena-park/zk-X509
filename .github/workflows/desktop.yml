@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -29,7 +29,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -L https://sp1up.succinct.xyz | bash
+          set -euo pipefail
+          curl -fsSL https://sp1up.succinct.xyz -o /tmp/sp1up-install.sh
+          bash /tmp/sp1up-install.sh
           ~/.sp1/bin/sp1up --version ${{ env.SP1_VERSION }}
 
       - name: Rust cache
@@ -39,6 +41,8 @@ jobs:
 
       - name: Build ELF
         run: |
+          # Remove desktop workspace member (not checked out in ELF build).
+          # cargo -p cannot skip workspace resolution, so sed is required.
           sed -i 's/, "desktop\/src-tauri"//' Cargo.toml
           cargo build --release --bin vkey
 
@@ -112,6 +116,8 @@ jobs:
     needs: build-desktop
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
