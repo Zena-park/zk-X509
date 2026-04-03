@@ -428,7 +428,13 @@ export default function CreateRegistryPage() {
                     next[i] = e.target.value;
                     setRequiredValues(next);
                   }}
-                  placeholder={field.bit === 0 ? 'e.g. "KR"' : ""}
+                  maxLength={32}
+                  placeholder={
+                    field.bit === 0 ? "e.g. KR" :
+                    field.bit === 1 ? "e.g. Tokamak Network" :
+                    field.bit === 2 ? "e.g. Engineering" :
+                    "e.g. Hong Gildong"
+                  }
                   className="bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-2 text-sm font-mono text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:ring-1 focus:ring-tertiary/30 transition"
                 />
               </div>
@@ -437,6 +443,11 @@ export default function CreateRegistryPage() {
           {requiredValues.some(v => v.length > 0) && (
             <p className="text-tertiary/70 text-xs px-1">
               Constraints are verified inside the ZK proof. Users don&apos;t need to disclose these fields publicly.
+            </p>
+          )}
+          {requiredValues.some(v => new TextEncoder().encode(v).length > 32) && (
+            <p className="text-error text-xs px-1">
+              Values exceeding 32 UTF-8 bytes will be truncated.
             </p>
           )}
         </div>
@@ -574,6 +585,20 @@ export default function CreateRegistryPage() {
               </p>
             </div>
           </div>
+          {requiredValues.some(v => v.length > 0) && (
+            <div className="pt-2 border-t border-outline-variant/10">
+              <p className="text-on-surface-variant text-xs mb-1.5">Field Constraints</p>
+              <div className="flex flex-wrap gap-1.5">
+                {DISCLOSURE_FIELDS.map((field, i) =>
+                  requiredValues[i] ? (
+                    <span key={field.bit} className="px-2 py-0.5 bg-secondary/10 text-secondary text-xs font-mono rounded-full">
+                      {field.description}={requiredValues[i]}
+                    </span>
+                  ) : null
+                )}
+              </div>
+            </div>
+          )}
           {selectedUseCases.size > 0 && (
             <div className="pt-2 border-t border-outline-variant/10">
               <p className="text-on-surface-variant text-xs mb-1.5">Use Cases</p>
