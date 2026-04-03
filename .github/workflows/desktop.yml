@@ -99,15 +99,13 @@ jobs:
         working-directory: desktop
         env:
           PREBUILT_ELF: ${{ github.workspace }}/elf/zk-x509-program
-        run: npx @tauri-apps/cli build --target ${{ matrix.target }}
+        run: npx tauri build --target ${{ matrix.target }}
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
           name: zk-X509-Desktop-${{ matrix.label }}
-          path: |
-            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
+          path: desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
 
   # ── Step 3: Create release (tag push only) ──
   release:
