@@ -100,12 +100,12 @@
 
 ## Korean NPKI Entity Type Classification
 
-Korean NPKI certificates are issued by the same CA for individuals, sole proprietors, and corporations. Classification uses disclosure fields:
+Korean NPKI uses **separate CAs** for different entity types (e.g., yessignCA Class 2 for individuals, Class 3 for businesses). Entity type filtering is achieved via the **CA whitelist** (`addCA()`):
 
-| Entity | O Field | CN Field | Detection |
-|--------|---------|----------|-----------|
-| Individual | absent (`0x0`) | (not disclosed) | `org == bytes32(0)` |
-| Sole Proprietor | business name (e.g., `0x홍길동떡집...`) | personal name | `org != bytes32(0)` and `org != cn` (both must be disclosed) |
-| Corporation | company name (e.g., `0x삼성전자...`) | company name/representative | `org != bytes32(0)` and CN starts with org value |
+| Entity | How to Filter |
+|--------|--------------|
+| Individual only | Register only personal CA hashes |
+| Business only (sole proprietor + corporation) | Register only business CA hashes |
+| Specific company | `requiredOrg` field constraint |
 
-**Note:** All disclosure values are UTF-8 right-padded to bytes32. Entity type detection requires both O and CN fields to be disclosed (`minDisclosureMask >= 0x0A`). Individual vs business distinction requires only O field (`minDisclosureMask bit 1`). No serialNumber parsing needed.
+No serialNumber parsing or disclosure-based entity detection is needed — the CA distinction is sufficient.

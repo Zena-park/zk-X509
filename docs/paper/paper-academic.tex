@@ -1551,15 +1551,14 @@ hidden --- the verifier cannot distinguish ``field is empty in the
 certificate'' from ``field exists but was not disclosed.''
 
 \textbf{Entity type classification.} In government-issued PKI systems
-such as Korean NPKI, the Organization (O) field distinguishes certificate
-types: individual certificates lack an Organization field, while business
-certificates (sole proprietors and corporations) include one. By
-requiring O field disclosure (\texttt{minDisclosureMask} bit 1), a
-service can enforce entity-level policies on-chain---for example,
-``only business entities may register''---by checking whether
-\texttt{org} is zero (individual) or non-zero (business). This mirrors
-the off-chain KYC distinction between personal and business accounts,
-now enforceable trustlessly on-chain via a single ZK proof.
+such as Korean NPKI, separate CAs issue certificates for different
+entity types (e.g., personal vs.\ business). Since each registry
+maintains a CA whitelist via \texttt{addCA()}, entity-level filtering
+is achieved by registering only the appropriate CA hashes---for example,
+adding only business-class CA hashes to enforce ``only business entities
+may register.'' For finer-grained control, the \texttt{requiredOrg}
+field constraint can restrict registration to a specific organization,
+verified inside the ZK proof without requiring public disclosure.
 
 \subsection{CA-Anonymous Verification via Merkle
 Tree}\label{ca-anonymous-verification-via-merkle-tree}
