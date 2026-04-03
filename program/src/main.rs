@@ -690,17 +690,17 @@ pub fn main() {
         extract_subject_fields(&user_cert.subject(), combined_mask);
 
     // In-circuit constraint verification: assert cert fields match required values
-    if required_country != zero {
-        assert!(country_val == required_country, "Country constraint failed: cert value does not match required");
+    if constraint_mask & 0x01 != 0 {
+        assert!(country_val == required_country, "Country constraint failed");
     }
-    if required_org != zero {
-        assert!(org_val == required_org, "Org constraint failed: cert value does not match required");
+    if constraint_mask & 0x02 != 0 {
+        assert!(org_val == required_org, "Org constraint failed");
     }
-    if required_org_unit != zero {
-        assert!(ou_val == required_org_unit, "OrgUnit constraint failed: cert value does not match required");
+    if constraint_mask & 0x04 != 0 {
+        assert!(ou_val == required_org_unit, "OrgUnit constraint failed");
     }
-    if required_common_name != zero {
-        assert!(cn_val == required_common_name, "CommonName constraint failed: cert value does not match required");
+    if constraint_mask & 0x08 != 0 {
+        assert!(cn_val == required_common_name, "CommonName constraint failed");
     }
 
     // Disclosure: only include in public values if disclosure bit is set
