@@ -119,11 +119,11 @@ open dist/zk-X509.app
 make run
 ```
 
-> **참고:** 위 명령어는 macOS/Linux (bash/zsh) 기준입니다.
-> Windows에서 로컬 빌드는 GitHub Actions 릴리즈를 이용하세요 (아래 참조).
-> 또는 PowerShell에서 수동으로:
+> **참고:** `make` 명령어는 macOS/Linux (bash/zsh) 기준입니다.
+> Windows에서는 GitHub Actions 릴리즈 빌드를 이용하세요 (아래 참조).
+> 또는 WSL/Git Bash에서 `make elf`로 ELF를 추출한 뒤 PowerShell에서:
 > ```powershell
-> $env:PREBUILT_ELF="$(Get-Location)\elf\zk-x509-program"
+> $env:PREBUILT_ELF = "$(Get-Location)\elf\zk-x509-program"
 > cargo build --release --bin interactive
 > ```
 
