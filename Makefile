@@ -1,4 +1,4 @@
-.PHONY: up down clean status logs addresses elf help
+.PHONY: up down clean status logs addresses elf app run help
 
 ## Docker local environment
 up:                ## Start all services (build + deploy + run)
@@ -19,24 +19,6 @@ up:                ## Start all services (build + deploy + run)
 	@echo "   Chain ID   → 31337"
 	@echo ""
 	@cat .docker-addresses.json 2>/dev/null && echo "" || echo "Addresses not yet available. Run: make addresses"
-	@echo ""
-	@echo "Extracting vkey for local consistency..."
-	@mkdir -p elf
-	@IMAGE_ID=$$(docker compose images -q prover 2>/dev/null); \
-	 if [ -n "$$IMAGE_ID" ]; then \
-	 	CID=$$(docker create "$$IMAGE_ID" 2>/dev/null); \
-	 	if [ -n "$$CID" ]; then \
-	 		(docker cp $$CID:/usr/local/share/vkey.txt elf/vkey.txt 2>/dev/null && \
-	 		 echo "   VKEY=$$(cat elf/vkey.txt)" && \
-	 		 echo "   Run 'make elf' to extract full ELF for local builds") || \
-	 		 echo "   WARNING: vkey extraction failed"; \
-	 		docker rm -f "$$CID" > /dev/null 2>&1 || true; \
-	 	else \
-	 		echo "   WARNING: vkey extraction skipped (could not create container)"; \
-	 	fi; \
-	 else \
-	 	echo "   WARNING: vkey extraction skipped (prover image not found)"; \
-	 fi
 
 down:              ## Stop all services (chain state resets on next up)
 	docker compose down
@@ -62,6 +44,28 @@ elf:               ## Extract pre-built ELF from Docker (for local vkey consiste
 	 docker cp $$CID:/build/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/zk-x509-program elf/zk-x509-program
 	@echo "ELF extracted. Usage:"
 	@echo "  PREBUILT_ELF=$$(pwd)/elf/zk-x509-program cargo build --release --bin interactive"
+
+app:               ## Build macOS .app bundle with Docker-matched vkey
+	@test -f elf/zk-x509-program || (echo "ELF not found. Run 'make elf' first." && exit 1)
+	PREBUILT_ELF=$$(pwd)/elf/zk-x509-program cargo build --release --bin interactive
+	@APP_DIR="dist/zk-X509.app" && \
+	 rm -rf "$$APP_DIR" && \
+	 mkdir -p "$$APP_DIR/Contents/MacOS" "$$APP_DIR/Contents/Resources" && \
+	 cp script/app-resources/Info.plist "$$APP_DIR/Contents/" && \
+	 cp target/release/interactive "$$APP_DIR/Contents/MacOS/interactive" && \
+	 cp script/app-resources/launcher.sh "$$APP_DIR/Contents/MacOS/launcher" && \
+	 chmod +x "$$APP_DIR/Contents/MacOS/launcher" && \
+	 (for dir in data/ca-certs-*; do \
+	   [ -d "$$dir" ] || continue; \
+	   mkdir -p "$$APP_DIR/Contents/Resources/ca-certs"; \
+	   cp "$$dir"/*.der "$$APP_DIR/Contents/Resources/ca-certs/" 2>/dev/null || true; \
+	 done) && \
+	 echo "App built: $$APP_DIR" && \
+	 echo "  open dist/zk-X509.app"
+
+run:               ## Run interactive app with Docker-matched vkey (no .app bundle)
+	@test -f elf/zk-x509-program || (echo "ELF not found. Run 'make elf' first." && exit 1)
+	PREBUILT_ELF=$$(pwd)/elf/zk-x509-program cargo run --release --bin interactive
 
 help:              ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-12s %s\n", $$1, $$2}'

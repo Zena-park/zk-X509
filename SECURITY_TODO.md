@@ -50,96 +50,18 @@
 | — | vkey 자동 감지 + E2E 테스트 가이드 | [#102](https://github.com/tokamak-network/zk-X509/pull/102) |
 | — | prover-server 버그 수정 (spawn_blocking, empty PV) | [#103](https://github.com/tokamak-network/zk-X509/pull/103) |
 | 42 | 컨트랙트 업그레이드 → Beacon Proxy 패턴으로 해결 | [#100](https://github.com/tokamak-network/zk-X509/pull/100) |
+| — | Docker prover + vkey 일치 + Windows 빌드 + PREBUILT_ELF | [#106](https://github.com/tokamak-network/zk-X509/pull/106) |
+| — | Disclosure 이벤트 emit + Members Explorer + 필터링 UI | [#107](https://github.com/tokamak-network/zk-X509/pull/107) |
+| 56 | Disclosure 값 필터링 (2단계 인증 정책: mask + exact match) | [#108](https://github.com/tokamak-network/zk-X509/pull/108) |
+| ~~57~~ | ~~한국 NPKI 개인사업자 vs 법인 구분~~ → O+CN 조합으로 구분 가능, 별도 구현 불필요 | — |
 
 ## 미해결
-
-### HIGH — 기능 개발
-
-#### 56. Disclosure 필터링 (2단계 인증 정책)
-
-서비스 운영자가 인증 정책을 2단계로 설정:
-
-**1단계: disclosure mask** — 어떤 필드를 공개할지 (기존 `minDisclosureMask`)
-**2단계: 필터 값** — 공개된 필드 중 어떤 값만 허용할지 (신규)
-
-```
-필터 값 = bytes32(0)  → 공개만 하고 아무 값이나 허용
-필터 값 = "KR"        → 정확히 "KR"인 경우만 등록 가능
-```
-
-**설정 예시:**
-
-| 정책 | disclosure mask | 필터 |
-|------|----------------|------|
-| 아무나 | 0x00 | 없음 |
-| 한국인만 | 0x01 (Country) | requiredCountry = "KR" |
-| 삼성 직원만 | 0x02 (Org) | requiredOrg = "Samsung" |
-| 삼성 한국 엔지니어만 | 0x07 (C+O+OU) | requiredCountry = "KR", requiredOrg = "Samsung", requiredOrgUnit = "Engineering" |
-| 사업자만 (개인 제외) | 0x02 (Org) | org != 0x0 체크 (entity type filter) |
-
-**컨트랙트 설계:**
-
-```solidity
-// 필터 값 (bytes32(0) = 제한 없음, 값이 있으면 정확히 일치해야 함)
-// 값은 UTF-8 right-padded to bytes32 (e.g., "KR" = 0x4b52000...000)
-bytes32 public requiredCountry;
-bytes32 public requiredOrg;
-bytes32 public requiredOrgUnit;
-bytes32 public requiredCommonName;
-
-// Custom errors
-error CountryMismatch(bytes32 proof, bytes32 required);
-error OrgMismatch(bytes32 proof, bytes32 required);
-error OrgUnitMismatch(bytes32 proof, bytes32 required);
-error CommonNameMismatch(bytes32 proof, bytes32 required);
-error FilterWithoutDisclosure(uint8 filterBit, uint8 disclosureMask);
-
-event RequiredDisclosureValuesUpdated(bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 cn);
-
-// 서비스 운영자가 설정 (owner only)
-// 주의: 필터 설정 시 해당 disclosure bit이 minDisclosureMask에 켜져있어야 함
-function setRequiredDisclosureValues(
-    bytes32 _country, bytes32 _org, bytes32 _orgUnit, bytes32 _cn
-) external onlyOwner;
-```
-
-**register() 검증 로직:**
-
-```solidity
-// 기존: disclosure mask 체크 (필드가 비어있지 않은지)
-// 추가: 필터 값 체크 (필드 값이 일치하는지)
-if (requiredCountry != bytes32(0)) {
-    if (pv.country != requiredCountry) revert CountryMismatch(pv.country, requiredCountry);
-}
-if (requiredOrg != bytes32(0)) {
-    if (pv.org != requiredOrg) revert OrgMismatch(pv.org, requiredOrg);
-}
-// ... orgUnit, commonName 동일
-```
-
-**일관성 검증:** `setRequiredDisclosureValues()` 호출 시 필터 값이 설정된 필드는 `minDisclosureMask`에 해당 bit이 켜져있어야 함. 그렇지 않으면 사용자가 해당 필드를 공개하지 않아 항상 revert됨.
-
-**Entity Type 필터 (개인/사업자 구분):**
-- requiredOrg가 설정되어 있으면 → 해당 기관만 허용
-- minDisclosureMask에 Org bit이 켜져있고 requiredOrg = bytes32(0)이면 → 사업자만 허용 (org != 0x0)
-- minDisclosureMask에 Org bit이 꺼져있으면 → 개인/사업자 무관
-
-**변경 범위:**
-- contracts: IdentityRegistry (storage + validation), RegistryFactory (createRegistry 파라미터)
-- frontend: create 페이지 (필터 값 입력), admin 설정 (필터 변경)
-- 가스 비용: 필터당 1 SLOAD (~2100 gas) 추가 — 4개 전부 설정해도 ~8400 gas
-
-#### ~~57. 한국 NPKI 개인사업자 vs 법인 세부 구분~~ → 불필요
-- O + CN 조합으로 구분 가능 (serialNumber 파싱 불필요)
-- 개인: O 없음
-- 개인사업자: O ≠ CN (O=사업명, CN=개인명) — 두 필드 모두 disclosure 필요
-- 법인: CN이 O 값으로 시작 (O=회사명, CN=회사명/대표자) — 두 필드 모두 disclosure 필요
 
 ### MEDIUM — 미해결
 
 #### 20. Solidity 형식 검증
 - Certora, Halmos 등으로 IdentityRegistry / RegistryFactory 검증 미실시
-- 119개 단위 테스트는 통과하지만, 형식적 속성 검증은 미수행
+- 125개 단위 테스트는 통과하지만, 형식적 속성 검증은 미수행
 
 #### 43. CA 관리 탈중앙화 (Multi-sig / DAO)
 - **문제:** owner 단일 키 탈취 시 악의적 CA 추가/제거 가능

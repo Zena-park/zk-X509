@@ -75,14 +75,79 @@ cd frontend && npm install && npm run build
 
 ## 4. 로컬 환경 배포
 
-### Step 1: Anvil 실행 (터미널 1)
+### 방법 A: Docker Compose (권장)
+
+모든 서비스를 한 번에 띄웁니다:
+
+```bash
+make up
+```
+
+출력:
+```
+Services running:
+   Frontend   → http://localhost:3000
+   Backend    → http://localhost:4000
+   Prover     → http://localhost:9090
+   Anvil RPC  → http://localhost:8545
+   Chain ID   → 31337
+
+Extracting vkey for local consistency...
+   VKEY=0x001fcda5...
+   Run 'make elf' to extract full ELF for local builds
+```
+
+| 명령어 | 설명 |
+|--------|------|
+| `make up` | 전체 서비스 빌드 + 실행 |
+| `make down` | 서비스 중지 |
+| `make clean` | 서비스 중지 + 볼륨 삭제 |
+| `make status` | 서비스 상태 확인 |
+| `make logs` | 로그 확인 (`make logs s=prover`) |
+| `make elf` | Docker에서 ELF 추출 (로컬 vkey 일치용) |
+| `make addresses` | 배포된 컨트랙트 주소 확인 |
+
+**데스크탑 앱 빌드 + 실행:**
+
+```bash
+# 1. ELF 추출 (Docker vkey와 일치 보장, 한 번만)
+make elf
+
+# 2-A. macOS .app 번들 빌드
+make app
+open dist/zk-X509.app
+
+# 2-B. 또는 번들 없이 바로 실행
+make run
+```
+
+| 명령어 | 설명 |
+|--------|------|
+| `make elf` | Docker에서 ELF 추출 (한 번만, vkey 일치용) |
+| `make app` | macOS .app 번들 빌드 (`dist/zk-X509.app`) |
+| `make run` | interactive 바이너리 직접 실행 (번들 없이) |
+
+**GitHub Actions 릴리즈 빌드:**
+
+태그 push 시 CI가 자동으로 서명된 앱을 빌드합니다:
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+# → GitHub Release 페이지에서 macOS/Windows 앱 다운로드
+```
+
+CI는 Linux에서 ELF를 한 번 빌드하고 모든 플랫폼(macOS ARM64/x64, Windows x64)에 공유하므로 vkey가 자동으로 일치합니다. macOS 빌드는 Apple Developer ID 서명 + 공증이 포함됩니다.
+
+### 방법 B: 수동 배포
+
+#### Step 1: Anvil 실행 (터미널 1)
 ```bash
 anvil
 ```
 
 기본 계정 10개 + 10000 ETH씩 제공됨.
 
-### Step 2: 컨트랙트 배포 (터미널 2)
+#### Step 2: 컨트랙트 배포 (터미널 2)
 ```bash
 cd contracts
 

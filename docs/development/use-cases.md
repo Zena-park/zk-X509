@@ -5,7 +5,9 @@
 | Tool | Role |
 |------|------|
 | **CA Whitelist** | Which CA issued the certificate (country, institution level) |
-| **Disclosure Filter** | Which attributes to require and what values to match *(planned, #56 — not yet implemented)* |
+| **Disclosure Mask** | Which attributes must be disclosed (tier 1: `minDisclosureMask`) |
+| **Disclosure Filter** | Required exact values for disclosed fields (tier 2: `requiredCountry`, `requiredOrg`, etc.) |
+| **Members Explorer** | Off-chain member browsing with configurable field visibility and filtering |
 | **maxWallets** | Wallets per certificate (Sybil resistance strength) |
 | **Delegated Proving** | Service verifies user identity directly (KYC/compliance) |
 | **Auto Expiry** | On-chain identity lapses when certificate expires |
@@ -50,15 +52,16 @@
 ### DeFi
 | Service | Configuration |
 |---------|--------------|
-| Lending protocol (business only) | O field filter + country restriction |
-| Exchange (KYC required) | Delegated proving + country filter |
+| Lending protocol (business only) | mask=0x02, O field presence required |
+| Lending protocol (Korean business) | mask=0x03, `requiredCountry="KR"` |
+| Exchange (KYC required) | Delegated proving + `requiredCountry="KR"` |
 | Staking (Sybil-resistant) | Public CA + maxWallets = 1 |
 
 ### DAO / Governance
 | Service | Configuration |
 |---------|--------------|
 | National DAO (Korea) | Country="KR" + maxWallets = 1 |
-| Corporate shareholder vote | Org filter + maxWallets = 1 |
+| Corporate shareholder vote | `requiredOrg="Samsung"` + maxWallets = 1 |
 | Global DAO | All government CAs + maxWallets = 1 |
 
 ### Enterprise
@@ -66,7 +69,7 @@
 |---------|--------------|
 | Employee-only store | Internal CA whitelist |
 | B2B marketplace | Business CAs only |
-| Internal token distribution | OrgUnit filter for departments |
+| Internal token distribution | `requiredOrgUnit="Engineering"` |
 
 ### NFT / Airdrop
 | Service | Configuration |
