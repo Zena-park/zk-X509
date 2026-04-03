@@ -19,6 +19,12 @@ struct PublicValues {
     bytes32 org;
     bytes32 orgUnit;
     bytes32 commonName;
+    // In-circuit field constraints: the required values verified inside the ZK proof.
+    // bytes32(0) = no constraint. Contract checks these match stored required values.
+    bytes32 requiredCountry;
+    bytes32 requiredOrg;
+    bytes32 requiredOrgUnit;
+    bytes32 requiredCommonName;
 }
 
 /// @dev Minimal interface for reading vkey from RegistryFactory (avoids circular import).
@@ -223,7 +229,11 @@ contract IdentityRegistry is Initializable {
         uint256 _maxProofAge,
         address _owner,
         address _factory,
-        bool _delegatedProving
+        bool _delegatedProving,
+        bytes32 _requiredCountry,
+        bytes32 _requiredOrg,
+        bytes32 _requiredOrgUnit,
+        bytes32 _requiredCommonName
     ) external initializer {
         if (_sp1Verifier == address(0)) revert ZeroAddress();
         if (_sp1Verifier.code.length == 0) revert VerifierNotContract();
@@ -248,6 +258,10 @@ contract IdentityRegistry is Initializable {
         maxProofAge = _maxProofAge;
         owner = _owner;
         delegatedProvingRequired = _delegatedProving;
+        requiredCountry = _requiredCountry;
+        requiredOrg = _requiredOrg;
+        requiredOrgUnit = _requiredOrgUnit;
+        requiredCommonName = _requiredCommonName;
     }
 
     // ============ Internal ============
@@ -292,18 +306,20 @@ contract IdentityRegistry is Initializable {
             }
         }
 
-        // Check required disclosure filter values (exact match)
-        if (requiredCountry != bytes32(0) && pv.country != requiredCountry) {
-            revert CountryMismatch(pv.country, requiredCountry);
+        // In-circuit field constraints: verify the ZK proof checked the correct constraint values.
+        // The circuit asserts cert field == required value internally; here we only confirm
+        // the circuit was given OUR required values (not forged ones).
+        if (requiredCountry != bytes32(0) && pv.requiredCountry != requiredCountry) {
+            revert CountryMismatch(pv.requiredCountry, requiredCountry);
         }
-        if (requiredOrg != bytes32(0) && pv.org != requiredOrg) {
-            revert OrgMismatch(pv.org, requiredOrg);
+        if (requiredOrg != bytes32(0) && pv.requiredOrg != requiredOrg) {
+            revert OrgMismatch(pv.requiredOrg, requiredOrg);
         }
-        if (requiredOrgUnit != bytes32(0) && pv.orgUnit != requiredOrgUnit) {
-            revert OrgUnitMismatch(pv.orgUnit, requiredOrgUnit);
+        if (requiredOrgUnit != bytes32(0) && pv.requiredOrgUnit != requiredOrgUnit) {
+            revert OrgUnitMismatch(pv.requiredOrgUnit, requiredOrgUnit);
         }
-        if (requiredCommonName != bytes32(0) && pv.commonName != requiredCommonName) {
-            revert CommonNameMismatch(pv.commonName, requiredCommonName);
+        if (requiredCommonName != bytes32(0) && pv.requiredCommonName != requiredCommonName) {
+            revert CommonNameMismatch(pv.requiredCommonName, requiredCommonName);
         }
 
         nullifier = pv.nullifier;
@@ -475,15 +491,11 @@ contract IdentityRegistry is Initializable {
         emit DelegatedProvingConfigUpdated(_required, _proverUrl);
     }
 
-    /// @notice Set required disclosure filter values. bytes32(0) = no filter.
-    /// @dev Each non-zero filter requires the corresponding bit in MIN_DISCLOSURE_MASK to be set.
-    function setRequiredDisclosureValues(
+    /// @notice Set required field constraint values. bytes32(0) = no constraint.
+    /// @dev Constraints are verified inside the ZK circuit; disclosure is no longer required.
+    function setRequiredFieldConstraints(
         bytes32 _country, bytes32 _org, bytes32 _orgUnit, bytes32 _cn
     ) external onlyOwner {
-        if (_country != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x01) == 0) revert FilterWithoutDisclosure(0x01, MIN_DISCLOSURE_MASK);
-        if (_org != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x02) == 0) revert FilterWithoutDisclosure(0x02, MIN_DISCLOSURE_MASK);
-        if (_orgUnit != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x04) == 0) revert FilterWithoutDisclosure(0x04, MIN_DISCLOSURE_MASK);
-        if (_cn != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x08) == 0) revert FilterWithoutDisclosure(0x08, MIN_DISCLOSURE_MASK);
         requiredCountry = _country;
         requiredOrg = _org;
         requiredOrgUnit = _orgUnit;

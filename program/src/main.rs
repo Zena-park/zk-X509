@@ -402,6 +402,12 @@ pub fn main() {
     // Selective disclosure bitmask: which fields to reveal
     // bit 0 = country (C), bit 1 = org (O), bit 2 = orgUnit (OU), bit 3 = commonName (CN)
     let disclosure_mask: u8 = sp1_zkvm::io::read();
+    // In-circuit field constraints: required values that cert fields must match.
+    // bytes32(0) = no constraint. Non-zero = assert cert field == required value.
+    let required_country: [u8; 32] = sp1_zkvm::io::read();
+    let required_org: [u8; 32] = sp1_zkvm::io::read();
+    let required_org_unit: [u8; 32] = sp1_zkvm::io::read();
+    let required_common_name: [u8; 32] = sp1_zkvm::io::read();
     // Merkle proof for CA anonymity: proves CA membership without revealing which CA
     let ca_merkle_proof: Vec<[u8; 32]> = sp1_zkvm::io::read();
     let ca_merkle_root: [u8; 32] = sp1_zkvm::io::read();
@@ -667,12 +673,41 @@ pub fn main() {
     let not_after = user_cert.validity().not_after.timestamp() as u64;
 
     // ========================================
-    // Step 9: Selective Disclosure (plaintext in bytes32)
+    // Step 9: Selective Disclosure + In-Circuit Field Constraints
     // ========================================
-    // Disclosure ON  → UTF-8 plaintext right-padded to bytes32 (truncated at 32 bytes)
-    // Disclosure OFF → bytes32(0)
-    let (country_val_b32, org_val_b32, org_unit_val_b32, cn_val_b32) =
-        extract_subject_fields(&user_cert.subject(), disclosure_mask);
+    let zero: [u8; 32] = [0u8; 32];
+
+    // Derive constraint mask from non-zero required values
+    let mut constraint_mask: u8 = 0;
+    if required_country != zero { constraint_mask |= 0x01; }
+    if required_org != zero { constraint_mask |= 0x02; }
+    if required_org_unit != zero { constraint_mask |= 0x04; }
+    if required_common_name != zero { constraint_mask |= 0x08; }
+
+    // Extract fields needed for EITHER disclosure OR constraints
+    let combined_mask = disclosure_mask | constraint_mask;
+    let (country_val, org_val, ou_val, cn_val) =
+        extract_subject_fields(&user_cert.subject(), combined_mask);
+
+    // In-circuit constraint verification: assert cert fields match required values
+    if required_country != zero {
+        assert!(country_val == required_country, "Country constraint failed: cert value does not match required");
+    }
+    if required_org != zero {
+        assert!(org_val == required_org, "Org constraint failed: cert value does not match required");
+    }
+    if required_org_unit != zero {
+        assert!(ou_val == required_org_unit, "OrgUnit constraint failed: cert value does not match required");
+    }
+    if required_common_name != zero {
+        assert!(cn_val == required_common_name, "CommonName constraint failed: cert value does not match required");
+    }
+
+    // Disclosure: only include in public values if disclosure bit is set
+    let country_disclosed = if disclosure_mask & 0x01 != 0 { country_val } else { zero };
+    let org_disclosed = if disclosure_mask & 0x02 != 0 { org_val } else { zero };
+    let ou_disclosed = if disclosure_mask & 0x04 != 0 { ou_val } else { zero };
+    let cn_disclosed = if disclosure_mask & 0x08 != 0 { cn_val } else { zero };
 
     let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {
         nullifier: nullifier.into(),
@@ -684,10 +719,14 @@ pub fn main() {
         chainId: chain_id,
         registryAddress: alloy_sol_types::private::Address::from_slice(&registry_address),
         crlMerkleRoot: crl_merkle_root.into(),
-        country: country_val_b32.into(),
-        org: org_val_b32.into(),
-        orgUnit: org_unit_val_b32.into(),
-        commonName: cn_val_b32.into(),
+        country: country_disclosed.into(),
+        org: org_disclosed.into(),
+        orgUnit: ou_disclosed.into(),
+        commonName: cn_disclosed.into(),
+        requiredCountry: required_country.into(),
+        requiredOrg: required_org.into(),
+        requiredOrgUnit: required_org_unit.into(),
+        requiredCommonName: required_common_name.into(),
     });
 
     sp1_zkvm::io::commit_slice(&bytes);

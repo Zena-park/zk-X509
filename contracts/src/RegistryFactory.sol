@@ -173,7 +173,11 @@ contract RegistryFactory {
         uint32 maxWallets,
         uint8 minDisclosureMask,
         uint256 maxProofAge,
-        bool delegatedProving
+        bool delegatedProving,
+        bytes32 requiredCountry,
+        bytes32 requiredOrg,
+        bytes32 requiredOrgUnit,
+        bytes32 requiredCommonName
     ) external payable returns (address registry) {
         if (maxWallets == 0) revert ZeroMaxWallets();
         if (minDisclosureMask > 0x0F) revert InvalidDisclosureMask();
@@ -184,7 +188,7 @@ contract RegistryFactory {
         // Encode the initialize call for the proxy (uses latest VKey)
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(SP1_VERIFIER), bytes32(0), maxWallets, minDisclosureMask, maxProofAge, msg.sender, address(this), delegatedProving)
+            (address(SP1_VERIFIER), bytes32(0), maxWallets, minDisclosureMask, maxProofAge, msg.sender, address(this), delegatedProving, requiredCountry, requiredOrg, requiredOrgUnit, requiredCommonName)
         );
 
         BeaconProxy proxy = new BeaconProxy(address(beacon), initData);

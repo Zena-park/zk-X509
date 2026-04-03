@@ -21,6 +21,11 @@ pub struct StdinParams<'a> {
     pub wallet_index: u32,
     pub max_wallets: u32,
     pub disclosure_mask: u8,
+    /// In-circuit field constraints. [0u8; 32] = no constraint.
+    pub required_country: [u8; 32],
+    pub required_org: [u8; 32],
+    pub required_org_unit: [u8; 32],
+    pub required_common_name: [u8; 32],
     pub ca_merkle_proof: &'a Vec<Hash>,
     pub ca_merkle_root: Hash,
     pub registry_address: &'a [u8; 20],
@@ -40,6 +45,10 @@ pub fn build_stdin(p: &StdinParams) -> SP1Stdin {
     stdin.write(&p.wallet_index);
     stdin.write(&p.max_wallets);
     stdin.write(&p.disclosure_mask);
+    stdin.write(&p.required_country);
+    stdin.write(&p.required_org);
+    stdin.write(&p.required_org_unit);
+    stdin.write(&p.required_common_name);
     stdin.write(&p.ca_merkle_proof);
     stdin.write(&p.ca_merkle_root);
     stdin.write(p.registry_address);

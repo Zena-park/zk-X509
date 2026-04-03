@@ -38,7 +38,7 @@ contract RegistryFactoryTest is Test {
 
     function test_CreateRegistry() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("Test", 1, 0, 3600, false);
+        address reg = factory.createRegistry("Test", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         assertTrue(factory.isRegistry(reg));
         assertEq(factory.getRegistryCount(), 1);
@@ -51,7 +51,7 @@ contract RegistryFactoryTest is Test {
 
     function test_CreateRegistryWithDelegatedProving() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("KYC Service", 1, 0x03, 3600, true);
+        address reg = factory.createRegistry("KYC Service", 1, 0x03, 3600, true, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         IdentityRegistry registry = IdentityRegistry(reg);
         assertTrue(registry.delegatedProvingRequired());
@@ -60,7 +60,7 @@ contract RegistryFactoryTest is Test {
 
     function test_CreateRegistryWithDisclosure() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("DeFi KYC", 3, 0x01, 3600, false);
+        address reg = factory.createRegistry("DeFi KYC", 3, 0x01, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         IdentityRegistry registry = IdentityRegistry(reg);
         assertEq(registry.MAX_WALLETS_PER_CERT(), 3);
@@ -69,10 +69,10 @@ contract RegistryFactoryTest is Test {
 
     function test_CreateMultipleRegistries() public {
         vm.prank(alice);
-        factory.createRegistry("Test", 1, 0, 3600, false);
+        factory.createRegistry("Test", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(bob);
-        factory.createRegistry("Registry B", 3, 0x03, 3600, false);
+        factory.createRegistry("Registry B", 3, 0x03, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         assertEq(factory.getRegistryCount(), 2);
 
@@ -88,7 +88,7 @@ contract RegistryFactoryTest is Test {
 
     function test_RegistryInfo() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("My Service", 2, 0x01, 3600, false);
+        address reg = factory.createRegistry("My Service", 2, 0x01, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         (address creator, string memory name, uint32 maxWallets, uint8 mask, uint256 proofAge, uint256 createdAt, uint256 vKeyVer) =
             factory.registryInfo(reg);
@@ -104,7 +104,7 @@ contract RegistryFactoryTest is Test {
 
     function test_OwnerCanManageCA() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("Test", 1, 0, 3600, false);
+        address reg = factory.createRegistry("Test", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         IdentityRegistry registry = IdentityRegistry(reg);
 
@@ -117,7 +117,7 @@ contract RegistryFactoryTest is Test {
 
     function test_FactoryCannotManageRegistry() public {
         vm.prank(alice);
-        address reg = factory.createRegistry("Test", 1, 0, 3600, false);
+        address reg = factory.createRegistry("Test", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         IdentityRegistry registry = IdentityRegistry(reg);
 
@@ -136,20 +136,20 @@ contract RegistryFactoryTest is Test {
 
     function test_RevertZeroMaxWallets() public {
         vm.expectRevert(RegistryFactory.ZeroMaxWallets.selector);
-        factory.createRegistry("Test", 0, 0, 3600, false);
+        factory.createRegistry("Test", 0, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
     function test_RevertInvalidDisclosureMask() public {
         vm.expectRevert(RegistryFactory.InvalidDisclosureMask.selector);
-        factory.createRegistry("Bad", 1, 0x10, 3600, false);
+        factory.createRegistry("Bad", 1, 0x10, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
     function test_RegistriesAreIndependent() public {
         vm.prank(alice);
-        address regA = factory.createRegistry("Test", 1, 0, 3600, false);
+        address regA = factory.createRegistry("Test", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(bob);
-        address regB = factory.createRegistry("B", 3, 0x01, 3600, false);
+        address regB = factory.createRegistry("B", 3, 0x01, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         // Add CA to registry A only
         bytes32 caHash = bytes32(uint256(0xCAFE));
@@ -182,7 +182,7 @@ contract RegistryFactoryTest is Test {
     function test_UpgradedRegistryStillWorks() public {
         // Create a registry and configure it
         vm.prank(alice);
-        address reg = factory.createRegistry("Test", 1, 0, 3600, false);
+        address reg = factory.createRegistry("Test", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         IdentityRegistry registry = IdentityRegistry(reg);
         bytes32 caHash = bytes32(uint256(0xCAFE));
@@ -249,7 +249,7 @@ contract RegistryFactoryTest is Test {
     function test_NewRegistryUsesLatestVKey() public {
         // Create registry with initial VKey
         vm.prank(alice);
-        address reg1 = factory.createRegistry("V1", 1, 0, 3600, false);
+        address reg1 = factory.createRegistry("V1", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         // Update VKey
         bytes32 newVKey = bytes32(uint256(0x5678));
@@ -257,7 +257,7 @@ contract RegistryFactoryTest is Test {
 
         // Create registry with new VKey
         vm.prank(bob);
-        address reg2 = factory.createRegistry("V2", 1, 0, 3600, false);
+        address reg2 = factory.createRegistry("V2", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         // Factory-created registries don't store vkey locally (PROGRAM_V_KEY == 0).
         // They read the effective vkey from the factory at verification time.
@@ -279,7 +279,7 @@ contract RegistryFactoryTest is Test {
     function test_FreeModeNoFeeRequired() public {
         // Default factory has no fee — should work without msg.value
         vm.prank(alice);
-        address reg = factory.createRegistry("Free", 1, 0, 3600, false);
+        address reg = factory.createRegistry("Free", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         assertTrue(factory.isRegistry(reg));
     }
 
@@ -292,7 +292,7 @@ contract RegistryFactoryTest is Test {
 
         vm.deal(alice, 10 ether);
         vm.prank(alice);
-        address reg = feeFactory.createRegistry{value: 1 ether}("Paid", 1, 0, 3600, false);
+        address reg = feeFactory.createRegistry{value: 1 ether}("Paid", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         assertTrue(feeFactory.isRegistry(reg));
         assertEq(recipient.balance, 1 ether);
     }
@@ -306,7 +306,7 @@ contract RegistryFactoryTest is Test {
         vm.deal(alice, 10 ether);
         uint256 balanceBefore = alice.balance;
         vm.prank(alice);
-        feeFactory.createRegistry{value: 3 ether}("Paid", 1, 0, 3600, false);
+        feeFactory.createRegistry{value: 3 ether}("Paid", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         // Alice should get 2 ether refund (sent 3, fee is 1)
         assertEq(alice.balance, balanceBefore - 1 ether);
         assertEq(recipient.balance, 1 ether);
@@ -320,7 +320,7 @@ contract RegistryFactoryTest is Test {
         vm.deal(alice, 0.5 ether);
         vm.prank(alice);
         vm.expectRevert(RegistryFactory.InsufficientFee.selector);
-        feeFactory.createRegistry{value: 0.5 ether}("Cheap", 1, 0, 3600, false);
+        feeFactory.createRegistry{value: 0.5 ether}("Cheap", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
     function test_ERC20FeeCollection() public {
@@ -338,7 +338,7 @@ contract RegistryFactoryTest is Test {
         ton.approve(address(feeFactory), fee);
 
         vm.prank(alice);
-        address reg = feeFactory.createRegistry("TON Paid", 1, 0, 3600, false);
+        address reg = feeFactory.createRegistry("TON Paid", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         assertTrue(feeFactory.isRegistry(reg));
         assertEq(ton.balanceOf(recipient), fee);
         assertEq(ton.balanceOf(alice), 90 ether);
@@ -354,7 +354,7 @@ contract RegistryFactoryTest is Test {
         // No approve — should revert
         vm.prank(alice);
         vm.expectRevert();
-        feeFactory.createRegistry("No Approve", 1, 0, 3600, false);
+        feeFactory.createRegistry("No Approve", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
     function test_SetFeeConfig() public {
@@ -381,7 +381,7 @@ contract RegistryFactoryTest is Test {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(RegistryFactory.UnexpectedValue.selector);
-        factory.createRegistry{value: 0.1 ether}("Free", 1, 0, 3600, false);
+        factory.createRegistry{value: 0.1 ether}("Free", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
     // ============ Ownership Transfer Tests ============
@@ -459,6 +459,6 @@ contract RegistryFactoryTest is Test {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(RegistryFactory.UnexpectedValue.selector);
-        feeFactory.createRegistry{value: 0.1 ether}("Bad", 1, 0, 3600, false);
+        feeFactory.createRegistry{value: 0.1 ether}("Bad", 1, 0, 3600, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 }

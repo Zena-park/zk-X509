@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {IdentityRegistry} from "../src/IdentityRegistry.sol";
+import {IdentityRegistry, PublicValues} from "../src/IdentityRegistry.sol";
 import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -32,9 +32,38 @@ contract IdentityRegistryTest is Test {
     // Default: expires 1 year from now
     uint64 constant DEFAULT_NOT_AFTER = uint64(365 days);
 
+    function _buildPV(
+        bytes32 nullifier, bytes32 caHash, uint64 ts, address sender, uint32 idx,
+        uint64 notAfter, address target,
+        bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 cn,
+        bytes32 reqCountry, bytes32 reqOrg, bytes32 reqOrgUnit, bytes32 reqCN
+    ) internal view returns (bytes memory) {
+        PublicValues memory pv = PublicValues({
+            nullifier: nullifier,
+            caMerkleRoot: caHash,
+            proofTimestamp: ts,
+            registrant: sender,
+            walletIndex: idx,
+            notAfter: notAfter,
+            chainId: uint64(block.chainid),
+            registryAddress: target,
+            crlMerkleRoot: bytes32(0),
+            country: country,
+            org: org,
+            orgUnit: orgUnit,
+            commonName: cn,
+            requiredCountry: reqCountry,
+            requiredOrg: reqOrg,
+            requiredOrgUnit: reqOrgUnit,
+            requiredCommonName: reqCN
+        });
+        return abi.encode(pv);
+    }
+
     function _pv(bytes32 nullifier, bytes32 caHash, address sender) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, uint32(0),
-            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(registry), bytes32(0),
+        return _buildPV(nullifier, caHash, uint64(block.timestamp), sender, 0,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, address(registry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
             bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
@@ -43,8 +72,9 @@ contract IdentityRegistryTest is Test {
     }
 
     function _pvIdxFor(bytes32 nullifier, bytes32 caHash, address sender, uint32 idx, address target) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caHash, uint64(block.timestamp), sender, idx,
-            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), target, bytes32(0),
+        return _buildPV(nullifier, caHash, uint64(block.timestamp), sender, idx,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, target,
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
             bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
 
@@ -56,7 +86,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (verifier, vkey, maxWallets, mask, 3600, _owner, address(0), false)
+            (verifier, vkey, maxWallets, mask, 3600, _owner, address(0), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         return IdentityRegistry(address(proxy));
@@ -131,7 +161,10 @@ contract IdentityRegistryTest is Test {
     function test_RevertProofTooOld() public {
         vm.warp(1700000000);
         uint64 oldTimestamp = uint64(block.timestamp - 2 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+        bytes memory publicValues = _buildPV(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, 0,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, address(registry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -143,7 +176,10 @@ contract IdentityRegistryTest is Test {
 
     function test_RevertProofInFuture() public {
         uint64 futureTimestamp = uint64(block.timestamp + 1 hours);
-        bytes memory publicValues = abi.encode(NULLIFIER, CA_MERKLE_ROOT, futureTimestamp, alice, uint32(0), uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+        bytes memory publicValues = _buildPV(NULLIFIER, CA_MERKLE_ROOT, futureTimestamp, alice, 0,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, address(registry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -237,7 +273,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), false)
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry factoryRegistry = IdentityRegistry(address(proxy));
@@ -475,7 +511,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 0, 0, 3600, address(this), address(0), false)
+            (address(mockVerifier), PROGRAM_V_KEY, 0, 0, 3600, address(this), address(0), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.ZeroMaxWallets.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -486,7 +522,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(0xDEAD), PROGRAM_V_KEY, 1, 0, 3600, address(this), address(0), false)
+            (address(0xDEAD), PROGRAM_V_KEY, 1, 0, 3600, address(this), address(0), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.VerifierNotContract.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -496,7 +532,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0), false)
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.ZeroProgramVKey.selector));
         new ERC1967Proxy(address(impl), initData);
@@ -508,7 +544,10 @@ contract IdentityRegistryTest is Test {
         vm.warp(1700000000);
         // Cert expires in 1 year
         uint64 notAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+        bytes memory pv = _buildPV(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, 0,
+            notAfter, address(registry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -519,7 +558,10 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_NotVerifiedAfterExpiry() public {
         vm.warp(1700000000);
         uint64 notAfter = uint64(block.timestamp + 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+        bytes memory pv = _buildPV(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, 0,
+            notAfter, address(registry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -533,7 +575,10 @@ contract IdentityRegistryTest is Test {
     function test_CertExpiry_CanReRegisterAfterExpiry() public {
         vm.warp(1700000000);
         uint64 notAfter = uint64(block.timestamp + 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), notAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+        bytes memory pv = _buildPV(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, 0,
+            notAfter, address(registry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         registry.register(hex"1234", pv);
@@ -545,7 +590,10 @@ contract IdentityRegistryTest is Test {
         // Alice can register with a new cert (different nullifier)
         bytes32 nullifier2 = bytes32(uint256(0xFEED));
         uint64 newNotAfter = uint64(block.timestamp) + DEFAULT_NOT_AFTER;
-        bytes memory pv2 = abi.encode(nullifier2, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), newNotAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+        bytes memory pv2 = _buildPV(nullifier2, CA_MERKLE_ROOT, uint64(block.timestamp), alice, 0,
+            newNotAfter, address(registry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         registry.register(hex"1234", pv2);
@@ -556,7 +604,10 @@ contract IdentityRegistryTest is Test {
         vm.warp(1700000000);
         // Certificate expired 1 hour ago
         uint64 expiredNotAfter = uint64(block.timestamp - 1 hours);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, uint32(0), expiredNotAfter, uint64(block.chainid), address(registry), bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+        bytes memory pv = _buildPV(NULLIFIER, CA_MERKLE_ROOT, uint64(block.timestamp), alice, 0,
+            expiredNotAfter, address(registry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         vm.expectRevert(
@@ -576,7 +627,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0), false)
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry customReg = IdentityRegistry(address(proxy));
@@ -588,7 +639,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0), false)
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0, 5 minutes, address(this), address(0), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry shortAgeRegistry = IdentityRegistry(address(proxy));
@@ -596,8 +647,9 @@ contract IdentityRegistryTest is Test {
         vm.warp(1700000000);
         // Proof generated 10 minutes ago (exceeds 5 min maxProofAge)
         uint64 oldTimestamp = uint64(block.timestamp - 10 minutes);
-        bytes memory pv = abi.encode(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, uint32(0),
-            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), address(shortAgeRegistry), bytes32(0),
+        bytes memory pv = _buildPV(NULLIFIER, CA_MERKLE_ROOT, oldTimestamp, alice, 0,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, address(shortAgeRegistry),
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0),
             bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
@@ -899,9 +951,22 @@ contract IdentityRegistryTest is Test {
         bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 cn,
         address target
     ) internal view returns (bytes memory) {
-        return abi.encode(nullifier, caRoot, uint64(block.timestamp), sender, uint32(0),
-            uint64(block.timestamp) + DEFAULT_NOT_AFTER, uint64(block.chainid), target, bytes32(0),
-            country, org, orgUnit, cn);
+        return _buildPV(nullifier, caRoot, uint64(block.timestamp), sender, 0,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, target,
+            country, org, orgUnit, cn,
+            bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+    }
+
+    function _pvWithDisclosureAndConstraints(
+        bytes32 nullifier, bytes32 caRoot, address sender,
+        bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 cn,
+        bytes32 reqCountry, bytes32 reqOrg, bytes32 reqOrgUnit, bytes32 reqCN,
+        address target
+    ) internal view returns (bytes memory) {
+        return _buildPV(nullifier, caRoot, uint64(block.timestamp), sender, 0,
+            uint64(block.timestamp) + DEFAULT_NOT_AFTER, target,
+            country, org, orgUnit, cn,
+            reqCountry, reqOrg, reqOrgUnit, reqCN);
     }
 
     function test_DisclosureMask_RevertWhenRequiredFieldZero() public {
@@ -988,7 +1053,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, 3600, address(this), address(0), false)
+            (address(mockVerifier), PROGRAM_V_KEY, 1, 0x10, 3600, address(this), address(0), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         vm.expectRevert(
             abi.encodeWithSelector(IdentityRegistry.InvalidDisclosureMask.selector, uint8(0x10))
@@ -1002,14 +1067,15 @@ contract IdentityRegistryTest is Test {
         // Deploy with country disclosure required
         IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
         discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
-        // Set filter: only "KR" allowed
+        // Set constraint: only "KR" allowed
         bytes32 requiredKR = bytes32("KR");
-        discReg.setRequiredDisclosureValues(requiredKR, bytes32(0), bytes32(0), bytes32(0));
+        discReg.setRequiredFieldConstraints(requiredKR, bytes32(0), bytes32(0), bytes32(0));
 
-        // Try with "US" → should revert
+        // Proof was generated with requiredCountry="US" → mismatches registry's "KR"
         bytes32 countryUS = bytes32("US");
-        bytes memory pv = _pvWithDisclosure(
+        bytes memory pv = _pvWithDisclosureAndConstraints(
             NULLIFIER, CA_MERKLE_ROOT, alice,
+            countryUS, bytes32(0), bytes32(0), bytes32(0),
             countryUS, bytes32(0), bytes32(0), bytes32(0),
             address(discReg)
         );
@@ -1025,10 +1091,11 @@ contract IdentityRegistryTest is Test {
         discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
         bytes32 requiredKR = bytes32("KR");
         bytes32 requiredSamsung = bytes32("Samsung");
-        discReg.setRequiredDisclosureValues(requiredKR, requiredSamsung, bytes32(0), bytes32(0));
+        discReg.setRequiredFieldConstraints(requiredKR, requiredSamsung, bytes32(0), bytes32(0));
 
-        bytes memory pv = _pvWithDisclosure(
+        bytes memory pv = _pvWithDisclosureAndConstraints(
             NULLIFIER, CA_MERKLE_ROOT, alice,
+            requiredKR, requiredSamsung, bytes32(0), bytes32(0),
             requiredKR, requiredSamsung, bytes32(0), bytes32(0),
             address(discReg)
         );
@@ -1037,20 +1104,17 @@ contract IdentityRegistryTest is Test {
         assertTrue(discReg.isVerified(alice));
     }
 
-    function test_DisclosureFilter_RevertFilterWithoutDisclosure() public {
-        // Deploy with NO disclosure required (mask = 0)
-        // Trying to set a filter should revert
-        vm.expectRevert(
-            abi.encodeWithSelector(IdentityRegistry.FilterWithoutDisclosure.selector, uint8(0x01), uint8(0))
-        );
-        registry.setRequiredDisclosureValues(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
+    function test_DisclosureFilter_ConstraintWithoutDisclosureAllowed() public {
+        // Constraints no longer require disclosure mask bits (verified in-circuit)
+        registry.setRequiredFieldConstraints(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
+        assertEq(registry.requiredCountry(), bytes32("KR"));
     }
 
     function test_DisclosureFilter_ZeroFilterAcceptsAnything() public {
         // Deploy with country required but no filter value set
         IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
         discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
-        // No setRequiredDisclosureValues called — all zeros
+        // No setRequiredFieldConstraints called — all zeros
 
         bytes memory pv = _pvWithDisclosure(
             NULLIFIER, CA_MERKLE_ROOT, alice,
@@ -1066,15 +1130,15 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
         vm.prank(alice);
         vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
-        discReg.setRequiredDisclosureValues(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
+        discReg.setRequiredFieldConstraints(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
     }
 
     function test_DisclosureFilter_CanClearFilter() public {
         IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
         discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
-        discReg.setRequiredDisclosureValues(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
+        discReg.setRequiredFieldConstraints(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
         // Clear filter
-        discReg.setRequiredDisclosureValues(bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+        discReg.setRequiredFieldConstraints(bytes32(0), bytes32(0), bytes32(0), bytes32(0));
 
         // Now any country should work
         bytes memory pv = _pvWithDisclosure(
@@ -1114,7 +1178,7 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry impl = new IdentityRegistry();
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), false)
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry factoryRegistry = IdentityRegistry(address(proxy));
@@ -1161,7 +1225,7 @@ contract IdentityRegistryTest is Test {
             address(impl),
             abi.encodeCall(
                 IdentityRegistry.initialize,
-                (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0xFACE), false)
+                (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(0xFACE), false, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
             )
         );
     }
@@ -1196,7 +1260,7 @@ contract IdentityRegistryTest is Test {
         MockRegistryFactory mockFactory = new MockRegistryFactory(PROGRAM_V_KEY);
         bytes memory initData = abi.encodeCall(
             IdentityRegistry.initialize,
-            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), true)
+            (address(mockVerifier), bytes32(0), 1, 0, 3600, address(this), address(mockFactory), true, bytes32(0), bytes32(0), bytes32(0), bytes32(0))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         IdentityRegistry dpReg = IdentityRegistry(address(proxy));
