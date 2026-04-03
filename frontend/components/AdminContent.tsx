@@ -1968,9 +1968,9 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
                         role="switch"
                         aria-checked={svcMetadata.listed !== false}
                         aria-label="List on Explorer"
-                        className={`relative w-10 h-5 rounded-full transition-colors ${svcMetadata.listed !== false ? "bg-primary" : "bg-outline-variant/30"}`}
+                        className={`relative w-11 h-6 rounded-full transition-colors ${svcMetadata.listed !== false ? "bg-secondary" : "bg-outline-variant/40"}`}
                       >
-                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${svcMetadata.listed !== false ? "translate-x-5" : "translate-x-0.5"}`} />
+                        <span className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${svcMetadata.listed !== false ? "translate-x-6 bg-white" : "translate-x-1 bg-on-surface-variant/60"}`} />
                       </button>
                     </div>
 
