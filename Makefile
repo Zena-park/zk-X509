@@ -67,8 +67,7 @@ app:               ## Build macOS .app bundle with Docker-matched vkey
 
 desktop:           ## Build Tauri desktop app (DMG) with Docker-matched vkey
 	@test -f elf/zk-x509-program || (echo "ELF not found. Run 'make elf' first." && exit 1)
-	cd desktop && npm ci
-	PREBUILT_ELF=$$(pwd)/elf/zk-x509-program npx --prefix desktop tauri build
+	cd desktop && npm ci && PREBUILT_ELF=$$(cd .. && pwd)/elf/zk-x509-program npx tauri build
 	@echo ""
 	@echo "Desktop app built:"
 	@ls target/*/release/bundle/dmg/*.dmg 2>/dev/null || echo "  (DMG not found — check target/*/release/bundle/)"
