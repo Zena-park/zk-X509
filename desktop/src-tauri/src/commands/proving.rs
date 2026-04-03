@@ -200,11 +200,12 @@ pub async fn generate_proof(
             chain_id: params.chain_id,
         });
 
-        emit_progress(&app, "proving", "Generating ZK proof...");
-
         let client = ProverClient::from_env();
 
         if mode == "execute" {
+            emit_progress(&app, "proving",
+                "Generating ZK proof (~12M cycles). This may take 1-3 minutes depending on your system.");
+
             let execute_result = client
                 .execute(ZK_X509_ELF, stdin)
                 .run();
