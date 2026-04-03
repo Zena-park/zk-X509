@@ -93,6 +93,34 @@ fn resolve_ca(
     ))
 }
 
+/// Map SP1/circuit errors to user-friendly messages.
+fn map_proof_error(msg: &str) -> String {
+    if msg.contains("Country constraint failed") {
+        "Proof failed: Your certificate's country does not match the registry's required country.".into()
+    } else if msg.contains("Org constraint failed") {
+        "Proof failed: Your certificate's organization does not match the registry's required organization.".into()
+    } else if msg.contains("OrgUnit constraint failed") {
+        "Proof failed: Your certificate's organizational unit does not match the registry's requirement.".into()
+    } else if msg.contains("CommonName constraint failed") {
+        "Proof failed: Your certificate's common name does not match the registry's requirement.".into()
+    } else if msg.contains("KR entity filter") {
+        "Proof failed: This registry requires a Korean business certificate (sole proprietor or corporation).".into()
+    } else if msg.contains("wallet_index must be < max_wallets") {
+        "Proof failed: Wallet index exceeds the maximum allowed by this registry.".into()
+    } else if msg.contains("Certificate chain must not be empty") {
+        "Proof failed: No CA certificate chain provided.".into()
+    } else if msg.contains("Overrun") {
+        "Proof failed: The ZK circuit rejected your certificate. Possible causes:\n\
+         • Certificate country/org does not match registry constraints\n\
+         • Certificate is expired\n\
+         • CA is not in the registry's whitelist".into()
+    } else if msg.contains("artifact not found") || msg.contains("Artifact") {
+        "Proving failed: SP1 prover artifacts not available. Try using 'execute' mode instead of 'groth16'.".into()
+    } else {
+        format!("Proving failed: An unexpected error occurred: {}", msg)
+    }
+}
+
 #[tauri::command]
 pub async fn generate_proof(
     app: AppHandle,
@@ -179,36 +207,35 @@ pub async fn generate_proof(
         let client = ProverClient::from_env();
 
         if mode == "execute" {
-            let (output, _report) = client
+            let execute_result = client
                 .execute(ZK_X509_ELF, stdin)
-                .run()
-                .map_err(|e| {
-                    let msg = e.to_string();
-                    if msg.contains("Country constraint failed") {
-                        "Proof failed: Your certificate's country does not match the registry's required country.".to_string()
-                    } else if msg.contains("Org constraint failed") {
-                        "Proof failed: Your certificate's organization does not match the registry's required organization.".to_string()
-                    } else if msg.contains("OrgUnit constraint failed") {
-                        "Proof failed: Your certificate's organizational unit does not match the registry's requirement.".to_string()
-                    } else if msg.contains("CommonName constraint failed") {
-                        "Proof failed: Your certificate's common name does not match the registry's requirement.".to_string()
-                    } else if msg.contains("wallet_index must be < max_wallets") {
-                        "Proof failed: Wallet index exceeds the maximum allowed by this registry.".to_string()
-                    } else if msg.contains("Certificate chain must not be empty") {
-                        "Proof failed: No CA certificate chain provided.".to_string()
-                    } else if msg.contains("artifact not found") || msg.contains("Artifact") {
-                        "Proving failed: SP1 prover artifacts not available. Try using 'execute' mode instead of 'groth16'.".to_string()
-                    } else {
-                        format!("Proving failed: {}", msg)
-                    }
-                })?;
+                .run();
 
-            emit_progress(&app, "done", "Proof generated!");
-            Ok::<ProofResult, String>(ProofResult {
-                proof: "0x".to_string(),
-                public_values: format!("0x{}", hex::encode(output.as_slice())),
-                elapsed_ms: start.elapsed().as_millis() as u64,
-            })
+            let (output, _report) = match execute_result {
+                Ok(result) => result,
+                Err(e) => {
+                    let msg = format!("{:?}", e);
+                    return Err(map_proof_error(&msg));
+                }
+            };
+
+            // output.as_slice() can panic with "Overrun" if the circuit
+            // failed (e.g., assertion failure). Catch the panic gracefully.
+            let pv_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                output.as_slice().to_vec()
+            }));
+
+            match pv_result {
+                Ok(pv_bytes) => {
+                    emit_progress(&app, "done", "Proof generated!");
+                    Ok::<ProofResult, String>(ProofResult {
+                        proof: "0x".to_string(),
+                        public_values: format!("0x{}", hex::encode(&pv_bytes)),
+                        elapsed_ms: start.elapsed().as_millis() as u64,
+                    })
+                }
+                Err(_) => Err(map_proof_error("Overrun")),
+            }
         } else {
             let pk = client
                 .setup(ZK_X509_ELF)
