@@ -103,6 +103,8 @@ Services running:
 | `make status` | 서비스 상태 확인 |
 | `make logs` | 로그 확인 (`make logs s=prover`) |
 | `make elf` | Docker에서 ELF 추출 (로컬 vkey 일치용) |
+| `make app` | macOS .app 번들 빌드 (`dist/zk-X509.app`) |
+| `make run` | interactive 바이너리 직접 실행 (번들 없이) |
 | `make addresses` | 배포된 컨트랙트 주소 확인 |
 
 **데스크탑 앱 빌드 + 실행:**
@@ -126,12 +128,6 @@ make run
 > $env:PREBUILT_ELF = "$(Get-Location)\elf\zk-x509-program"
 > cargo build --release --bin interactive
 > ```
-
-| 명령어 | 설명 |
-|--------|------|
-| `make elf` | Docker에서 ELF 추출 (한 번만, vkey 일치용) |
-| `make app` | macOS .app 번들 빌드 (`dist/zk-X509.app`) |
-| `make run` | interactive 바이너리 직접 실행 (번들 없이) |
 
 **GitHub Actions 릴리즈 빌드:**
 
