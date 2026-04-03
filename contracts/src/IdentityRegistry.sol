@@ -142,7 +142,7 @@ contract IdentityRegistry is Initializable {
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
     event CaRootGracePeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
     event ProgramVKeyUpdated(bytes32 indexed newVKey);
-    event RequiredDisclosureValuesUpdated(bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName);
+    event RequiredFieldConstraintsUpdated(bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
 
@@ -498,7 +498,7 @@ contract IdentityRegistry is Initializable {
         requiredOrg = _org;
         requiredOrgUnit = _orgUnit;
         requiredCommonName = _cn;
-        emit RequiredDisclosureValuesUpdated(_country, _org, _orgUnit, _cn);
+        emit RequiredFieldConstraintsUpdated(_country, _org, _orgUnit, _cn);
     }
 
     /// @notice Update the CRL Merkle root. Set bytes32(0) to disable CRL checking.
