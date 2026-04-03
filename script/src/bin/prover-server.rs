@@ -161,6 +161,12 @@ impl AppState {
                 std::fs::create_dir_all(key_path.parent().unwrap()).ok();
                 std::fs::write(&key_path, hex::encode(key))
                     .expect("Failed to save ECIES key");
+                // Restrict file permissions (owner read/write only)
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600)).ok();
+                }
                 eprintln!("Generated new ECIES key: {}", key_path.display());
                 key
             }
@@ -358,7 +364,7 @@ async fn prove_handler(
         let sk = ecies::SecretKey::parse_slice(&state.ecies_secret_key)
             .map_err(|e| err(format!("ECIES key error: {}", e)))?;
         let plaintext = ecies::decrypt(&sk.serialize(), &ciphertext)
-            .map_err(|e| err(format!("ECIES decryption failed: {}", e)))?;
+            .map_err(|_| err("Encrypted payload could not be decrypted".into()))?;
         serde_json::from_slice(&plaintext)
             .map_err(|e| err(format!("Invalid decrypted JSON: {}", e)))?
     } else {
