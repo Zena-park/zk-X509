@@ -36,9 +36,9 @@ logs:              ## Tail logs (usage: make logs or make logs s=frontend)
 addresses:         ## Show deployed contract addresses
 	@cat .docker-addresses.json 2>/dev/null || echo "No addresses found. Run: make up"
 
-elf:               ## Extract pre-built ELF from Docker (for local vkey consistency)
+elf:               ## Extract pre-built ELF from Docker (use V=1 for build logs)
 	@mkdir -p elf
-	@docker build --target elf-builder -f script/Dockerfile -t prover-elf-builder . -q
+	@docker build --target elf-builder -f script/Dockerfile -t prover-elf-builder . $(if $(V),,--quiet)
 	@CID=$$(docker create prover-elf-builder) && \
 	 trap 'docker rm -f "$$CID" > /dev/null 2>&1 || true' EXIT && \
 	 docker cp $$CID:/build/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/zk-x509-program elf/zk-x509-program
