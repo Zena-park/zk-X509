@@ -136,10 +136,8 @@ impl AppState {
         // Load from PROVER_ECIES_KEY env var, or load/generate from file
         let sk_bytes: [u8; 32] = if let Ok(hex_key) = std::env::var("PROVER_ECIES_KEY") {
             let bytes = hex::decode(hex_key.strip_prefix("0x").unwrap_or(&hex_key))
-                .expect("PROVER_ECIES_KEY must be valid hex (32 bytes)");
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&bytes);
-            arr
+                .expect("PROVER_ECIES_KEY must be valid hex");
+            bytes.try_into().expect("PROVER_ECIES_KEY must be exactly 32 bytes")
         } else {
             // Persist key to file so it survives restarts
             let key_path = std::path::PathBuf::from(
@@ -151,9 +149,7 @@ impl AppState {
                     .expect("Failed to read ECIES key file");
                 let bytes = hex::decode(hex_key.trim())
                     .expect("Invalid hex in ECIES key file");
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&bytes);
-                arr
+                bytes.try_into().expect("ECIES key file must contain exactly 32 bytes")
             } else {
                 // Generate random key
                 let mut key = [0u8; 32];
@@ -172,7 +168,9 @@ impl AppState {
             }
         };
 
-        let pk = ecies::PublicKey::from_secret_key(&ecies::SecretKey::parse_slice(&sk_bytes).unwrap());
+        let sk = ecies::SecretKey::parse_slice(&sk_bytes)
+            .expect("ECIES key is not a valid secp256k1 secret key");
+        let pk = ecies::PublicKey::from_secret_key(&sk);
         let pk_bytes = pk.serialize().to_vec(); // 65 bytes uncompressed
 
         Self {
