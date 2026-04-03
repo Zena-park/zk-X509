@@ -23,9 +23,9 @@ export default function ConnectStep({ state, setField, dispatch }: Props) {
     try {
       const [result, dockerOk] = await Promise.all([
         invoke<SettingsResult>("configure_settings", {
-          rpc_url: state.rpcUrl,
-          registry_address: state.registryAddress,
-          chain_id: state.chainId,
+          rpcUrl: state.rpcUrl,
+          registryAddress: state.registryAddress,
+          chainId: state.chainId,
         }),
         invoke<boolean>("check_docker").catch(() => false),
       ]);

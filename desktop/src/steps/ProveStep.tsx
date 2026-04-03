@@ -106,28 +106,28 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
       if (p.proofMode === "delegated") {
         result = await invoke<ProofResult>("delegated_prove", {
           params: {
-            cert_index: p.selectedCertIndex,
-            rpc_url: p.rpcUrl,
-            registry_address: p.registryAddress,
-            chain_id: p.chainId,
+            certIndex: p.selectedCertIndex,
+            rpcUrl: p.rpcUrl,
+            registryAddress: p.registryAddress,
+            chainId: p.chainId,
             registrant: p.registrant,
-            wallet_index: p.walletIndex,
-            max_wallets: p.maxWallets,
-            disclosure_mask: p.disclosureMask,
-            prover_url: p.proverUrl,
+            walletIndex: p.walletIndex,
+            maxWallets: p.maxWallets,
+            disclosureMask: p.disclosureMask,
+            proverUrl: p.proverUrl,
           },
         });
       } else {
         result = await invoke<ProofResult>("generate_proof", {
           params: {
-            cert_index: p.selectedCertIndex,
-            rpc_url: p.rpcUrl,
-            registry_address: p.registryAddress,
-            chain_id: p.chainId,
+            certIndex: p.selectedCertIndex,
+            rpcUrl: p.rpcUrl,
+            registryAddress: p.registryAddress,
+            chainId: p.chainId,
             registrant: p.registrant,
-            wallet_index: p.walletIndex,
-            max_wallets: p.maxWallets,
-            disclosure_mask: p.disclosureMask,
+            walletIndex: p.walletIndex,
+            maxWallets: p.maxWallets,
+            disclosureMask: p.disclosureMask,
             mode: p.proofMode,
           },
         });

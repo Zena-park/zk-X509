@@ -12,6 +12,7 @@ use super::certificates::IdentityStore;
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProofParams {
     pub cert_index: usize,
     pub rpc_url: String,
@@ -45,6 +46,8 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str) {
             message: message.to_string(),
         },
     );
+    // Brief yield so the webview event loop can process the UI update
+    std::thread::sleep(std::time::Duration::from_millis(50));
 }
 
 /// Resolve CA public key for the user's cert via remote repo + local scan.
@@ -209,6 +212,7 @@ pub async fn generate_proof(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DelegatedParams {
     pub cert_index: usize,
     pub rpc_url: String,
