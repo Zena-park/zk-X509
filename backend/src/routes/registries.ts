@@ -6,6 +6,7 @@ import * as crypto from "crypto";
 
 const router = Router();
 const DB_PATH = path.join(__dirname, "../../db/registries.json");
+const VALID_DISCLOSURE_FIELDS = ["country", "org", "orgUnit", "commonName"];
 
 // --- DB helpers ---
 
@@ -30,6 +31,9 @@ interface RegistryEntry {
   website: string;
   tags: string[];
   listed?: boolean;
+  explorerEnabled?: boolean;
+  explorerVisibleFields?: string[];
+  explorerFilterableFields?: string[];
   announcements: Announcement[];
   caGuides: Record<string, CaGuide>;
 }
@@ -63,6 +67,9 @@ function makeDefaultEntry(): RegistryEntry {
     website: "",
     tags: [],
     listed: true,
+    explorerEnabled: false,
+    explorerVisibleFields: ["country", "org", "orgUnit", "commonName"],
+    explorerFilterableFields: ["country", "org"],
     announcements: [],
     caGuides: {},
   };
@@ -101,7 +108,8 @@ router.put("/:address", (req, res) => {
   }
 
   const entry = db[addr];
-  const { description, logoUrl, category, website, tags, listed } = req.body;
+  const { description, logoUrl, category, website, tags, listed,
+    explorerEnabled, explorerVisibleFields, explorerFilterableFields } = req.body;
   if (description !== undefined) entry.description = String(description);
   if (logoUrl !== undefined) entry.logoUrl = String(logoUrl);
   if (category !== undefined && ["dao", "defi", "corporate", "other"].includes(category)) {
@@ -112,9 +120,40 @@ router.put("/:address", (req, res) => {
     entry.tags = tags.filter((tag: unknown): tag is string => typeof tag === "string");
   }
   if (listed !== undefined) entry.listed = typeof listed === "string" ? listed.toLowerCase() === "true" : Boolean(listed);
+  if (explorerEnabled !== undefined) {
+    entry.explorerEnabled = typeof explorerEnabled === "string"
+      ? explorerEnabled.toLowerCase() === "true"
+      : Boolean(explorerEnabled);
+  }
+  if (Array.isArray(explorerVisibleFields)) {
+    entry.explorerVisibleFields = [...new Set(
+      explorerVisibleFields.filter((f: unknown): f is string =>
+        typeof f === "string" && VALID_DISCLOSURE_FIELDS.includes(f))
+    )];
+  }
+  if (Array.isArray(explorerFilterableFields)) {
+    const visible = new Set(entry.explorerVisibleFields ?? VALID_DISCLOSURE_FIELDS);
+    entry.explorerFilterableFields = [...new Set(
+      explorerFilterableFields.filter((f: unknown): f is string =>
+        typeof f === "string" && VALID_DISCLOSURE_FIELDS.includes(f) && visible.has(f))
+    )];
+  }
 
   writeDB(db);
   res.json(db[addr]);
+});
+
+// GET /api/registries/:address/explorer-settings
+router.get("/:address/explorer-settings", (req, res) => {
+  const db = readDB();
+  const addr = (req.params.address as string).toLowerCase();
+  const entry = db[addr];
+  const defaults = makeDefaultEntry();
+  res.json({
+    explorerEnabled: entry?.explorerEnabled ?? defaults.explorerEnabled,
+    explorerVisibleFields: entry?.explorerVisibleFields ?? defaults.explorerVisibleFields,
+    explorerFilterableFields: entry?.explorerFilterableFields ?? defaults.explorerFilterableFields,
+  });
 });
 
 // GET /api/registries/:address/announcements

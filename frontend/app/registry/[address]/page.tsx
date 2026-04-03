@@ -21,6 +21,7 @@ import {
   Tag,
   Info,
   AlertTriangle,
+  Search,
 } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
 import { truncateHex } from "@/lib/utils";
@@ -35,6 +36,7 @@ import {
 import { useWallet, getChainName } from "@/lib/wallet";
 import DashboardContent from "@/components/DashboardContent";
 import AdminContent from "@/components/AdminContent";
+import MembersContent from "@/components/MembersContent";
 import CopyButton from "@/components/CopyButton";
 
 /* ------------------------------------------------------------------ */
@@ -52,7 +54,7 @@ interface RegistryInfo {
   proverUrl: string;
 }
 
-type PageTab = "register" | "manage" | "info";
+type PageTab = "register" | "members" | "manage" | "info";
 
 const DISCLOSURE_LABELS = ["Country", "Organization", "Org Unit", "Common Name"] as const;
 
@@ -93,7 +95,9 @@ function RegistryDetailContent() {
 
   const validTabs: PageTab[] = ["register", "manage", "info"];
   const raw = searchParams.get("tab");
-  const activeTab: PageTab = raw && validTabs.includes(raw as PageTab) ? (raw as PageTab) : "register";
+  // "members" tab validity is checked after info loads (depends on minDisclosureMask)
+  const rawTab = raw as PageTab | null;
+  const activeTab: PageTab = rawTab && (validTabs.includes(rawTab) || rawTab === "members") ? rawTab : "register";
 
   const setActiveTab = useCallback(
     (tab: PageTab) => {
@@ -257,6 +261,7 @@ function RegistryDetailContent() {
   /* ---------- Tab definitions ---------- */
   const tabs: { key: PageTab; label: string; icon: React.ReactNode }[] = [
     { key: "register", label: "Register", icon: <Users className="w-4 h-4" /> },
+    ...(info.minDisclosureMask > 0 ? [{ key: "members" as PageTab, label: "Members", icon: <Search className="w-4 h-4" /> }] : []),
     { key: "manage", label: "Manage", icon: <Settings className="w-4 h-4" /> },
     { key: "info", label: "Info", icon: <Info className="w-4 h-4" /> },
   ];
@@ -348,6 +353,19 @@ function RegistryDetailContent() {
           </motion.div>
         )}
 
+        {/* ==================== MEMBERS TAB ==================== */}
+        {activeTab === "members" && info.minDisclosureMask > 0 && (
+          <motion.div
+            key="members"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2 }}
+          >
+            <MembersContent registryAddress={address} minDisclosureMask={info.minDisclosureMask} />
+          </motion.div>
+        )}
+
         {/* ==================== MANAGE TAB ==================== */}
         {activeTab === "manage" && (
           <motion.div
@@ -357,7 +375,7 @@ function RegistryDetailContent() {
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.2 }}
           >
-            <AdminContent serviceName={info.name} />
+            <AdminContent serviceName={info.name} minDisclosureMask={info.minDisclosureMask} />
           </motion.div>
         )}
 

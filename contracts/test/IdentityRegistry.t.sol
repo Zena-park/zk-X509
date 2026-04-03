@@ -928,12 +928,18 @@ contract IdentityRegistryTest is Test {
         IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
         discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
 
+        bytes32 countryKR = bytes32("KR");
+
         // Public values with country set (disclosed)
         bytes memory pv = _pvWithDisclosure(
             NULLIFIER, CA_MERKLE_ROOT, alice,
-            bytes32(uint256(0x1234)), bytes32(0), bytes32(0), bytes32(0),
+            countryKR, bytes32(0), bytes32(0), bytes32(0),
             address(discReg)
         );
+
+        // Verify disclosure data is emitted in event
+        vm.expectEmit(true, false, false, true);
+        emit IdentityRegistry.UserRegistered(alice, NULLIFIER, countryKR, bytes32(0), bytes32(0), bytes32(0));
 
         vm.prank(alice);
         discReg.register(hex"1234", pv);
