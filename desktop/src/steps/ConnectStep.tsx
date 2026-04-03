@@ -1,11 +1,9 @@
-import { useEffect, type Dispatch } from "react";
+import { type Dispatch } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Plug,
-  Container,
   ArrowRight,
   CheckCircle2,
-  XCircle,
   Loader2,
   AlertCircle,
   X,
@@ -19,24 +17,20 @@ type Props = {
 };
 
 export default function ConnectStep({ state, setField, dispatch }: Props) {
-  // Check Docker on mount
-  useEffect(() => {
-    invoke<boolean>("check_docker")
-      .then((ok) => setField("dockerAvailable", ok))
-      .catch(() => setField("dockerAvailable", false));
-  }, [setField]);
-
   const handleConnect = async () => {
     setField("loading", true);
     setField("error", null);
     try {
-      const result = await invoke<SettingsResult>("configure_settings", {
-        rpc_url: state.rpcUrl,
-        registry_address: state.registryAddress,
-        chain_id: state.chainId,
-      });
+      const [result, dockerOk] = await Promise.all([
+        invoke<SettingsResult>("configure_settings", {
+          rpc_url: state.rpcUrl,
+          registry_address: state.registryAddress,
+          chain_id: state.chainId,
+        }),
+        invoke<boolean>("check_docker").catch(() => false),
+      ]);
       setField("registryInfo", result);
-      // Auto-set proof mode if delegated is required
+      setField("dockerAvailable", dockerOk);
       if (result.delegated_required) {
         setField("proofMode", "delegated");
       }
@@ -111,23 +105,6 @@ export default function ConnectStep({ state, setField, dispatch }: Props) {
           />
         </div>
 
-        {/* Docker status */}
-        <div className="flex items-center gap-2 text-sm">
-          <Container className="w-4 h-4 text-on-surface-variant" />
-          <span className="text-on-surface-variant">Docker:</span>
-          {state.dockerAvailable === null ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-on-surface-variant" />
-          ) : state.dockerAvailable ? (
-            <span className="flex items-center gap-1 text-secondary">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Available
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-error">
-              <XCircle className="w-3.5 h-3.5" /> Not found
-            </span>
-          )}
-        </div>
-
         {/* Connect button */}
         <button
           onClick={handleConnect}
@@ -170,6 +147,10 @@ export default function ConnectStep({ state, setField, dispatch }: Props) {
                   </span>
                 </>
               )}
+              <span>Docker</span>
+              <span className={`font-mono ${state.dockerAvailable ? "text-secondary" : "text-on-surface-variant/50"}`}>
+                {state.dockerAvailable ? "Available" : "Not found"}
+              </span>
             </div>
           </div>
         )}

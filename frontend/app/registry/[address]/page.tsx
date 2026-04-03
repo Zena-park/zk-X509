@@ -430,21 +430,30 @@ function RegistryDetailContent() {
               </div>
             </div>
 
-            {/* Delegated Proving Banner */}
-            {info.delegatedProving && (
-              <div className="flex items-center gap-3 p-4 rounded-2xl border border-tertiary/20 bg-tertiary/5 mb-4">
-                <ShieldCheck className="w-5 h-5 text-tertiary shrink-0" />
-                <div>
-                  <p className="text-sm font-headline font-bold text-tertiary">
-                    Delegated Proving Required
-                  </p>
+            {/* Delegated Proving Status */}
+            <div className={`flex items-center gap-3 p-4 rounded-2xl border mb-4 ${
+              info.delegatedProving
+                ? "border-tertiary/20 bg-tertiary/5"
+                : "border-outline-variant/10 bg-surface-container-low/30"
+            }`}>
+              <ShieldCheck className={`w-5 h-5 shrink-0 ${info.delegatedProving ? "text-tertiary" : "text-on-surface-variant/40"}`} />
+              <div>
+                <p className={`text-sm font-headline font-bold ${info.delegatedProving ? "text-tertiary" : "text-on-surface-variant"}`}>
+                  Delegated Proving: {info.delegatedProving ? "Required" : "Not Required"}
+                </p>
+                {info.delegatedProving && (
                   <p className="text-xs text-on-surface-variant mt-0.5">
-                    This service requires proof generation via the operator&apos;s prover server for compliance.
+                    Proof generation via the operator&apos;s prover server.
                     {info.proverUrl ? ` Prover: ${info.proverUrl}` : " Prover not yet configured."}
                   </p>
-                </div>
+                )}
+                {!info.delegatedProving && (
+                  <p className="text-xs text-on-surface-variant/50 mt-0.5">
+                    Users generate proofs locally or via any prover.
+                  </p>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Field Constraints Banner */}
             {info.constraints.length > 0 && (
