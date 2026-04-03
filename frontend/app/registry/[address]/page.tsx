@@ -37,7 +37,6 @@ import {
 import { useWallet, getChainName } from "@/lib/wallet";
 import DashboardContent from "@/components/DashboardContent";
 import AdminContent from "@/components/AdminContent";
-import MembersContent from "@/components/MembersContent";
 import CopyButton from "@/components/CopyButton";
 
 /* ------------------------------------------------------------------ */
@@ -56,7 +55,7 @@ interface RegistryInfo {
   constraints: string[]; // e.g. ["C=KR", "O=Tokamak"]
 }
 
-type PageTab = "register" | "members" | "manage" | "info";
+type PageTab = "register" | "manage" | "info";
 
 const DISCLOSURE_LABELS = ["Country", "Organization", "Org Unit", "Common Name"] as const;
 
@@ -97,9 +96,8 @@ function RegistryDetailContent() {
 
   const validTabs: PageTab[] = ["register", "manage", "info"];
   const raw = searchParams.get("tab");
-  // "members" tab validity is checked after info loads (depends on minDisclosureMask)
   const rawTab = raw as PageTab | null;
-  const activeTab: PageTab = rawTab && (validTabs.includes(rawTab) || rawTab === "members") ? rawTab : "register";
+  const activeTab: PageTab = rawTab && validTabs.includes(rawTab) ? rawTab : "register";
 
   const setActiveTab = useCallback(
     (tab: PageTab) => {
@@ -273,7 +271,6 @@ function RegistryDetailContent() {
   /* ---------- Tab definitions ---------- */
   const tabs: { key: PageTab; label: string; icon: React.ReactNode }[] = [
     { key: "register", label: "Register", icon: <Users className="w-4 h-4" /> },
-    ...(info.minDisclosureMask > 0 ? [{ key: "members" as PageTab, label: "Members", icon: <Search className="w-4 h-4" /> }] : []),
     { key: "manage", label: "Manage", icon: <Settings className="w-4 h-4" /> },
     { key: "info", label: "Info", icon: <Info className="w-4 h-4" /> },
   ];
@@ -362,19 +359,6 @@ function RegistryDetailContent() {
             transition={{ duration: 0.2 }}
           >
             <DashboardContent />
-          </motion.div>
-        )}
-
-        {/* ==================== MEMBERS TAB ==================== */}
-        {activeTab === "members" && info.minDisclosureMask > 0 && (
-          <motion.div
-            key="members"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.2 }}
-          >
-            <MembersContent registryAddress={address} minDisclosureMask={info.minDisclosureMask} />
           </motion.div>
         )}
 

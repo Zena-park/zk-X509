@@ -242,10 +242,11 @@ export default function CreateRegistryPage() {
       setNewRegistryAddress(registryAddress);
       setTxStatus("success");
 
-      // Save use case tags to backend metadata
-      if (registryAddress && selectedUseCases.size > 0) {
+      // Save metadata to backend (listed + use case tags)
+      if (registryAddress) {
         try {
           await updateRegistryMetadata(registryAddress, {
+            listed: true,
             tags: Array.from(selectedUseCases),
           });
         } catch {
