@@ -83,7 +83,7 @@ export default function DashboardContent() {
   /* ---------- submit proof ---------- */
   const proofValid = isValidHex(proof);
   const pubValid = isValidHex(publicValues);
-  const canSubmit = proofValid && pubValid && txStatus !== "pending" && txStatus !== "confirming";
+  const canSubmit = proofValid && pubValid && txStatus !== "pending" && txStatus !== "confirming" && txStatus !== "success";
 
   async function handleSubmit() {
     if (!writeContract || !canSubmit) return;
@@ -434,14 +434,32 @@ export default function DashboardContent() {
                   {txStatus === "error" && "Transaction failed"}
                 </p>
                 {txHash && (
-                  <p className="font-mono text-xs mt-1 break-all opacity-80">
-                    TX: {txHash}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="font-mono text-xs break-all opacity-80">
+                      TX: {txHash}
+                    </p>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(txHash)}
+                      className="shrink-0 text-xs opacity-60 hover:opacity-100 transition"
+                      title="Copy TX hash"
+                    >
+                      📋
+                    </button>
+                  </div>
                 )}
                 {txError && (
                   <p className="text-xs mt-1 break-all opacity-80">{txError}</p>
                 )}
               </div>
+              {(txStatus === "success" || txStatus === "error") && (
+                <button
+                  onClick={() => { setTxStatus("idle"); setTxHash(null); setTxError(null); }}
+                  className="shrink-0 text-xs opacity-60 hover:opacity-100 transition ml-auto"
+                  title="Dismiss"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           )}
 
