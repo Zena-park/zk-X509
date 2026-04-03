@@ -286,12 +286,36 @@ pub async fn delegated_prove(
         use base64::Engine;
         let cert_chain_b64 = vec![base64::engine::general_purpose::STANDARD.encode(&ca_pub_key)];
 
-        let body = serde_json::json!({
+        emit_progress(&app, "encrypting", "Encrypting certificate data...");
+
+        // Fetch prover's ECIES public key
+        let pubkey_url = format!("{}/api/pubkey", params.prover_url.trim_end_matches('/'));
+        let pubkey_resp: serde_json::Value = ureq::get(&pubkey_url)
+            .call()
+            .map_err(|e| format!("Failed to fetch prover pubkey: {}", e))?
+            .body_mut()
+            .read_json()
+            .map_err(|e| format!("Invalid pubkey response: {}", e))?;
+        let pubkey_hex = pubkey_resp["pubkey"].as_str()
+            .ok_or("Missing pubkey in response")?;
+        let pubkey_bytes = hex::decode(pubkey_hex.strip_prefix("0x").unwrap_or(pubkey_hex))
+            .map_err(|e| format!("Invalid pubkey hex: {}", e))?;
+
+        // Build sensitive payload and encrypt with ECIES
+        let sensitive = serde_json::json!({
             "consent_signature": format!("0x{}", hex::encode(&consent_sig)),
             "cert_der": base64::engine::general_purpose::STANDARD.encode(&cert_der),
             "cert_chain": cert_chain_b64,
             "ownership_sig": format!("0x{}", hex::encode(&ownership_sig)),
             "nullifier_sig": format!("0x{}", hex::encode(&nullifier_sig)),
+        });
+        let plaintext = serde_json::to_vec(&sensitive)
+            .map_err(|e| format!("JSON serialize failed: {}", e))?;
+        let ciphertext = ecies::encrypt(&pubkey_bytes, &plaintext)
+            .map_err(|e| format!("ECIES encryption failed: {}", e))?;
+
+        let body = serde_json::json!({
+            "encrypted_payload": format!("0x{}", hex::encode(&ciphertext)),
             "registrant": params.registrant,
             "wallet_index": params.wallet_index,
             "max_wallets": params.max_wallets,
@@ -303,7 +327,7 @@ pub async fn delegated_prove(
             "timestamp": timestamp,
         });
 
-        emit_progress(&app, "proving", "Sending to prover server...");
+        emit_progress(&app, "proving", "Sending encrypted data to prover...");
         let url = format!("{}/api/prove", params.prover_url.trim_end_matches('/'));
 
         let resp: serde_json::Value = ureq::post(&url)
