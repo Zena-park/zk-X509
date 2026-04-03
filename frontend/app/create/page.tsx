@@ -131,6 +131,7 @@ export default function CreateRegistryPage() {
   const [maxWalletsOption, setMaxWalletsOption] = useState<"1" | "3" | "custom">("1");
   const [customMaxWallets, setCustomMaxWallets] = useState("");
   const [disclosureBits, setDisclosureBits] = useState<boolean[]>([false, false, false, false]);
+  const [requiredValues, setRequiredValues] = useState<string[]>(["", "", "", ""]);
   const [delegatedProving, setDelegatedProving] = useState(false);
   const [selectedUseCases, setSelectedUseCases] = useState<Set<string>>(new Set());
 
@@ -197,7 +198,14 @@ export default function CreateRegistryPage() {
       if (creationFee > BigInt(0) && isNativeFee) {
         txOptions.value = creationFee;
       }
-      const tx = await factory.createRegistry(name.trim(), maxWallets, minDisclosureMask, maxProofAge, delegatedProving, txOptions);
+      // Convert required field values to bytes32 (UTF-8 right-padded)
+      const toBytes32 = (s: string) => s ? ethers.encodeBytes32String(s.slice(0, 31)) : ethers.ZeroHash;
+      const reqCountry = toBytes32(requiredValues[0]);
+      const reqOrg = toBytes32(requiredValues[1]);
+      const reqOrgUnit = toBytes32(requiredValues[2]);
+      const reqCN = toBytes32(requiredValues[3]);
+
+      const tx = await factory.createRegistry(name.trim(), maxWallets, minDisclosureMask, maxProofAge, delegatedProving, reqCountry, reqOrg, reqOrgUnit, reqCN, txOptions);
 
       setTxStatus("confirming");
       setTxHash(tx.hash);
@@ -386,6 +394,39 @@ export default function CreateRegistryPage() {
           <p className="text-on-surface-variant text-xs px-1 font-mono">
             Disclosure mask: 0x{minDisclosureMask.toString(16).padStart(2, "0")} ({minDisclosureMask.toString(2).padStart(4, "0")}b)
           </p>
+        </div>
+
+        {/* Field Constraints */}
+        <div className="space-y-3">
+          <label className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest px-1">
+            Field Constraints (Optional)
+          </label>
+          <p className="text-on-surface-variant text-xs px-1">
+            Require exact field values. The ZK proof verifies the match inside the circuit — disclosure is not required.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {DISCLOSURE_FIELDS.map((field, i) => (
+              <div key={field.bit} className="flex flex-col gap-1">
+                <label className="text-xs text-on-surface-variant font-label px-1">{field.label} ({field.description})</label>
+                <input
+                  type="text"
+                  value={requiredValues[i]}
+                  onChange={(e) => {
+                    const next = [...requiredValues];
+                    next[i] = e.target.value;
+                    setRequiredValues(next);
+                  }}
+                  placeholder={field.bit === 0 ? 'e.g. "KR"' : ""}
+                  className="bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-2 text-sm font-mono text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:ring-1 focus:ring-tertiary/30 transition"
+                />
+              </div>
+            ))}
+          </div>
+          {requiredValues.some(v => v.length > 0) && (
+            <p className="text-tertiary/70 text-xs px-1">
+              Constraints are verified inside the ZK proof. Users don&apos;t need to disclose these fields publicly.
+            </p>
+          )}
         </div>
 
         {/* Delegated Proving */}
