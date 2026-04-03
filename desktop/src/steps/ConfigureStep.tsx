@@ -87,62 +87,63 @@ export default function ConfigureStep({ state, setField, dispatch }: Props) {
               )}
             </div>
 
-            {/* Wallet Index */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-label text-on-surface-variant tracking-wide uppercase">
-                Wallet Index{" "}
-                <span className="text-on-surface-variant/50 normal-case">
-                  (0–{maxWallets - 1})
-                </span>
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={maxWallets - 1}
-                value={state.walletIndex}
-                onChange={(e) =>
-                  setField("walletIndex", Number(e.target.value))
-                }
-                className="bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 font-mono text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition w-32"
-              />
-            </div>
+            {/* Wallet Index — only show if multi-wallet */}
+            {maxWallets > 1 && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-label text-on-surface-variant tracking-wide uppercase">
+                  Wallet Index{" "}
+                  <span className="text-on-surface-variant/50 normal-case">
+                    (0–{maxWallets - 1})
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={maxWallets - 1}
+                  value={state.walletIndex}
+                  onChange={(e) =>
+                    setField("walletIndex", Number(e.target.value))
+                  }
+                  className="bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 font-mono text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-tertiary/20 focus:border-tertiary/40 transition w-32"
+                />
+              </div>
+            )}
 
-            {/* Proof Mode */}
+            {/* Proof Mode — hide selection if delegated is forced */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-label text-on-surface-variant tracking-wide uppercase">
                 Proof Mode
               </label>
-              <div className="flex flex-col gap-1.5">
-                {PROOF_MODES.map((mode) => {
-                  const disabled =
-                    (delegatedRequired && mode.value !== "delegated") ||
-                    (!delegatedRequired &&
-                      mode.value === "delegated" &&
-                      !state.registryInfo?.prover_url);
-                  const selected = state.proofMode === mode.value;
-                  return (
-                    <button
-                      key={mode.value}
-                      onClick={() => !disabled && setField("proofMode", mode.value)}
-                      disabled={disabled}
-                      className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
-                        selected
-                          ? "border-tertiary/50 bg-tertiary/5 text-on-surface"
-                          : disabled
-                            ? "border-outline-variant/10 text-on-surface-variant/30 cursor-not-allowed"
+              {delegatedRequired ? (
+                <div className="px-3 py-2.5 rounded-lg border border-tertiary/50 bg-tertiary/5 text-sm">
+                  <div className="font-label font-semibold text-xs text-on-surface">Delegated</div>
+                  <div className="text-[11px] mt-0.5 text-tertiary/70">Required by this registry</div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {PROOF_MODES.filter(m => m.value !== "delegated" || state.registryInfo?.prover_url).map((mode) => {
+                    const selected = state.proofMode === mode.value;
+                    return (
+                      <button
+                        key={mode.value}
+                        onClick={() => setField("proofMode", mode.value)}
+                        className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
+                          selected
+                            ? "border-tertiary/50 bg-tertiary/5 text-on-surface"
                             : "border-outline-variant/15 text-on-surface-variant hover:border-outline-variant/30"
-                      }`}
-                    >
-                      <div className="font-label font-semibold text-xs">
-                        {mode.label}
-                      </div>
-                      <div className="text-[11px] mt-0.5 opacity-70">
-                        {mode.desc}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                        }`}
+                      >
+                        <div className="font-label font-semibold text-xs">
+                          {mode.label}
+                        </div>
+                        <div className="text-[11px] mt-0.5 opacity-70">
+                          {mode.desc}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               {delegatedRequired && (
                 <p className="text-xs text-tertiary/70">
                   This registry requires delegated proving.
