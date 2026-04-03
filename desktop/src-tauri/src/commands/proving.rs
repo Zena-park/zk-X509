@@ -46,6 +46,8 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str) {
             message: message.to_string(),
         },
     );
+    // Brief yield so the webview event loop can process the UI update
+    std::thread::sleep(std::time::Duration::from_millis(50));
 }
 
 /// Resolve CA public key for the user's cert via remote repo + local scan.
