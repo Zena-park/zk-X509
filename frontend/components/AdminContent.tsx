@@ -813,7 +813,7 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
             description: meta.description || "",
             category: meta.category || "other",
             website: meta.website || "",
-            listed: meta.listed !== false,
+            listed: meta.listed === true,
           });
         }
         setSvcAnnouncements(anncs);
@@ -1957,20 +1957,20 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
                       <div>
                         <p className="text-sm font-label text-primary">List on Explorer</p>
                         <p className="text-[10px] text-on-surface-variant">
-                          {svcMetadata.listed !== false
+                          {svcMetadata.listed === true
                             ? "This registry is visible on the public dashboard"
                             : "This registry is hidden from the public dashboard"}
                         </p>
                       </div>
                       <button
-                        onClick={() => setSvcMetadata((p) => ({ ...p, listed: !(p.listed ?? true) }))}
+                        onClick={() => setSvcMetadata((p) => ({ ...p, listed: !p.listed }))}
                         disabled={disabled}
                         role="switch"
-                        aria-checked={svcMetadata.listed !== false}
+                        aria-checked={svcMetadata.listed === true}
                         aria-label="List on Explorer"
-                        className={`relative w-11 h-6 rounded-full transition-colors ${svcMetadata.listed !== false ? "bg-secondary" : "bg-outline-variant/40"}`}
+                        className={`relative w-11 h-6 rounded-full transition-colors ${svcMetadata.listed === true ? "bg-secondary" : "bg-outline-variant/40"}`}
                       >
-                        <span className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${svcMetadata.listed !== false ? "translate-x-6 bg-white" : "translate-x-1 bg-on-surface-variant/60"}`} />
+                        <span className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${svcMetadata.listed === true ? "translate-x-6 bg-white" : "translate-x-1 bg-on-surface-variant/60"}`} />
                       </button>
                     </div>
 
