@@ -298,6 +298,13 @@ fn verify_consent(
 }
 
 /// Log compliance record (consent + identity mapping).
+///
+/// NOTE: This default implementation logs only the consent signature and
+/// certificate subject (not the full certificate). Service operators subject
+/// to KYC/AML regulations may need to extend this to store additional data
+/// (e.g., full certificate DER, disclosure fields, proof timestamps) per
+/// their jurisdiction's data retention requirements. The decrypted sensitive
+/// payload is available at the call site for this purpose.
 fn log_compliance(
     registrant: &str,
     cert_subject: &str,
