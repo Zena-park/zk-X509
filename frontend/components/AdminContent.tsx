@@ -490,7 +490,6 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
           readContract.proverUrl(),
         ]);
         setDpRequired(required);
-        setDpOrigRequired(required);
         setDpProverUrl(url);
         setDpProverUrlInput(url);
       } catch {
