@@ -103,11 +103,19 @@ contract IdentityRegistry is Initializable {
     /// @notice Delegated prover server URL. Empty = not yet configured.
     string public proverUrl;
 
+    /// @notice Required disclosure filter values. bytes32(0) = no filter (any value accepted).
+    /// Non-zero value requires exact match in proof. UTF-8 right-padded to bytes32.
+    bytes32 public requiredCountry;
+    bytes32 public requiredOrg;
+    bytes32 public requiredOrgUnit;
+    bytes32 public requiredCommonName;
+
     /// @dev Reserved storage gap for future upgradeable state variables.
-    // factory (address) + delegatedProvingRequired (bool) pack into 1 slot
+    // factory (address) + delegatedProvingRequired (bool) = 1 slot
     // proverUrl (string) = 1 slot
-    // Total new slots: 2, so gap = 50 - 2 = 48
-    uint256[48] private __gap;
+    // 4 required disclosure filters = 4 slots
+    // Total new slots: 6, so gap = 50 - 6 = 44
+    uint256[44] private __gap;
 
     // ============ Events ============
 
@@ -128,6 +136,7 @@ contract IdentityRegistry is Initializable {
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
     event CaRootGracePeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
     event ProgramVKeyUpdated(bytes32 indexed newVKey);
+    event RequiredDisclosureValuesUpdated(bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
 
@@ -163,6 +172,11 @@ contract IdentityRegistry is Initializable {
     error InsufficientDisclosure(uint8 proofMask, uint8 requiredMask);
     error InvalidDisclosureMask(uint8 mask);
     error VKeyManagedByFactory();
+    error CountryMismatch(bytes32 proof, bytes32 required);
+    error OrgMismatch(bytes32 proof, bytes32 required);
+    error OrgUnitMismatch(bytes32 proof, bytes32 required);
+    error CommonNameMismatch(bytes32 proof, bytes32 required);
+    error FilterWithoutDisclosure(uint8 filterBit, uint8 disclosureMask);
     error FactoryNotContract();
 
     // ============ Modifiers ============
@@ -276,6 +290,20 @@ contract IdentityRegistry is Initializable {
             if ((actualMask & MIN_DISCLOSURE_MASK) != MIN_DISCLOSURE_MASK) {
                 revert InsufficientDisclosure(actualMask, MIN_DISCLOSURE_MASK);
             }
+        }
+
+        // Check required disclosure filter values (exact match)
+        if (requiredCountry != bytes32(0) && pv.country != requiredCountry) {
+            revert CountryMismatch(pv.country, requiredCountry);
+        }
+        if (requiredOrg != bytes32(0) && pv.org != requiredOrg) {
+            revert OrgMismatch(pv.org, requiredOrg);
+        }
+        if (requiredOrgUnit != bytes32(0) && pv.orgUnit != requiredOrgUnit) {
+            revert OrgUnitMismatch(pv.orgUnit, requiredOrgUnit);
+        }
+        if (requiredCommonName != bytes32(0) && pv.commonName != requiredCommonName) {
+            revert CommonNameMismatch(pv.commonName, requiredCommonName);
         }
 
         nullifier = pv.nullifier;
@@ -445,6 +473,22 @@ contract IdentityRegistry is Initializable {
         delegatedProvingRequired = _required;
         proverUrl = _proverUrl;
         emit DelegatedProvingConfigUpdated(_required, _proverUrl);
+    }
+
+    /// @notice Set required disclosure filter values. bytes32(0) = no filter.
+    /// @dev Each non-zero filter requires the corresponding bit in MIN_DISCLOSURE_MASK to be set.
+    function setRequiredDisclosureValues(
+        bytes32 _country, bytes32 _org, bytes32 _orgUnit, bytes32 _cn
+    ) external onlyOwner {
+        if (_country != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x01) == 0) revert FilterWithoutDisclosure(0x01, MIN_DISCLOSURE_MASK);
+        if (_org != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x02) == 0) revert FilterWithoutDisclosure(0x02, MIN_DISCLOSURE_MASK);
+        if (_orgUnit != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x04) == 0) revert FilterWithoutDisclosure(0x04, MIN_DISCLOSURE_MASK);
+        if (_cn != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x08) == 0) revert FilterWithoutDisclosure(0x08, MIN_DISCLOSURE_MASK);
+        requiredCountry = _country;
+        requiredOrg = _org;
+        requiredOrgUnit = _orgUnit;
+        requiredCommonName = _cn;
+        emit RequiredDisclosureValuesUpdated(_country, _org, _orgUnit, _cn);
     }
 
     /// @notice Update the CRL Merkle root. Set bytes32(0) to disable CRL checking.

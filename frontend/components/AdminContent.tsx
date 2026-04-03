@@ -27,7 +27,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { ethers } from "ethers";
 import { useWallet } from "@/lib/wallet";
-import { truncateHex } from "@/lib/utils";
+import { truncateHex, bytes32ToString, stringToBytes32 } from "@/lib/utils";
 import {
   getRegistryMetadata,
   updateRegistryMetadata,
@@ -425,6 +425,13 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
   const [explorerSaving, setExplorerSaving] = useState(false);
   const [explorerMsg, setExplorerMsg] = useState<string | null>(null);
 
+  // Disclosure filter values
+  const [filterCountry, setFilterCountry] = useState("");
+  const [filterOrg, setFilterOrg] = useState("");
+  const [filterOrgUnit, setFilterOrgUnit] = useState("");
+  const [filterCN, setFilterCN] = useState("");
+  const [filterTx, setFilterTx] = useState<TxStatus>(IDLE);
+
   // tx statuses
   const [crlRootTx, setCrlRootTx] = useState<TxStatus>(IDLE);
   const [proofAgeTx, setProofAgeTx] = useState<TxStatus>(IDLE);
@@ -498,6 +505,27 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
       }
     })();
   }, [readContract]);
+
+  /* ---------- fetch disclosure filter values ---------- */
+  useEffect(() => {
+    if (!readContract || minDisclosureMask === 0) return;
+    (async () => {
+      try {
+        const [c, o, ou, cn] = await Promise.all([
+          readContract.requiredCountry(),
+          readContract.requiredOrg(),
+          readContract.requiredOrgUnit(),
+          readContract.requiredCommonName(),
+        ]);
+        setFilterCountry(bytes32ToString(c));
+        setFilterOrg(bytes32ToString(o));
+        setFilterOrgUnit(bytes32ToString(ou));
+        setFilterCN(bytes32ToString(cn));
+      } catch {
+        // fields may not exist on older contracts
+      }
+    })();
+  }, [readContract, minDisclosureMask]);
 
   /* ---------- search handler ---------- */
   const handleSearch = useCallback(async () => {
@@ -1682,6 +1710,72 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
+              {/* Disclosure Filters */}
+              {minDisclosureMask > 0 && (
+                <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                  <div className="flex items-center gap-3 mb-6">
+                    <Shield className="text-primary w-5 h-5" />
+                    <h2 className="text-xl font-headline font-bold text-primary">
+                      Disclosure Filters
+                    </h2>
+                  </div>
+                  <p className="text-xs text-on-surface-variant mb-4">
+                    Restrict registration to specific disclosure values. Empty = accept any value.
+                  </p>
+                  <div className="space-y-3">
+                    {([
+                      { bit: 0, label: "Country", value: filterCountry, set: setFilterCountry, placeholder: "e.g. KR" },
+                      { bit: 1, label: "Organization", value: filterOrg, set: setFilterOrg, placeholder: "e.g. Samsung" },
+                      { bit: 2, label: "Org Unit", value: filterOrgUnit, set: setFilterOrgUnit, placeholder: "e.g. Engineering" },
+                      { bit: 3, label: "Common Name", value: filterCN, set: setFilterCN, placeholder: "e.g. Hong Gildong" },
+                    ] as const).map(({ bit, label, value, set, placeholder }) => {
+                      const enabled = Boolean(minDisclosureMask & (1 << bit));
+                      return (
+                        <div key={bit} className={!enabled ? "opacity-30" : ""}>
+                          <label className="text-xs font-label text-on-surface-variant mb-1 block">
+                            Required {label}
+                          </label>
+                          <input
+                            className="w-full bg-surface-highest border-none rounded-xl px-4 py-3 text-sm outline-none text-primary placeholder:text-on-surface-variant/30 disabled:opacity-50"
+                            placeholder={placeholder}
+                            value={value}
+                            onChange={(e) => set(e.target.value)}
+                            disabled={disabled || !enabled}
+                          />
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-center gap-3 pt-2">
+                      <button
+                        disabled={disabled || isBusy(filterTx)}
+                        className="bg-primary text-background px-6 py-2 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-2"
+                        onClick={async () => {
+                          if (!writeContract) return;
+                          setFilterTx({ kind: "pending" });
+                          try {
+                            const tx = await writeContract.setRequiredDisclosureValues(
+                              stringToBytes32(filterCountry),
+                              stringToBytes32(filterOrg),
+                              stringToBytes32(filterOrgUnit),
+                              stringToBytes32(filterCN),
+                            );
+                            setFilterTx({ kind: "confirming", hash: tx.hash });
+                            await tx.wait();
+                            setFilterTx({ kind: "success", hash: tx.hash });
+                          } catch (e: any) {
+                            setFilterTx({ kind: "error", message: e?.message?.slice(0, 100) || "Failed" });
+                          }
+                        }}
+                      >
+                        {isBusy(filterTx) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        {isBusy(filterTx) ? "Processing..." : "Save Filters"}
+                      </button>
+                      <TxBadge status={filterTx} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Revoke Identity */}
               <div className="bg-surface p-8 rounded-3xl border border-error/10 bg-gradient-to-b from-error/5 to-transparent">
                 <div className="flex items-center gap-3 mb-6">

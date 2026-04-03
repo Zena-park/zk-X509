@@ -358,6 +358,48 @@ export const IDENTITY_REGISTRY_ABI = [
     type: "function",
   },
 
+  // ============ Disclosure Filters ============
+  {
+    inputs: [],
+    name: "requiredCountry",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "requiredOrg",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "requiredOrgUnit",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "requiredCommonName",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "_country", type: "bytes32" },
+      { name: "_org", type: "bytes32" },
+      { name: "_orgUnit", type: "bytes32" },
+      { name: "_cn", type: "bytes32" },
+    ],
+    name: "setRequiredDisclosureValues",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+
   // ============ Delegated Proving ============
   {
     inputs: [],

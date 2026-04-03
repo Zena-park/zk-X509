@@ -35,6 +35,16 @@ export function bytes32ToString(hex: string): string {
   return new TextDecoder().decode(new Uint8Array(bytes));
 }
 
+/** Encode a UTF-8 string to a bytes32 hex string, right-padded with zeros. */
+export function stringToBytes32(str: string): string {
+  if (!str) return "0x" + "0".repeat(64);
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(str);
+  const padded = new Uint8Array(32);
+  padded.set(bytes.slice(0, 32));
+  return "0x" + Array.from(padded).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** Known contract error names/selectors → human-readable messages. */
 const ERROR_MESSAGES: Array<{ match: string[]; message: string }> = [
   { match: ["AlreadyRegistered", "0x77caf672"], message: "This certificate is already registered to another wallet. Use Re-Register to transfer it to your current wallet." },
@@ -49,6 +59,10 @@ const ERROR_MESSAGES: Array<{ match: string[]; message: string }> = [
   { match: ["ChainIdMismatch", "0x7373908b"], message: "Wrong network. The proof was generated for a different chain. Check your Chain ID setting." },
   { match: ["RegistryAddressMismatch"], message: "Wrong registry. The proof was generated for a different service address." },
   { match: ["InsufficientDisclosure", "0x7cb33563"], message: "The proof does not disclose enough identity fields required by this service." },
+  { match: ["CountryMismatch"], message: "Your certificate's country does not match the required value for this service." },
+  { match: ["OrgMismatch"], message: "Your certificate's organization does not match the required value for this service." },
+  { match: ["OrgUnitMismatch"], message: "Your certificate's organizational unit does not match the required value for this service." },
+  { match: ["CommonNameMismatch"], message: "Your certificate's common name does not match the required value for this service." },
   { match: ["NullifierNotRegistered", "0x0c3fc772"], message: "This certificate is not registered. Use Register instead of Re-Register." },
   { match: ["WalletIndexOutOfRange"], message: "The wallet index exceeds the maximum allowed per certificate." },
   { match: ["InvalidCrlMerkleRoot"], message: "The CRL root in the proof does not match. Your certificate may be on a revocation list." },

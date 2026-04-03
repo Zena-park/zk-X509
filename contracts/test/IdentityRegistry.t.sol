@@ -996,6 +996,99 @@ contract IdentityRegistryTest is Test {
         new ERC1967Proxy(address(impl), initData);
     }
 
+    // ============ Disclosure Filter tests ============
+
+    function test_DisclosureFilter_RevertCountryMismatch() public {
+        // Deploy with country disclosure required
+        IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
+        discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
+        // Set filter: only "KR" allowed
+        bytes32 requiredKR = bytes32("KR");
+        discReg.setRequiredDisclosureValues(requiredKR, bytes32(0), bytes32(0), bytes32(0));
+
+        // Try with "US" → should revert
+        bytes32 countryUS = bytes32("US");
+        bytes memory pv = _pvWithDisclosure(
+            NULLIFIER, CA_MERKLE_ROOT, alice,
+            countryUS, bytes32(0), bytes32(0), bytes32(0),
+            address(discReg)
+        );
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.CountryMismatch.selector, countryUS, requiredKR)
+        );
+        discReg.register(hex"1234", pv);
+    }
+
+    function test_DisclosureFilter_SucceedsWhenMatch() public {
+        IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x03, address(this));
+        discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
+        bytes32 requiredKR = bytes32("KR");
+        bytes32 requiredSamsung = bytes32("Samsung");
+        discReg.setRequiredDisclosureValues(requiredKR, requiredSamsung, bytes32(0), bytes32(0));
+
+        bytes memory pv = _pvWithDisclosure(
+            NULLIFIER, CA_MERKLE_ROOT, alice,
+            requiredKR, requiredSamsung, bytes32(0), bytes32(0),
+            address(discReg)
+        );
+        vm.prank(alice);
+        discReg.register(hex"1234", pv);
+        assertTrue(discReg.isVerified(alice));
+    }
+
+    function test_DisclosureFilter_RevertFilterWithoutDisclosure() public {
+        // Deploy with NO disclosure required (mask = 0)
+        // Trying to set a filter should revert
+        vm.expectRevert(
+            abi.encodeWithSelector(IdentityRegistry.FilterWithoutDisclosure.selector, uint8(0x01), uint8(0))
+        );
+        registry.setRequiredDisclosureValues(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
+    }
+
+    function test_DisclosureFilter_ZeroFilterAcceptsAnything() public {
+        // Deploy with country required but no filter value set
+        IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
+        discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
+        // No setRequiredDisclosureValues called — all zeros
+
+        bytes memory pv = _pvWithDisclosure(
+            NULLIFIER, CA_MERKLE_ROOT, alice,
+            bytes32("JP"), bytes32(0), bytes32(0), bytes32(0),
+            address(discReg)
+        );
+        vm.prank(alice);
+        discReg.register(hex"1234", pv);
+        assertTrue(discReg.isVerified(alice));
+    }
+
+    function test_DisclosureFilter_OnlyOwnerCanSet() public {
+        IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
+        vm.prank(alice);
+        vm.expectRevert(IdentityRegistry.OnlyOwner.selector);
+        discReg.setRequiredDisclosureValues(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
+    }
+
+    function test_DisclosureFilter_CanClearFilter() public {
+        IdentityRegistry discReg = _deployRegistry(address(mockVerifier), PROGRAM_V_KEY, 1, 0x01, address(this));
+        discReg.updateCaMerkleRoot(CA_MERKLE_ROOT);
+        discReg.setRequiredDisclosureValues(bytes32("KR"), bytes32(0), bytes32(0), bytes32(0));
+        // Clear filter
+        discReg.setRequiredDisclosureValues(bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+
+        // Now any country should work
+        bytes memory pv = _pvWithDisclosure(
+            NULLIFIER, CA_MERKLE_ROOT, alice,
+            bytes32("US"), bytes32(0), bytes32(0), bytes32(0),
+            address(discReg)
+        );
+        vm.prank(alice);
+        discReg.register(hex"1234", pv);
+        assertTrue(discReg.isVerified(alice));
+    }
+
+    // ============ Grace Period tests ============
+
     function test_GracePeriod_SameRootDoesNotResetGrace() public {
         bytes32 oldRoot = CA_MERKLE_ROOT;
         bytes32 newRoot = bytes32(uint256(0xBEEF));
