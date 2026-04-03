@@ -286,24 +286,68 @@ pub async fn delegated_prove(
         use base64::Engine;
         let cert_chain_b64 = vec![base64::engine::general_purpose::STANDARD.encode(&ca_pub_key)];
 
-        let body = serde_json::json!({
-            "consent_signature": format!("0x{}", hex::encode(&consent_sig)),
-            "cert_der": base64::engine::general_purpose::STANDARD.encode(&cert_der),
-            "cert_chain": cert_chain_b64,
-            "ownership_sig": format!("0x{}", hex::encode(&ownership_sig)),
-            "nullifier_sig": format!("0x{}", hex::encode(&nullifier_sig)),
-            "registrant": params.registrant,
-            "wallet_index": params.wallet_index,
-            "max_wallets": params.max_wallets,
-            "disclosure_mask": params.disclosure_mask,
-            "chain_id": params.chain_id,
-            "registry_address": params.registry_address,
-            "ca_merkle_root": format!("0x{}", hex::encode(ca_merkle_root)),
-            "ca_merkle_proof": ca_merkle_proof.iter().map(|h| format!("0x{}", hex::encode(h))).collect::<Vec<_>>(),
-            "timestamp": timestamp,
-        });
+        // Try ECIES encryption (fallback to plaintext for older prover servers)
+        let pubkey_url = format!("{}/api/pubkey", params.prover_url.trim_end_matches('/'));
+        let pubkey_bytes: Option<Vec<u8>> = ureq::get(&pubkey_url)
+            .call()
+            .ok()
+            .and_then(|mut r| r.body_mut().read_json::<serde_json::Value>().ok())
+            .and_then(|v| v["pubkey"].as_str().map(|s| s.to_string()))
+            .and_then(|hex| hex::decode(hex.strip_prefix("0x").unwrap_or(&hex)).ok())
+            .filter(|bytes| bytes.len() == 65 && bytes[0] == 0x04);
 
-        emit_progress(&app, "proving", "Sending to prover server...");
+        let consent_hex = format!("0x{}", hex::encode(&consent_sig));
+        let cert_der_b64 = base64::engine::general_purpose::STANDARD.encode(&cert_der);
+        let ownership_hex = format!("0x{}", hex::encode(&ownership_sig));
+        let nullifier_hex = format!("0x{}", hex::encode(&nullifier_sig));
+
+        let body = if let Some(pk) = pubkey_bytes {
+            emit_progress(&app, "encrypting", "Encrypting certificate data...");
+            let sensitive = serde_json::json!({
+                "consent_signature": consent_hex,
+                "cert_der": cert_der_b64,
+                "cert_chain": cert_chain_b64,
+                "ownership_sig": ownership_hex,
+                "nullifier_sig": nullifier_hex,
+            });
+            let plaintext = serde_json::to_vec(&sensitive)
+                .map_err(|e| format!("JSON serialize failed: {}", e))?;
+            let ciphertext = ecies::encrypt(&pk, &plaintext)
+                .map_err(|e| format!("ECIES encryption failed: {}", e))?;
+            serde_json::json!({
+                "encrypted_payload": format!("0x{}", hex::encode(&ciphertext)),
+                "registrant": params.registrant,
+                "wallet_index": params.wallet_index,
+                "max_wallets": params.max_wallets,
+                "disclosure_mask": params.disclosure_mask,
+                "chain_id": params.chain_id,
+                "registry_address": params.registry_address,
+                "ca_merkle_root": format!("0x{}", hex::encode(ca_merkle_root)),
+                "ca_merkle_proof": ca_merkle_proof.iter().map(|h| format!("0x{}", hex::encode(h))).collect::<Vec<_>>(),
+                "timestamp": timestamp,
+            })
+        } else {
+            // Fallback: plaintext mode for older prover servers without /api/pubkey
+            emit_progress(&app, "sending", "Sending to prover server...");
+            serde_json::json!({
+                "consent_signature": consent_hex,
+                "cert_der": cert_der_b64,
+                "cert_chain": cert_chain_b64,
+                "ownership_sig": ownership_hex,
+                "nullifier_sig": nullifier_hex,
+                "registrant": params.registrant,
+                "wallet_index": params.wallet_index,
+                "max_wallets": params.max_wallets,
+                "disclosure_mask": params.disclosure_mask,
+                "chain_id": params.chain_id,
+                "registry_address": params.registry_address,
+                "ca_merkle_root": format!("0x{}", hex::encode(ca_merkle_root)),
+                "ca_merkle_proof": ca_merkle_proof.iter().map(|h| format!("0x{}", hex::encode(h))).collect::<Vec<_>>(),
+                "timestamp": timestamp,
+            })
+        };
+
+        emit_progress(&app, "proving", "Waiting for proof generation...");
         let url = format!("{}/api/prove", params.prover_url.trim_end_matches('/'));
 
         let resp: serde_json::Value = ureq::post(&url)

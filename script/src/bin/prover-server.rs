@@ -18,7 +18,7 @@
 //!   GET  /api/health - Server status (SP1 version, Docker availability)
 
 use axum::{
-    extract::Json,
+    extract::{Json, State},
     http::StatusCode,
     routing::{get, post},
     Router,
@@ -29,6 +29,7 @@ use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
     include_elf, Elf, SP1ProofWithPublicValues,
 };
+use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -39,32 +40,54 @@ const CONSENT_DOMAIN: &str = "zk-x509-delegated-proving-consent";
 
 #[derive(Deserialize)]
 struct DelegatedProveRequest {
-    consent_signature: String,
-    cert_der: String,            // base64
-    cert_chain: Vec<String>,     // base64[]
-    ownership_sig: String,       // hex
-    nullifier_sig: String,       // hex
+    // ── Encrypted mode: ECIES-encrypted sensitive payload ──
+    #[serde(default)]
+    encrypted_payload: Option<String>, // hex: ECIES ciphertext of SensitivePayload JSON
+
+    // ── Plaintext mode (backward compatible): sensitive fields ──
+    #[serde(default)]
+    consent_signature: Option<String>,
+    #[serde(default)]
+    cert_der: Option<String>,           // base64
+    #[serde(default)]
+    cert_chain: Option<Vec<String>>,    // base64[]
+    #[serde(default)]
+    ownership_sig: Option<String>,      // hex
+    #[serde(default)]
+    nullifier_sig: Option<String>,      // hex
+
+    // ── Always plaintext (non-sensitive metadata) ──
     registrant: String,          // 0x address
     wallet_index: u32,
     max_wallets: u32,
     disclosure_mask: u8,
     #[serde(default)]
-    required_country: Option<String>,   // hex bytes32, optional
+    required_country: Option<String>,
     #[serde(default)]
-    required_org: Option<String>,       // hex bytes32, optional
+    required_org: Option<String>,
     #[serde(default)]
-    required_org_unit: Option<String>,  // hex bytes32, optional
+    required_org_unit: Option<String>,
     #[serde(default)]
-    required_common_name: Option<String>, // hex bytes32, optional
+    required_common_name: Option<String>,
     chain_id: u64,
-    registry_address: String,    // 0x address
-    ca_merkle_root: String,      // 0x hex
-    ca_merkle_proof: Vec<String>,// 0x hex[]
+    registry_address: String,
+    ca_merkle_root: String,
+    ca_merkle_proof: Vec<String>,
     #[serde(default)]
-    crl_data: Option<String>,    // base64, optional
+    crl_data: Option<String>,
     #[serde(default)]
     _crl_merkle_root: Option<String>,
     timestamp: u64,
+}
+
+/// Sensitive data encrypted with ECIES.
+#[derive(Deserialize)]
+struct SensitivePayload {
+    consent_signature: String,
+    cert_der: String,
+    cert_chain: Vec<String>,
+    ownership_sig: String,
+    nullifier_sig: String,
 }
 
 /// Parse an optional hex-encoded bytes32 string (0x-prefixed) into [u8; 32].
@@ -99,6 +122,67 @@ struct HealthResponse {
 #[derive(Serialize)]
 struct ErrorResponse {
     error: String,
+}
+
+/// Server state: holds the ECIES private key for decrypting delegated requests.
+#[derive(Clone)]
+struct AppState {
+    ecies_secret_key: [u8; 32],
+    ecies_public_key: Vec<u8>, // 65 bytes uncompressed
+}
+
+impl AppState {
+    fn new() -> Self {
+        // Load from PROVER_ECIES_KEY env var, or load/generate from file
+        let sk_bytes: [u8; 32] = if let Ok(hex_key) = std::env::var("PROVER_ECIES_KEY") {
+            let bytes = hex::decode(hex_key.strip_prefix("0x").unwrap_or(&hex_key))
+                .expect("PROVER_ECIES_KEY must be valid hex");
+            bytes.try_into().expect("PROVER_ECIES_KEY must be exactly 32 bytes")
+        } else {
+            // Persist key to file so it survives restarts
+            let key_path = std::path::PathBuf::from(
+                std::env::var("PROVER_LOG_DIR").unwrap_or_else(|_| "./logs".to_string())
+            ).join(".ecies_key");
+
+            if key_path.exists() {
+                let hex_key = std::fs::read_to_string(&key_path)
+                    .expect("Failed to read ECIES key file");
+                let bytes = hex::decode(hex_key.trim())
+                    .expect("Invalid hex in ECIES key file");
+                bytes.try_into().expect("ECIES key file must contain exactly 32 bytes")
+            } else {
+                // Generate random key
+                let mut key = [0u8; 32];
+                getrandom::getrandom(&mut key).expect("Failed to generate random key");
+                std::fs::create_dir_all(key_path.parent().unwrap()).ok();
+                std::fs::write(&key_path, hex::encode(key))
+                    .expect("Failed to save ECIES key");
+                // Restrict file permissions (owner read/write only)
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600)).ok();
+                }
+                eprintln!("Generated new ECIES key: {}", key_path.display());
+                key
+            }
+        };
+
+        let sk = ecies::SecretKey::parse_slice(&sk_bytes)
+            .expect("ECIES key is not a valid secp256k1 secret key");
+        let pk = ecies::PublicKey::from_secret_key(&sk);
+        let pk_bytes = pk.serialize().to_vec(); // 65 bytes uncompressed
+
+        Self {
+            ecies_secret_key: sk_bytes,
+            ecies_public_key: pk_bytes,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct PubkeyResponse {
+    pubkey: String,
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -212,9 +296,17 @@ fn verify_consent(
 }
 
 /// Log compliance record (consent + identity mapping).
+///
+/// NOTE: This default implementation logs only the consent signature and
+/// certificate subject (not the full certificate). Service operators subject
+/// to KYC/AML regulations may need to extend this to store additional data
+/// (e.g., full certificate DER, disclosure fields, proof timestamps) per
+/// their jurisdiction's data retention requirements. The decrypted sensitive
+/// payload is available at the call site for this purpose.
 fn log_compliance(
     registrant: &str,
     cert_subject: &str,
+    cert_not_after: &str,
     consent_message: &str,
     consent_sig: &str,
 ) {
@@ -228,6 +320,7 @@ fn log_compliance(
         "timestamp": timestamp,
         "registrant": registrant,
         "cert_subject": cert_subject,
+        "cert_not_after": cert_not_after,
         "consent_message": consent_message,
         "consent_signature": consent_sig,
     });
@@ -254,7 +347,14 @@ async fn health_handler() -> Json<HealthResponse> {
     })
 }
 
+async fn pubkey_handler(State(state): State<Arc<AppState>>) -> Json<PubkeyResponse> {
+    Json(PubkeyResponse {
+        pubkey: format!("0x{}", hex::encode(&state.ecies_public_key)),
+    })
+}
+
 async fn prove_handler(
+    State(state): State<Arc<AppState>>,
     Json(req): Json<DelegatedProveRequest>,
 ) -> Result<Json<ProveResponse>, (StatusCode, Json<ErrorResponse>)> {
     let err = |msg: String| -> (StatusCode, Json<ErrorResponse>) {
@@ -264,11 +364,32 @@ async fn prove_handler(
         (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: msg }))
     };
 
-    // 1. Decode inputs
-    let cert_der = decode_base64(&req.cert_der).map_err(|e| err(e))?;
-    let consent_sig = decode_hex(&req.consent_signature).map_err(|e| err(e))?;
-    let ownership_sig = decode_hex(&req.ownership_sig).map_err(|e| err(e))?;
-    let nullifier_sig = decode_hex(&req.nullifier_sig).map_err(|e| err(e))?;
+    // 1. Decrypt or extract sensitive payload
+    let sensitive: SensitivePayload = if let Some(ref encrypted) = req.encrypted_payload {
+        // ECIES mode: decrypt the payload
+        let ciphertext = decode_hex(encrypted).map_err(|e| err(e))?;
+        let sk = ecies::SecretKey::parse_slice(&state.ecies_secret_key)
+            .map_err(|e| err(format!("ECIES key error: {}", e)))?;
+        let plaintext = ecies::decrypt(&sk.serialize(), &ciphertext)
+            .map_err(|_| err("Encrypted payload could not be decrypted".into()))?;
+        serde_json::from_slice(&plaintext)
+            .map_err(|e| err(format!("Invalid decrypted JSON: {}", e)))?
+    } else {
+        // Plaintext mode (backward compatible)
+        SensitivePayload {
+            consent_signature: req.consent_signature.clone().ok_or_else(|| err("consent_signature required".into()))?,
+            cert_der: req.cert_der.clone().ok_or_else(|| err("cert_der required".into()))?,
+            cert_chain: req.cert_chain.clone().ok_or_else(|| err("cert_chain required".into()))?,
+            ownership_sig: req.ownership_sig.clone().ok_or_else(|| err("ownership_sig required".into()))?,
+            nullifier_sig: req.nullifier_sig.clone().ok_or_else(|| err("nullifier_sig required".into()))?,
+        }
+    };
+
+    // 2. Decode inputs
+    let cert_der = decode_base64(&sensitive.cert_der).map_err(|e| err(e))?;
+    let consent_sig = decode_hex(&sensitive.consent_signature).map_err(|e| err(e))?;
+    let ownership_sig = decode_hex(&sensitive.ownership_sig).map_err(|e| err(e))?;
+    let nullifier_sig = decode_hex(&sensitive.nullifier_sig).map_err(|e| err(e))?;
     let registrant = decode_address(&req.registrant).map_err(|e| err(e))?;
     let registry_address = decode_address(&req.registry_address).map_err(|e| err(e))?;
     let ca_merkle_root = decode_hash(&req.ca_merkle_root).map_err(|e| err(e))?;
@@ -277,7 +398,7 @@ async fn prove_handler(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| err(e))?;
 
-    let cert_chain: Vec<Vec<u8>> = req.cert_chain.iter()
+    let cert_chain: Vec<Vec<u8>> = sensitive.cert_chain.iter()
         .map(|s| decode_base64(s))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| err(e))?;
@@ -312,17 +433,21 @@ async fn prove_handler(
     }
 
     // 3. Log compliance (consent verified, identity observable)
-    let cert_subject = {
+    let (cert_subject, cert_not_after) = {
         use x509_parser::prelude::FromDer;
         x509_parser::certificate::X509Certificate::from_der(&cert_der)
-            .map(|(_, c)| c.subject().to_string())
-            .unwrap_or_else(|_| "unknown".to_string())
+            .map(|(_, c)| (
+                c.subject().to_string(),
+                c.validity().not_after.timestamp().to_string(),
+            ))
+            .unwrap_or_else(|_| ("unknown".to_string(), "unknown".to_string()))
     };
     log_compliance(
         &req.registrant,
         &cert_subject,
+        &cert_not_after,
         &expected_consent,
-        &req.consent_signature,
+        &sensitive.consent_signature,
     );
 
     tracing::info!(
@@ -397,6 +522,9 @@ fn main() {
     let prover_url = std::env::var("PROVER_URL")
         .unwrap_or_else(|_| format!("http://localhost:{}", port));
 
+    let app_state = Arc::new(AppState::new());
+    println!("ECIES public key: 0x{}", hex::encode(&app_state.ecies_public_key));
+
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -409,15 +537,18 @@ fn main() {
 
             let app = Router::new()
                 .route("/api/prove", post(prove_handler))
+                .route("/api/pubkey", get(pubkey_handler))
                 .route("/api/health", get(health_handler))
+                .with_state(app_state)
                 .layer(cors)
                 .layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024)); // 10MB
 
             let addr = format!("0.0.0.0:{}", port);
             tracing::info!("Delegated prover server at {}", prover_url);
             println!("Delegated prover server running at {}", prover_url);
-            println!("   POST /api/prove  - Generate ZK proof (requires signed consent)");
-            println!("   GET  /api/health - Server status");
+            println!("   POST /api/prove   - Generate ZK proof (supports ECIES encryption)");
+            println!("   GET  /api/pubkey  - ECIES public key for encrypting requests");
+            println!("   GET  /api/health  - Server status");
 
             let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
             axum::serve(listener, app).await.unwrap();
