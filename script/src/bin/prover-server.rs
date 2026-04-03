@@ -308,6 +308,7 @@ fn verify_consent(
 fn log_compliance(
     registrant: &str,
     cert_subject: &str,
+    cert_not_after: &str,
     consent_message: &str,
     consent_sig: &str,
 ) {
@@ -321,6 +322,7 @@ fn log_compliance(
         "timestamp": timestamp,
         "registrant": registrant,
         "cert_subject": cert_subject,
+        "cert_not_after": cert_not_after,
         "consent_message": consent_message,
         "consent_signature": consent_sig,
     });
@@ -433,15 +435,19 @@ async fn prove_handler(
     }
 
     // 3. Log compliance (consent verified, identity observable)
-    let cert_subject = {
+    let (cert_subject, cert_not_after) = {
         use x509_parser::prelude::FromDer;
         x509_parser::certificate::X509Certificate::from_der(&cert_der)
-            .map(|(_, c)| c.subject().to_string())
-            .unwrap_or_else(|_| "unknown".to_string())
+            .map(|(_, c)| (
+                c.subject().to_string(),
+                c.validity().not_after.timestamp().to_string(),
+            ))
+            .unwrap_or_else(|_| ("unknown".to_string(), "unknown".to_string()))
     };
     log_compliance(
         &req.registrant,
         &cert_subject,
+        &cert_not_after,
         &expected_consent,
         &sensitive.consent_signature,
     );
