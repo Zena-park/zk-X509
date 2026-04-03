@@ -32,7 +32,7 @@ contract SeedLocalScript is Script {
 
         vm.startBroadcast();
 
-        address registry = factory.createRegistry(name, maxWallets, minDisclosureMask, maxProofAge, false);
+        address registry = factory.createRegistry(name, maxWallets, minDisclosureMask, maxProofAge, false, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
         console.log("IdentityRegistry (proxy):", registry);
         console.log("  Name:", name);
         console.log("  Max Wallets:", maxWallets);

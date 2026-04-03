@@ -19,6 +19,12 @@ struct PublicValues {
     bytes32 org;
     bytes32 orgUnit;
     bytes32 commonName;
+    // In-circuit field constraints: the required values verified inside the ZK proof.
+    // bytes32(0) = no constraint. Contract checks these match stored required values.
+    bytes32 requiredCountry;
+    bytes32 requiredOrg;
+    bytes32 requiredOrgUnit;
+    bytes32 requiredCommonName;
 }
 
 /// @dev Minimal interface for reading vkey from RegistryFactory (avoids circular import).
@@ -136,7 +142,7 @@ contract IdentityRegistry is Initializable {
     event IdentityRevoked(address indexed user, bytes32 indexed nullifier, bytes32 reason);
     event CaRootGracePeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
     event ProgramVKeyUpdated(bytes32 indexed newVKey);
-    event RequiredDisclosureValuesUpdated(bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName);
+    event RequiredFieldConstraintsUpdated(bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
 
@@ -176,7 +182,6 @@ contract IdentityRegistry is Initializable {
     error OrgMismatch(bytes32 proof, bytes32 required);
     error OrgUnitMismatch(bytes32 proof, bytes32 required);
     error CommonNameMismatch(bytes32 proof, bytes32 required);
-    error FilterWithoutDisclosure(uint8 filterBit, uint8 disclosureMask);
     error FactoryNotContract();
 
     // ============ Modifiers ============
@@ -223,7 +228,11 @@ contract IdentityRegistry is Initializable {
         uint256 _maxProofAge,
         address _owner,
         address _factory,
-        bool _delegatedProving
+        bool _delegatedProving,
+        bytes32 _requiredCountry,
+        bytes32 _requiredOrg,
+        bytes32 _requiredOrgUnit,
+        bytes32 _requiredCommonName
     ) external initializer {
         if (_sp1Verifier == address(0)) revert ZeroAddress();
         if (_sp1Verifier.code.length == 0) revert VerifierNotContract();
@@ -248,6 +257,10 @@ contract IdentityRegistry is Initializable {
         maxProofAge = _maxProofAge;
         owner = _owner;
         delegatedProvingRequired = _delegatedProving;
+        requiredCountry = _requiredCountry;
+        requiredOrg = _requiredOrg;
+        requiredOrgUnit = _requiredOrgUnit;
+        requiredCommonName = _requiredCommonName;
     }
 
     // ============ Internal ============
@@ -292,18 +305,18 @@ contract IdentityRegistry is Initializable {
             }
         }
 
-        // Check required disclosure filter values (exact match)
-        if (requiredCountry != bytes32(0) && pv.country != requiredCountry) {
-            revert CountryMismatch(pv.country, requiredCountry);
-        }
-        if (requiredOrg != bytes32(0) && pv.org != requiredOrg) {
-            revert OrgMismatch(pv.org, requiredOrg);
-        }
-        if (requiredOrgUnit != bytes32(0) && pv.orgUnit != requiredOrgUnit) {
-            revert OrgUnitMismatch(pv.orgUnit, requiredOrgUnit);
-        }
-        if (requiredCommonName != bytes32(0) && pv.commonName != requiredCommonName) {
-            revert CommonNameMismatch(pv.commonName, requiredCommonName);
+        // In-circuit field constraints: verify the ZK proof checked exactly the constraint
+        // values stored on-chain. Rejects proofs with wrong, missing, or extra constraints.
+        // Local variables cache SLOAD results to avoid redundant reads on revert paths.
+        {
+            bytes32 rc = requiredCountry;
+            if (pv.requiredCountry != rc) revert CountryMismatch(pv.requiredCountry, rc);
+            bytes32 ro = requiredOrg;
+            if (pv.requiredOrg != ro) revert OrgMismatch(pv.requiredOrg, ro);
+            bytes32 rou = requiredOrgUnit;
+            if (pv.requiredOrgUnit != rou) revert OrgUnitMismatch(pv.requiredOrgUnit, rou);
+            bytes32 rcn = requiredCommonName;
+            if (pv.requiredCommonName != rcn) revert CommonNameMismatch(pv.requiredCommonName, rcn);
         }
 
         nullifier = pv.nullifier;
@@ -475,20 +488,16 @@ contract IdentityRegistry is Initializable {
         emit DelegatedProvingConfigUpdated(_required, _proverUrl);
     }
 
-    /// @notice Set required disclosure filter values. bytes32(0) = no filter.
-    /// @dev Each non-zero filter requires the corresponding bit in MIN_DISCLOSURE_MASK to be set.
-    function setRequiredDisclosureValues(
+    /// @notice Set required field constraint values. bytes32(0) = no constraint.
+    /// @dev Constraints are verified inside the ZK circuit; disclosure is no longer required.
+    function setRequiredFieldConstraints(
         bytes32 _country, bytes32 _org, bytes32 _orgUnit, bytes32 _cn
     ) external onlyOwner {
-        if (_country != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x01) == 0) revert FilterWithoutDisclosure(0x01, MIN_DISCLOSURE_MASK);
-        if (_org != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x02) == 0) revert FilterWithoutDisclosure(0x02, MIN_DISCLOSURE_MASK);
-        if (_orgUnit != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x04) == 0) revert FilterWithoutDisclosure(0x04, MIN_DISCLOSURE_MASK);
-        if (_cn != bytes32(0) && (MIN_DISCLOSURE_MASK & 0x08) == 0) revert FilterWithoutDisclosure(0x08, MIN_DISCLOSURE_MASK);
         requiredCountry = _country;
         requiredOrg = _org;
         requiredOrgUnit = _orgUnit;
         requiredCommonName = _cn;
-        emit RequiredDisclosureValuesUpdated(_country, _org, _orgUnit, _cn);
+        emit RequiredFieldConstraintsUpdated(_country, _org, _orgUnit, _cn);
     }
 
     /// @notice Update the CRL Merkle root. Set bytes32(0) to disable CRL checking.

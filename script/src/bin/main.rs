@@ -183,6 +183,14 @@ fn main() {
     ).expect("Failed to sign nullifier domain");
     println!("Ownership sig: {} bytes, Nullifier sig: {} bytes", ownership_sig.len(), nullifier_sig.len());
 
+    // Fetch required field constraints from on-chain (or default to zero = no constraints)
+    let required_vals = if let Some(rpc_url) = &args.rpc_url {
+        zk_x509_script::onchain::fetch_required_values(rpc_url, &registry_bytes)
+            .unwrap_or(([0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]))
+    } else {
+        ([0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32])
+    };
+
     // Build CA Merkle tree (from on-chain if --rpc-url, else from local files)
     let (ca_merkle_root, ca_merkle_proof) = if let Some(rpc_url) = &args.rpc_url {
         println!("Fetching CA list from on-chain ({})...", rpc_url);
@@ -215,6 +223,10 @@ fn main() {
         wallet_index: args.wallet_index,
         max_wallets: args.max_wallets,
         disclosure_mask: args.disclosure_mask,
+        required_country: required_vals.0,
+        required_org: required_vals.1,
+        required_org_unit: required_vals.2,
+        required_common_name: required_vals.3,
         ca_merkle_proof: &ca_merkle_proof,
         ca_merkle_root,
         registry_address: &registry_bytes,

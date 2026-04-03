@@ -116,6 +116,31 @@ fn decode_abi_string(raw: &[u8]) -> Result<String, String> {
         .map_err(|e| format!("Invalid UTF-8 in proverUrl: {}", e))
 }
 
+/// Fetch required field constraint values from the on-chain registry.
+/// Returns (country, org, orgUnit, commonName) as [u8; 32]. All-zero means no constraint.
+pub fn fetch_required_values(
+    rpc_url: &str,
+    registry: &[u8; 20],
+) -> Result<([u8; 32], [u8; 32], [u8; 32], [u8; 32]), String> {
+    let country = fetch_bytes32(rpc_url, registry, "0x777a027d")?;  // requiredCountry()
+    let org = fetch_bytes32(rpc_url, registry, "0x4e05d5c8")?;      // requiredOrg()
+    let org_unit = fetch_bytes32(rpc_url, registry, "0x443ccaf7")?;  // requiredOrgUnit()
+    let cn = fetch_bytes32(rpc_url, registry, "0x1117e5bc")?;        // requiredCommonName()
+    Ok((country, org, org_unit, cn))
+}
+
+fn fetch_bytes32(rpc_url: &str, registry: &[u8; 20], selector: &str) -> Result<[u8; 32], String> {
+    let data = eth_call(rpc_url, registry, selector)?;
+    let bytes = hex::decode(data.strip_prefix("0x").unwrap_or(&data))
+        .map_err(|e| format!("Invalid hex: {}", e))?;
+    if bytes.len() < 32 {
+        return Err(format!("Expected at least 32 bytes, got {}", bytes.len()));
+    }
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&bytes[..32]);
+    Ok(result)
+}
+
 pub fn fetch_ca_leaves(rpc_url: &str, registry: &[u8; 20]) -> Result<Vec<Hash>, String> {
     let data = eth_call(rpc_url, registry, SELECTOR_GET_CA_LEAVES)?;
     decode_bytes32_array(&data)

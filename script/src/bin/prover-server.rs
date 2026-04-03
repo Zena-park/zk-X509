@@ -48,6 +48,14 @@ struct DelegatedProveRequest {
     wallet_index: u32,
     max_wallets: u32,
     disclosure_mask: u8,
+    #[serde(default)]
+    required_country: Option<String>,   // hex bytes32, optional
+    #[serde(default)]
+    required_org: Option<String>,       // hex bytes32, optional
+    #[serde(default)]
+    required_org_unit: Option<String>,  // hex bytes32, optional
+    #[serde(default)]
+    required_common_name: Option<String>, // hex bytes32, optional
     chain_id: u64,
     registry_address: String,    // 0x address
     ca_merkle_root: String,      // 0x hex
@@ -57,6 +65,21 @@ struct DelegatedProveRequest {
     #[serde(default)]
     _crl_merkle_root: Option<String>,
     timestamp: u64,
+}
+
+/// Parse an optional hex-encoded bytes32 string (0x-prefixed) into [u8; 32].
+fn parse_optional_bytes32(val: &Option<String>) -> [u8; 32] {
+    match val {
+        Some(s) if !s.is_empty() => {
+            let hex_str = s.strip_prefix("0x").unwrap_or(s);
+            let bytes = hex::decode(hex_str).unwrap_or_default();
+            let mut result = [0u8; 32];
+            let len = bytes.len().min(32);
+            result[..len].copy_from_slice(&bytes[..len]);
+            result
+        }
+        _ => [0u8; 32],
+    }
 }
 
 #[derive(Serialize)]
@@ -319,6 +342,10 @@ async fn prove_handler(
         wallet_index: req.wallet_index,
         max_wallets: req.max_wallets,
         disclosure_mask: req.disclosure_mask,
+        required_country: parse_optional_bytes32(&req.required_country),
+        required_org: parse_optional_bytes32(&req.required_org),
+        required_org_unit: parse_optional_bytes32(&req.required_org_unit),
+        required_common_name: parse_optional_bytes32(&req.required_common_name),
         ca_merkle_proof: &ca_merkle_proof,
         ca_merkle_root,
         registry_address: &registry_address,

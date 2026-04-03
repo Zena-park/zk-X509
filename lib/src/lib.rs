@@ -22,5 +22,12 @@ sol! {
         bytes32 org;             // e.g., "Samsung" or bytes32(0)
         bytes32 orgUnit;         // e.g., "Engineering" or bytes32(0)
         bytes32 commonName;      // e.g., "Hong Gildong" or bytes32(0)
+        // In-circuit field constraints: the required values the circuit was asked to verify.
+        // bytes32(0) = no constraint. Non-zero = circuit asserted cert field == this value.
+        // Contract checks these match its stored requiredX values to prevent constraint forgery.
+        bytes32 requiredCountry;
+        bytes32 requiredOrg;
+        bytes32 requiredOrgUnit;
+        bytes32 requiredCommonName;
     }
 }

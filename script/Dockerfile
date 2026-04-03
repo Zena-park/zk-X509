@@ -17,6 +17,9 @@ COPY lib lib
 COPY program program
 COPY script script
 
+# Remove desktop workspace member (not available in Docker context)
+RUN sed -i 's/, "desktop\/src-tauri"//' Cargo.toml
+
 # Build ELF only (via vkey binary which triggers build.rs)
 RUN cargo build --release --bin vkey
 
@@ -35,6 +38,9 @@ COPY Cargo.toml Cargo.lock rust-toolchain ./
 COPY lib lib
 COPY program program
 COPY script script
+
+# Remove desktop workspace member (not available in Docker context)
+RUN sed -i 's/, "desktop\/src-tauri"//' Cargo.toml
 
 # Copy pre-built ELF from stage 1
 COPY --from=elf-builder /build/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/zk-x509-program /build/elf/zk-x509-program
