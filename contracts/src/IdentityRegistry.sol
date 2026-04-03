@@ -111,8 +111,14 @@ contract IdentityRegistry is Initializable {
 
     // ============ Events ============
 
-    event UserRegistered(address indexed user, bytes32 nullifier);
-    event UserReRegistered(address indexed oldUser, address indexed newUser, bytes32 nullifier);
+    event UserRegistered(
+        address indexed user, bytes32 nullifier,
+        bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName
+    );
+    event UserReRegistered(
+        address indexed oldUser, address indexed newUser, bytes32 nullifier,
+        bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName
+    );
     event CaMerkleRootUpdated(bytes32 indexed newRoot);
     event CaAdded(bytes32 indexed caHash, uint256 index);
     event CaRemoved(bytes32 indexed caHash, uint256 index);
@@ -236,7 +242,10 @@ contract IdentityRegistry is Initializable {
     function _validateProof(
         bytes calldata proof,
         bytes calldata publicValues
-    ) internal view returns (bytes32 nullifier, uint64 notAfter) {
+    ) internal view returns (
+        bytes32 nullifier, uint64 notAfter,
+        bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName
+    ) {
         PublicValues memory pv = abi.decode(publicValues, (PublicValues));
 
         if (pv.registrant != msg.sender) revert RegistrantMismatch(pv.registrant, msg.sender);
@@ -271,6 +280,10 @@ contract IdentityRegistry is Initializable {
 
         nullifier = pv.nullifier;
         notAfter = pv.notAfter;
+        country = pv.country;
+        org = pv.org;
+        orgUnit = pv.orgUnit;
+        commonName = pv.commonName;
 
         SP1_VERIFIER.verifyProof(_getVKey(), publicValues, proof);
     }
@@ -297,7 +310,8 @@ contract IdentityRegistry is Initializable {
         // Check sender not already verified first (cheapest common revert, avoids proof verification gas)
         if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
-        (bytes32 nullifier, uint64 notAfter) = _validateProof(proof, publicValues);
+        (bytes32 nullifier, uint64 notAfter, bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName)
+            = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         if (nullifierOwner[nullifier] != address(0)) revert AlreadyRegistered(nullifier);
@@ -305,7 +319,7 @@ contract IdentityRegistry is Initializable {
         nullifierOwner[nullifier] = msg.sender;
         verifiedUntil[msg.sender] = notAfter;
 
-        emit UserRegistered(msg.sender, nullifier);
+        emit UserRegistered(msg.sender, nullifier, country, org, orgUnit, commonName);
     }
 
     /// @notice Re-register: move an existing nullifier slot to a new wallet address.
@@ -317,7 +331,8 @@ contract IdentityRegistry is Initializable {
         // Early revert before expensive proof verification (same pattern as register)
         if (verifiedUntil[msg.sender] >= block.timestamp) revert UserAlreadyVerified(msg.sender);
 
-        (bytes32 nullifier, uint64 notAfter) = _validateProof(proof, publicValues);
+        (bytes32 nullifier, uint64 notAfter, bytes32 country, bytes32 org, bytes32 orgUnit, bytes32 commonName)
+            = _validateProof(proof, publicValues);
 
         if (revokedNullifiers[nullifier]) revert NullifierRevoked(nullifier);
         address oldOwner = nullifierOwner[nullifier];
@@ -329,7 +344,7 @@ contract IdentityRegistry is Initializable {
         }
         verifiedUntil[msg.sender] = notAfter;
 
-        emit UserReRegistered(oldOwner, msg.sender, nullifier);
+        emit UserReRegistered(oldOwner, msg.sender, nullifier, country, org, orgUnit, commonName);
     }
 
     /// @notice Check if a wallet address is currently verified (not expired).

@@ -36,6 +36,9 @@ export interface RegistryMetadata {
   website: string;
   tags: string[];
   listed?: boolean;
+  explorerEnabled?: boolean;
+  explorerVisibleFields?: string[];
+  explorerFilterableFields?: string[];
 }
 
 export interface Announcement {
@@ -43,6 +46,12 @@ export interface Announcement {
   title: string;
   body: string;
   createdAt: string;
+}
+
+export interface ExplorerSettings {
+  explorerEnabled: boolean;
+  explorerVisibleFields: string[];
+  explorerFilterableFields: string[];
 }
 
 // ── Input Validation ─────────────────────────────
@@ -245,4 +254,16 @@ export async function createCaRegistryPrViaServer(params: {
     throw new Error(err.error || `Server error: ${res.status}`);
   }
   return res.json();
+}
+
+/// Fetch explorer settings for a registry.
+export async function getExplorerSettings(registryAddr: string): Promise<ExplorerSettings> {
+  validateAddress(registryAddr);
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/registries/${registryAddr.toLowerCase()}/explorer-settings`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch {
+    return { explorerEnabled: false, explorerVisibleFields: [], explorerFilterableFields: [] };
+  }
 }

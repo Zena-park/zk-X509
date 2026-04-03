@@ -40,6 +40,7 @@ import {
   type RegistryMetadata,
   type Announcement,
   type CaGuide,
+  getExplorerSettings,
 } from "@/lib/platform";
 
 import { parseCaDer, generateCaGuide, type CaMetadata } from "@/lib/x509";
@@ -334,7 +335,7 @@ interface CaFileEntry {
 /*  Admin Page                                                         */
 /* ================================================================== */
 
-export default function AdminContent({ serviceName }: { serviceName?: string } = {}) {
+export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { serviceName?: string; minDisclosureMask?: number } = {}) {
   const {
     account,
     isOwner,
@@ -416,6 +417,13 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
   const [svcGuideSaving, setSvcGuideSaving] = useState<Record<string, boolean>>({});
   const [svcGuideMsg, setSvcGuideMsg] = useState<Record<string, string>>({});
   const [svcBackendDown, setSvcBackendDown] = useState(false);
+
+  // Explorer settings
+  const [explorerEnabled, setExplorerEnabled] = useState(false);
+  const [explorerVisibleFields, setExplorerVisibleFields] = useState<string[]>(["country", "org", "orgUnit", "commonName"]);
+  const [explorerFilterableFields, setExplorerFilterableFields] = useState<string[]>(["country", "org"]);
+  const [explorerSaving, setExplorerSaving] = useState(false);
+  const [explorerMsg, setExplorerMsg] = useState<string | null>(null);
 
   // tx statuses
   const [crlRootTx, setCrlRootTx] = useState<TxStatus>(IDLE);
@@ -773,10 +781,11 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
       setSvcGuidesLoading(true);
 
       try {
-        const [meta, anncs, guides] = await Promise.all([
+        const [meta, anncs, guides, explorerSettings] = await Promise.all([
           getRegistryMetadata(registryAddr),
           getAnnouncements(registryAddr),
           getCaGuides(chainId || "31337", registryAddr),
+          getExplorerSettings(registryAddr),
         ]);
         if (cancelled) return;
         setSvcBackendDown(false);
@@ -788,6 +797,9 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
             listed: meta.listed !== false,
           });
         }
+        setExplorerEnabled(explorerSettings.explorerEnabled);
+        setExplorerVisibleFields(explorerSettings.explorerVisibleFields);
+        setExplorerFilterableFields(explorerSettings.explorerFilterableFields);
         setSvcAnnouncements(anncs);
         setSvcCaGuides(guides);
 
@@ -810,6 +822,20 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
     load();
     return () => { cancelled = true; };
   }, [activeTab, registryAddr, chainId, onChainCaLeaves]);
+
+  /* ---------- explorer settings handler ---------- */
+  const handleSaveExplorer = async () => {
+    if (!registryAddr) return;
+    setExplorerSaving(true);
+    setExplorerMsg(null);
+    const ok = await updateRegistryMetadata(registryAddr, {
+      explorerEnabled,
+      explorerVisibleFields,
+      explorerFilterableFields,
+    });
+    setExplorerSaving(false);
+    setExplorerMsg(ok ? "Explorer settings saved" : "Failed to save");
+  };
 
   /* ---------- service settings handlers ---------- */
   const handleSaveMetadata = async () => {
@@ -1974,6 +2000,129 @@ export default function AdminContent({ serviceName }: { serviceName?: string } =
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Explorer Settings */}
+              <div className="bg-surface p-8 rounded-3xl border border-outline-variant/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <Search className="text-primary w-5 h-5" />
+                  <h2 className="text-xl font-headline font-bold text-primary">
+                    Member Explorer
+                  </h2>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={explorerEnabled}
+                        onChange={(e) => setExplorerEnabled(e.target.checked)}
+                        disabled={disabled}
+                        className="w-4 h-4 accent-primary"
+                      />
+                      <span className="text-sm text-on-surface">
+                        Enable member explorer
+                      </span>
+                    </label>
+                  </div>
+
+                  {explorerEnabled && (
+                    <>
+                      <div>
+                        <p className="text-xs font-label text-on-surface-variant mb-2">
+                          Visible Fields
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {(["country", "org", "orgUnit", "commonName"] as const).map((field, i) => {
+                            const labels = ["Country", "Organization", "Org Unit", "Common Name"];
+                            const requiredByMask = Boolean(minDisclosureMask & (1 << i));
+                            return (
+                              <label
+                                key={field}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs ${
+                                  !requiredByMask ? "opacity-30 cursor-not-allowed" : "cursor-pointer border-outline/20"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={explorerVisibleFields.includes(field)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setExplorerVisibleFields((prev) => [...prev, field]);
+                                    } else {
+                                      setExplorerVisibleFields((prev) => prev.filter((f) => f !== field));
+                                      setExplorerFilterableFields((prev) => prev.filter((f) => f !== field));
+                                    }
+                                  }}
+                                  disabled={disabled || !requiredByMask}
+                                  className="w-3 h-3 accent-primary"
+                                />
+                                <span className="text-on-surface">{labels[i]}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-label text-on-surface-variant mb-2">
+                          Filterable Fields
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {explorerVisibleFields.map((field) => {
+                            const labels: Record<string, string> = {
+                              country: "Country",
+                              org: "Organization",
+                              orgUnit: "Org Unit",
+                              commonName: "Common Name",
+                            };
+                            return (
+                              <label
+                                key={field}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-outline/20 text-xs cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={explorerFilterableFields.includes(field)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setExplorerFilterableFields((prev) => [...prev, field]);
+                                    } else {
+                                      setExplorerFilterableFields((prev) => prev.filter((f) => f !== field));
+                                    }
+                                  }}
+                                  disabled={disabled}
+                                  className="w-3 h-3 accent-primary"
+                                />
+                                <span className="text-on-surface">{labels[field] || field}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={handleSaveExplorer}
+                      disabled={disabled || explorerSaving}
+                      className="bg-primary text-background px-6 py-2 rounded-xl font-label font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-2"
+                    >
+                      {explorerSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                      {explorerSaving ? "Saving..." : "Save Explorer Settings"}
+                    </button>
+                    {explorerMsg && (
+                      <span className="text-xs text-on-surface-variant">{explorerMsg}</span>
+                    )}
+                  </div>
+
+                  <p className="text-[10px] text-on-surface-variant/60">
+                    Note: Disclosure data emitted in on-chain events is always public.
+                    This setting only controls the explorer UI visibility.
+                  </p>
+                </div>
               </div>
 
               {/* CA Guides Management */}
