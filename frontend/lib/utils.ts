@@ -35,13 +35,18 @@ export function bytes32ToString(hex: string): string {
   return new TextDecoder().decode(new Uint8Array(bytes));
 }
 
-/** Encode a UTF-8 string to a bytes32 hex string, right-padded with zeros. */
+/** Encode a UTF-8 string to a bytes32 hex string, right-padded with zeros.
+ *  Trims whitespace. Throws if encoded length exceeds 32 bytes. */
 export function stringToBytes32(str: string): string {
-  if (!str) return "0x" + "0".repeat(64);
+  const normalized = str?.trim();
+  if (!normalized) return "0x" + "0".repeat(64);
   const encoder = new TextEncoder();
-  const bytes = encoder.encode(str);
+  const bytes = encoder.encode(normalized);
+  if (bytes.length > 32) {
+    throw new Error(`String too long: ${bytes.length} bytes (max 32)`);
+  }
   const padded = new Uint8Array(32);
-  padded.set(bytes.slice(0, 32));
+  padded.set(bytes);
   return "0x" + Array.from(padded).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
