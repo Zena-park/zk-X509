@@ -43,17 +43,17 @@
 | 48 | 기존 시스템 대비 정량 비교 테이블 | merged |
 | 55 | ARIA-CBC 지원 | merged |
 | 28 | LICENSE 파일 추가 | merged |
-| — | vkey 중앙 관리 (Factory cross-contract call) | [#97](https://github.com/tokamak-network/zk-X509/pull/97) |
-| — | CA Registry PR 서명 인증 (백엔드) | [#98](https://github.com/tokamak-network/zk-X509/pull/98) |
-| — | 멀티 테넌트 플랫폼 (RegistryFactory) | merged |
-| — | 위임 증명 시스템 (consent protocol, prover-server) | [#100](https://github.com/tokamak-network/zk-X509/pull/100) |
-| — | vkey 자동 감지 + E2E 테스트 가이드 | [#102](https://github.com/tokamak-network/zk-X509/pull/102) |
-| — | prover-server 버그 수정 (spawn_blocking, empty PV) | [#103](https://github.com/tokamak-network/zk-X509/pull/103) |
 | 42 | 컨트랙트 업그레이드 → Beacon Proxy 패턴으로 해결 | [#100](https://github.com/tokamak-network/zk-X509/pull/100) |
-| — | Docker prover + vkey 일치 + Windows 빌드 + PREBUILT_ELF | [#106](https://github.com/tokamak-network/zk-X509/pull/106) |
-| — | Disclosure 이벤트 emit + Members Explorer + 필터링 UI | [#107](https://github.com/tokamak-network/zk-X509/pull/107) |
+| 43 | vkey 중앙 관리 (Factory cross-contract call) | [#97](https://github.com/tokamak-network/zk-X509/pull/97) |
+| 46 | CA Registry PR 서명 인증 (백엔드) | [#98](https://github.com/tokamak-network/zk-X509/pull/98) |
+| 47 | 멀티 테넌트 플랫폼 (RegistryFactory) | merged |
+| 48 | 위임 증명 시스템 (consent protocol, prover-server) | [#100](https://github.com/tokamak-network/zk-X509/pull/100) |
+| 52 | vkey 자동 감지 + E2E 테스트 가이드 | [#102](https://github.com/tokamak-network/zk-X509/pull/102) |
+| 53 | prover-server 버그 수정 (spawn_blocking, empty PV) | [#103](https://github.com/tokamak-network/zk-X509/pull/103) |
+| 54 | Docker prover + vkey 일치 + Windows 빌드 + PREBUILT_ELF | [#106](https://github.com/tokamak-network/zk-X509/pull/106) |
+| 55 | Disclosure 이벤트 emit + Members Explorer + 필터링 UI | [#107](https://github.com/tokamak-network/zk-X509/pull/107) |
 | 56 | Disclosure 값 필터링 (2단계 인증 정책: mask + exact match) | [#108](https://github.com/tokamak-network/zk-X509/pull/108) |
-| ~~57~~ | ~~한국 NPKI 개인사업자 vs 법인 구분~~ → O+CN 조합으로 구분 가능, 별도 구현 불필요 | — |
+| ~~57~~ | ~~한국 NPKI 개인사업자 vs 법인 구분~~ → 불필요 (O+CN 조합으로 구분 가능) | — |
 
 ## 미해결
 

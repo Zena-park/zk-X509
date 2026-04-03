@@ -92,9 +92,7 @@ Services running:
    Anvil RPC  → http://localhost:8545
    Chain ID   → 31337
 
-Extracting vkey for local consistency...
-   VKEY=0x001fcda5...
-   Run 'make elf' to extract full ELF for local builds
+{"factory": "0xA51c...", "verifier": "0xB7f8..."}
 ```
 
 | 명령어 | 설명 |
@@ -120,6 +118,14 @@ open dist/zk-X509.app
 # 2-B. 또는 번들 없이 바로 실행
 make run
 ```
+
+> **참고:** `make` 명령어는 macOS/Linux (bash/zsh) 기준입니다.
+> Windows에서는 GitHub Actions 릴리즈 빌드를 이용하세요 (아래 참조).
+> 또는 WSL/Git Bash에서 `make elf`로 ELF를 추출한 뒤 PowerShell에서:
+> ```powershell
+> $env:PREBUILT_ELF = "$(Get-Location)\elf\zk-x509-program"
+> cargo build --release --bin interactive
+> ```
 
 | 명령어 | 설명 |
 |--------|------|

@@ -53,15 +53,15 @@
 | Service | Configuration |
 |---------|--------------|
 | Lending protocol (business only) | mask=0x02, O field presence required |
-| Lending protocol (Korean business) | mask=0x03, `requiredCountry="KR"` |
-| Exchange (KYC required) | Delegated proving + `requiredCountry="KR"` |
+| Lending protocol (Korean business) | mask=0x03, requiredCountry=KR |
+| Exchange (KYC required) | mask=0x01, delegated proving + requiredCountry=KR |
 | Staking (Sybil-resistant) | Public CA + maxWallets = 1 |
 
 ### DAO / Governance
 | Service | Configuration |
 |---------|--------------|
-| National DAO (Korea) | Country="KR" + maxWallets = 1 |
-| Corporate shareholder vote | `requiredOrg="Samsung"` + maxWallets = 1 |
+| National DAO (Korea) | mask=0x01, requiredCountry=KR, maxWallets=1 |
+| Corporate shareholder vote | mask=0x02, requiredOrg=Samsung, maxWallets=1 |
 | Global DAO | All government CAs + maxWallets = 1 |
 
 ### Enterprise
