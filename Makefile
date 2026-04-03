@@ -1,4 +1,4 @@
-.PHONY: up down clean status logs addresses elf app run help
+.PHONY: up down clean status logs addresses elf app desktop run help
 
 ## Docker local environment
 up:                ## Start all services (build + deploy + run)
@@ -64,6 +64,16 @@ app:               ## Build macOS .app bundle with Docker-matched vkey
 	 done) && \
 	 echo "App built: $$APP_DIR" && \
 	 echo "  open dist/zk-X509.app"
+
+desktop:           ## Build Tauri desktop app (DMG) with Docker-matched vkey
+	@test -f elf/zk-x509-program || (echo "ELF not found. Run 'make elf' first." && exit 1)
+	cd desktop && npm ci
+	PREBUILT_ELF=$$(pwd)/elf/zk-x509-program npx --prefix desktop tauri build
+	@echo ""
+	@echo "Desktop app built:"
+	@ls target/*/release/bundle/dmg/*.dmg 2>/dev/null || echo "  (DMG not found — check target/*/release/bundle/)"
+	@echo ""
+	@echo "To install: open the DMG and drag to Applications"
 
 run:               ## Run interactive app with Docker-matched vkey (no .app bundle)
 	@test -f elf/zk-x509-program || (echo "ELF not found. Run 'make elf' first." && exit 1)
