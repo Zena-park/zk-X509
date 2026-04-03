@@ -1,0 +1,136 @@
+name: Desktop App Build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  SP1_VERSION: "v6.0.2"
+
+jobs:
+  # ── Step 1: Build ELF on Linux ──
+  build-elf:
+    runs-on: ubuntu-latest
+    name: Build SP1 ELF
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install SP1 toolchain
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --version ${{ env.SP1_VERSION }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: elf-build
+
+      - name: Build ELF
+        run: |
+          sed -i 's/, "desktop\/src-tauri"//' Cargo.toml
+          cargo build --release --bin vkey
+
+      - name: Upload ELF
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp1-elf
+          path: target/elf-compilation/riscv64im-succinct-zkvm-elf/release/zk-x509-program
+
+  # ── Step 2: Build Tauri desktop app ──
+  build-desktop:
+    needs: build-elf
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macOS-ARM64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            label: macOS-x64
+
+    runs-on: ${{ matrix.platform }}
+    name: Desktop (${{ matrix.label }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install protoc
+        run: brew install protobuf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download pre-built ELF
+        uses: actions/download-artifact@v4
+        with:
+          name: sp1-elf
+          path: elf
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: desktop-${{ matrix.target }}
+
+      - name: Build Tauri app
+        working-directory: desktop
+        env:
+          PREBUILT_ELF: ${{ github.workspace }}/elf/zk-x509-program
+        run: npx @tauri-apps/cli build --target ${{ matrix.target }}
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: zk-X509-Desktop-${{ matrix.label }}
+          path: |
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
+
+  # ── Step 3: Create release (tag push only) ──
+  release:
+    needs: build-desktop
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zk-X509-Desktop-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "**/*.dmg"
+          append_body: true
+          body: |
+
+            ---
+
+            ## Desktop App
+
+            Download the DMG for your platform and drag to Applications.
+            Requires macOS 12.0+.
+          generate_release_notes: true
