@@ -12,6 +12,7 @@ use super::certificates::IdentityStore;
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProofParams {
     pub cert_index: usize,
     pub rpc_url: String,
@@ -209,6 +210,7 @@ pub async fn generate_proof(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DelegatedParams {
     pub cert_index: usize,
     pub rpc_url: String,
