@@ -223,7 +223,14 @@ export default function DashboardPage() {
   }, [account, chainId, provider]);
 
   const verifiedRegistries = registries.filter((r) => r.verified);
-  const availableRegistries = registries.filter((r) => !r.verified);
+  // Hide paused registries from the user-facing Available list —
+  // their contracts reject new registrations, so surfacing them
+  // would just route the user into a guaranteed revert. Paused
+  // registries the user is already verified in stay in the
+  // Verified list so existing claimers can still see their slot.
+  const availableRegistries = registries.filter(
+    (r) => !r.verified && !r.paused,
+  );
   const rpcUrl = getRpcUrl();
   const serviceChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
   const currentChainName = getChainName(serviceChainId);

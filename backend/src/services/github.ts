@@ -61,7 +61,16 @@ function createGitHubClient(token: string) {
     if (!res.ok) throw new Error(`PATCH ${path}: ${res.status} ${await res.text()}`);
   }
 
-  return { get, getRaw, post, patch };
+  /** Non-throwing POST — caller inspects status to distinguish
+   *  expected non-2xx responses (e.g. 409 conflict on merge-upstream)
+   *  from real errors. */
+  async function postRaw(path: string, body: unknown): Promise<Response> {
+    return fetch(`${API_BASE}${path}`, {
+      method: "POST", headers: jsonHeaders, body: JSON.stringify(body),
+    });
+  }
+
+  return { get, getRaw, post, postRaw, patch };
 }
 
 type GitHubClient = ReturnType<typeof createGitHubClient>;
@@ -143,6 +152,39 @@ async function ensureFork(gh: GitHubClient, user: string): Promise<void> {
   throw new Error("Fork creation timed out");
 }
 
+/** Sync the user's fork main branch with upstream main via
+ *  GitHub's merge-upstream endpoint. Without this, the upstream
+ *  HEAD SHA we branch off won't exist in the fork's history yet —
+ *  GitHub's `POST /git/refs` then returns 422 "Reference update
+ *  failed". 409 = sync conflict (fork main diverged); we surface
+ *  that with a clearer error rather than the raw 422 from later.
+ *  Any other status is treated as best-effort: fork might still
+ *  be in sync, and the subsequent createRef will tell us. */
+async function syncForkMain(gh: GitHubClient, user: string): Promise<void> {
+  const res = await gh.postRaw(
+    `/repos/${user}/${UPSTREAM_REPO}/merge-upstream`,
+    { branch: "main" },
+  );
+  if (res.ok) return;
+  if (res.status === 409) {
+    throw new Error(
+      "Fork's main branch has diverged from upstream — resolve manually on GitHub before retrying.",
+    );
+  }
+  // 422 with `branch is not ahead of upstream` is GitHub's
+  // already-synced response; that's the happy path. Other 422s
+  // (validation, missing branch, etc.) plus any unexpected
+  // status get logged before falling through — createRef will
+  // re-surface anything truly broken with full context.
+  const body = await res.text().catch(() => "");
+  if (res.status === 422 && body.includes("not ahead of upstream")) {
+    return;
+  }
+  console.warn(
+    `[github] merge-upstream returned ${res.status} for ${user}/${UPSTREAM_REPO}: ${body}`,
+  );
+}
+
 // ── Main export ─────────────────────────────────────
 
 export async function createCaRegistryPr(
@@ -159,13 +201,19 @@ export async function createCaRegistryPr(
   const upstream = repoApi(gh, UPSTREAM_OWNER, UPSTREAM_REPO);
   const fork = repoApi(gh, user, UPSTREAM_REPO);
 
-  // Check upstream service.json, prepare fork, and get main ref — all in parallel
+  // Check upstream service.json + prepare fork in parallel. The
+  // fork must exist before we sync its main from upstream, and the
+  // sync must complete before reading upstream's HEAD SHA — without
+  // the sync the fork's git history can lag the upstream SHA, and
+  // `POST /git/refs` later fails with 422 "Reference update failed"
+  // because the SHA isn't reachable in the fork.
   const serviceDir = `services/${files.chainId}/${files.registryAddress.toLowerCase()}`;
-  const [existingContent, , mainSha] = await Promise.all([
+  const [existingContent] = await Promise.all([
     upstream.getFileContent(`${serviceDir}/service.json`, "main"),
     ensureFork(gh, user),
-    upstream.getRef("heads/main"),
   ]);
+  await syncForkMain(gh, user);
+  const mainSha = await upstream.getRef("heads/main");
 
   const existingService = existingContent ? JSON.parse(existingContent) : null;
   const isNew = existingService === null;

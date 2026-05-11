@@ -4,6 +4,20 @@
 
 set -eo pipefail
 
+# Pin the ELF to the shipped prebuilt artifact so the vkey baked
+# into Groth16 proofs matches what production / Docker / the
+# on-chain RegistryFactory expects (vkey 0x0048b091…). Without
+# this, every `cargo build` recompiles the program crate against
+# the host SP1 toolchain and produces a divergent vkey that
+# `SP1Verifier.verifyProof()` rejects as `ProofInvalid()`.
+ELF_PATH="$(cd "$(dirname "$0")/.." && pwd)/elf/zk-x509-program"
+if [ -f "$ELF_PATH" ]; then
+    export PREBUILT_ELF="$ELF_PATH"
+    echo "Using pinned ELF: $PREBUILT_ELF"
+else
+    echo "⚠ Prebuilt ELF not found at $ELF_PATH — falling back to host build (vkey may diverge from RegistryFactory)" >&2
+fi
+
 BINARY="target/release/interactive"
 
 # Build (suppress warnings from output but preserve cargo's exit status)
