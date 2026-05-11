@@ -45,3 +45,6 @@ data/ca-certs/ca_pub.der
 .env.local
 .docker-addresses.json
 elf/
+
+# Dev anvil deploy output (per-session, not part of repo)
+.env.shared-anvil
