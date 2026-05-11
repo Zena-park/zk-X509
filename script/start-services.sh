@@ -55,26 +55,32 @@ if ! curl -s "$RPC_URL" -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "
 fi
 
 # ----------------------------------------------------------------
-# Backend
+# Backend — record PID so stop-services.sh can kill the exact
+# process tree we spawned (npm/ts-node wrappers don't always
+# surface the source path in pgrep -f).
 # ----------------------------------------------------------------
 echo "[1/2] Starting backend on :$BACKEND_PORT…"
 (cd backend && PORT="$BACKEND_PORT" \
     CORS_ORIGIN="http://localhost:$FRONTEND_PORT" \
-    nohup npm run dev > "$LOG_DIR/backend.log" 2>&1 & echo "  PID: $!")
+    nohup npm run dev > "$LOG_DIR/backend.log" 2>&1 &
+    echo $! > "$LOG_DIR/backend.pid"
+    echo "  PID: $(cat "$LOG_DIR/backend.pid")")
 sleep 2
 
 # ----------------------------------------------------------------
-# Frontend — drop a tiny .env.local.runtime that the script wrote
-# (so the static .env.local in source stays as a template), then
-# launch on the chosen port. Note: Next reads .env.local at boot;
-# the runtime overlay is sourced via export.
+# Frontend — runtime env (NEXT_PUBLIC_BACKEND_URL / RPC / PORT) is
+# exported into the npm process so the static .env.local in source
+# can stay as a template. Next reads .env.local at boot; the
+# overrides here win for this run only.
 # ----------------------------------------------------------------
 echo "[2/2] Starting frontend on :$FRONTEND_PORT…"
 (cd frontend && \
     NEXT_PUBLIC_BACKEND_URL="http://localhost:$BACKEND_PORT" \
     NEXT_PUBLIC_RPC_URL="$RPC_URL" \
     PORT="$FRONTEND_PORT" \
-    nohup npm run dev -- -p "$FRONTEND_PORT" > "$LOG_DIR/frontend.log" 2>&1 & echo "  PID: $!")
+    nohup npm run dev -- -p "$FRONTEND_PORT" > "$LOG_DIR/frontend.log" 2>&1 &
+    echo $! > "$LOG_DIR/frontend.pid"
+    echo "  PID: $(cat "$LOG_DIR/frontend.pid")")
 sleep 3
 
 echo ""
@@ -82,5 +88,6 @@ echo "=== Started ==="
 echo "  Frontend:  http://localhost:$FRONTEND_PORT"
 echo "  Backend:   http://localhost:$BACKEND_PORT"
 echo "  Logs:      $LOG_DIR/{frontend,backend}.log"
+echo "  PIDs:      $LOG_DIR/{frontend,backend}.pid"
 echo ""
-echo "  Stop with: pkill -f 'next dev.*$FRONTEND_PORT' ; pkill -f 'src/server.ts'"
+echo "  Stop with: bash script/stop-services.sh"

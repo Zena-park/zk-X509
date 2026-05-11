@@ -103,14 +103,21 @@ echo "  caMerkleRoot: $CA_ROOT"
 PAUSED=$(cast call "$REGISTRY_ADDR" "paused()(bool)" --rpc-url "$RPC_URL" 2>/dev/null)
 echo "  paused:       $PAUSED"
 
-cat > .env.shared-anvil <<EOF
-RPC_URL=$RPC_URL
-FACTORY_ADDRESS=$FACTORY_ADDR
-REGISTRY_ADDRESS=$REGISTRY_ADDR
-DEPLOYER_ADDRESS=$DEPLOYER_ADDR
-DEPLOYER_KEY=$DEPLOYER_KEY
-SERVICE_NAME=$SERVICE_NAME
-EOF
+# Quote values so strict dotenv parsers (and `source`) don't choke
+# on SERVICE_NAME containing spaces or punctuation. Embedded
+# double-quotes are escaped via printf %q-style fallback.
+escape_dotenv() {
+    # Replace " with \" so the surrounding double-quotes stay valid.
+    printf '%s' "$1" | sed 's/"/\\"/g'
+}
+{
+    printf 'RPC_URL="%s"\n'          "$(escape_dotenv "$RPC_URL")"
+    printf 'FACTORY_ADDRESS="%s"\n'  "$(escape_dotenv "$FACTORY_ADDR")"
+    printf 'REGISTRY_ADDRESS="%s"\n' "$(escape_dotenv "$REGISTRY_ADDR")"
+    printf 'DEPLOYER_ADDRESS="%s"\n' "$(escape_dotenv "$DEPLOYER_ADDR")"
+    printf 'DEPLOYER_KEY="%s"\n'     "$(escape_dotenv "$DEPLOYER_KEY")"
+    printf 'SERVICE_NAME="%s"\n'     "$(escape_dotenv "$SERVICE_NAME")"
+} > .env.shared-anvil
 
 echo ""
 echo "=== Done ==="
