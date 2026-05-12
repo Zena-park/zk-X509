@@ -97,7 +97,31 @@ echo "  ✓ IdentityRegistry: $REGISTRY_ADDR"
 # Step 3: Verify reads
 # ========================================
 cd ..
-echo "[3/3] Verifying deployment..."
+# Optional: seed the registry with the test CA from certs/ca_pub.der.
+# Enabled by default so a freshly-deployed dev registry isn't stuck
+# at caMerkleRoot=0 (which forbids every register() call). Disable
+# with `SEED_TEST_CA=0` if you intend to add CAs manually later.
+SEED_TEST_CA="${SEED_TEST_CA:-1}"
+CA_CERT_PATH="${CA_CERT_PATH:-$(pwd)/certs/ca_pub.der}"
+if [ "$SEED_TEST_CA" = "1" ]; then
+    if [ ! -f "$CA_CERT_PATH" ]; then
+        echo "[3/3] ⚠ SEED_TEST_CA=1 but $CA_CERT_PATH not found — skipping addCA."
+        echo "    Run \`bash certs/generate-test-certs.sh\` to create test certs."
+    else
+        # `addCA(bytes32 caHash)` per IdentityRegistry.sol — caHash is
+        # SHA-256 of the CA's SPKI DER bytes (same hash the prover uses
+        # when binding a registration proof to a trusted CA).
+        CA_HASH=$(shasum -a 256 "$CA_CERT_PATH" | awk '{print "0x"$1}')
+        echo "[3/3] Seeding test CA on the registry..."
+        echo "  cert:    $CA_CERT_PATH"
+        echo "  caHash:  $CA_HASH"
+        cast send "$REGISTRY_ADDR" "addCA(bytes32)" "$CA_HASH" \
+            --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
+        echo "  ✓ CA added"
+    fi
+fi
+
+echo "[4/4] Verifying deployment..."
 CA_ROOT=$(cast call "$REGISTRY_ADDR" "caMerkleRoot()(bytes32)" --rpc-url "$RPC_URL" 2>/dev/null)
 echo "  caMerkleRoot: $CA_ROOT"
 PAUSED=$(cast call "$REGISTRY_ADDR" "paused()(bool)" --rpc-url "$RPC_URL" 2>/dev/null)
