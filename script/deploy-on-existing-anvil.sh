@@ -176,21 +176,32 @@ escape_dotenv() {
 SYNC_FRONTEND_ENV="${SYNC_FRONTEND_ENV:-1}"
 FRONTEND_ENV_FILE="${FRONTEND_ENV_FILE:-$(pwd)/frontend/.env.local}"
 if [ "$SYNC_FRONTEND_ENV" = "1" ] && [ -f "$FRONTEND_ENV_FILE" ]; then
-    # Updates only the three RPC / REGISTRY / FACTORY lines; leaves any
-    # user-added keys (analytics IDs, custom feature flags) untouched.
-    # Use a temp file so partial writes don't corrupt the live file.
-    tmp=$(mktemp)
-    awk -v rpc="$RPC_URL" -v reg="$REGISTRY_ADDR" -v fac="$FACTORY_ADDR" -v sp1="$SP1_VERIFIER_ADDR" '
-        /^NEXT_PUBLIC_RPC_URL=/              { print "NEXT_PUBLIC_RPC_URL=" rpc;              seen_rpc=1; next }
-        /^NEXT_PUBLIC_REGISTRY_ADDRESS=/     { print "NEXT_PUBLIC_REGISTRY_ADDRESS=" reg;     seen_reg=1; next }
-        /^NEXT_PUBLIC_FACTORY_ADDRESS=/      { print "NEXT_PUBLIC_FACTORY_ADDRESS=" fac;      seen_fac=1; next }
-        /^NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=/ { if (sp1 != "") { print "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=" sp1; seen_sp1=1 } else { print } ; next }
+    # Updates only the address lines; leaves any user-added keys
+    # (analytics IDs, custom feature flags) untouched. Stage the
+    # rewrite next to the target file so the final `mv` is an atomic
+    # rename — `mktemp` defaults to /tmp, which may sit on a different
+    # filesystem and degrade into copy+unlink (losing the atomicity
+    # guarantee and resetting file mode/owner).
+    env_dir=$(cd "$(dirname "$FRONTEND_ENV_FILE")" && pwd)
+    tmp=$(mktemp "$env_dir/.env.local.XXXXXX")
+    # Quote every value through `escape_dotenv` so `source` and strict
+    # dotenv parsers don't choke on spaces / `#` / `=` in future values
+    # — matches what `.env.shared-anvil` does just above.
+    Q_RPC=$(escape_dotenv "$RPC_URL")
+    Q_REG=$(escape_dotenv "$REGISTRY_ADDR")
+    Q_FAC=$(escape_dotenv "$FACTORY_ADDR")
+    Q_SP1=$(escape_dotenv "$SP1_VERIFIER_ADDR")
+    awk -v rpc="$Q_RPC" -v reg="$Q_REG" -v fac="$Q_FAC" -v sp1="$Q_SP1" '
+        /^NEXT_PUBLIC_RPC_URL=/              { print "NEXT_PUBLIC_RPC_URL=\"" rpc "\"";              seen_rpc=1; next }
+        /^NEXT_PUBLIC_REGISTRY_ADDRESS=/     { print "NEXT_PUBLIC_REGISTRY_ADDRESS=\"" reg "\"";     seen_reg=1; next }
+        /^NEXT_PUBLIC_FACTORY_ADDRESS=/      { print "NEXT_PUBLIC_FACTORY_ADDRESS=\"" fac "\"";      seen_fac=1; next }
+        /^NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=/ { if (sp1 != "") { print "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=\"" sp1 "\""; seen_sp1=1 } else { print } ; next }
         { print }
         END {
-            if (!seen_rpc) print "NEXT_PUBLIC_RPC_URL=" rpc
-            if (!seen_reg) print "NEXT_PUBLIC_REGISTRY_ADDRESS=" reg
-            if (!seen_fac) print "NEXT_PUBLIC_FACTORY_ADDRESS=" fac
-            if (!seen_sp1 && sp1 != "") print "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=" sp1
+            if (!seen_rpc) print "NEXT_PUBLIC_RPC_URL=\"" rpc "\""
+            if (!seen_reg) print "NEXT_PUBLIC_REGISTRY_ADDRESS=\"" reg "\""
+            if (!seen_fac) print "NEXT_PUBLIC_FACTORY_ADDRESS=\"" fac "\""
+            if (!seen_sp1 && sp1 != "") print "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=\"" sp1 "\""
         }
     ' "$FRONTEND_ENV_FILE" > "$tmp"
     mv "$tmp" "$FRONTEND_ENV_FILE"
