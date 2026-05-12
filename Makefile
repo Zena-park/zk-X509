@@ -70,7 +70,10 @@ desktop:           ## Build Tauri desktop app (DMG) with Docker-matched vkey
 	cd desktop && npm ci && PREBUILT_ELF="$(CURDIR)/elf/zk-x509-program" npx tauri build
 	@echo ""
 	@echo "Desktop app built:"
-	@ls target/*/release/bundle/dmg/*.dmg 2>/dev/null || echo "  (DMG not found — check target/*/release/bundle/)"
+	@# Tauri writes to target/release/bundle/dmg when building for the host
+	@# triple, and target/<triple>/release/bundle/dmg when --target is set.
+	@ls target/release/bundle/dmg/*.dmg target/*/release/bundle/dmg/*.dmg 2>/dev/null \
+	    || echo "  (DMG not found — check target/release/bundle/ or target/<triple>/release/bundle/)"
 	@echo ""
 	@echo "To install: open the DMG and drag to Applications"
 
