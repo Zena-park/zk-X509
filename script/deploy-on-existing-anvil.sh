@@ -63,7 +63,13 @@ if [ -z "$FACTORY_ADDR" ]; then
     echo "$DEPLOY_OUTPUT"
     exit 1
 fi
+# DeployLocal.s.sol also deploys an SP1VerifierGroth16 ahead of the
+# factory; capture its address so the frontend env sync below can
+# point NEXT_PUBLIC_SP1_VERIFIER_ADDRESS at the live verifier instead
+# of leaving it on the previous anvil session's stale address.
+SP1_VERIFIER_ADDR=$(echo "$DEPLOY_OUTPUT" | awk '/SP1VerifierGroth16/ {print $NF; exit}')
 echo "  ✓ RegistryFactory: $FACTORY_ADDR"
+[ -n "$SP1_VERIFIER_ADDR" ] && echo "  ✓ SP1VerifierGroth16: $SP1_VERIFIER_ADDR"
 
 # ========================================
 # Step 2: Seed an IdentityRegistry via the factory
@@ -174,15 +180,17 @@ if [ "$SYNC_FRONTEND_ENV" = "1" ] && [ -f "$FRONTEND_ENV_FILE" ]; then
     # user-added keys (analytics IDs, custom feature flags) untouched.
     # Use a temp file so partial writes don't corrupt the live file.
     tmp=$(mktemp)
-    awk -v rpc="$RPC_URL" -v reg="$REGISTRY_ADDR" -v fac="$FACTORY_ADDR" '
-        /^NEXT_PUBLIC_RPC_URL=/         { print "NEXT_PUBLIC_RPC_URL=" rpc;        seen_rpc=1; next }
-        /^NEXT_PUBLIC_REGISTRY_ADDRESS=/ { print "NEXT_PUBLIC_REGISTRY_ADDRESS=" reg; seen_reg=1; next }
-        /^NEXT_PUBLIC_FACTORY_ADDRESS=/  { print "NEXT_PUBLIC_FACTORY_ADDRESS=" fac; seen_fac=1; next }
+    awk -v rpc="$RPC_URL" -v reg="$REGISTRY_ADDR" -v fac="$FACTORY_ADDR" -v sp1="$SP1_VERIFIER_ADDR" '
+        /^NEXT_PUBLIC_RPC_URL=/              { print "NEXT_PUBLIC_RPC_URL=" rpc;              seen_rpc=1; next }
+        /^NEXT_PUBLIC_REGISTRY_ADDRESS=/     { print "NEXT_PUBLIC_REGISTRY_ADDRESS=" reg;     seen_reg=1; next }
+        /^NEXT_PUBLIC_FACTORY_ADDRESS=/      { print "NEXT_PUBLIC_FACTORY_ADDRESS=" fac;      seen_fac=1; next }
+        /^NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=/ { if (sp1 != "") { print "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=" sp1; seen_sp1=1 } else { print } ; next }
         { print }
         END {
             if (!seen_rpc) print "NEXT_PUBLIC_RPC_URL=" rpc
             if (!seen_reg) print "NEXT_PUBLIC_REGISTRY_ADDRESS=" reg
             if (!seen_fac) print "NEXT_PUBLIC_FACTORY_ADDRESS=" fac
+            if (!seen_sp1 && sp1 != "") print "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=" sp1
         }
     ' "$FRONTEND_ENV_FILE" > "$tmp"
     mv "$tmp" "$FRONTEND_ENV_FILE"
@@ -190,6 +198,7 @@ if [ "$SYNC_FRONTEND_ENV" = "1" ] && [ -f "$FRONTEND_ENV_FILE" ]; then
     echo "    NEXT_PUBLIC_RPC_URL=$RPC_URL"
     echo "    NEXT_PUBLIC_REGISTRY_ADDRESS=$REGISTRY_ADDR"
     echo "    NEXT_PUBLIC_FACTORY_ADDRESS=$FACTORY_ADDR"
+    [ -n "$SP1_VERIFIER_ADDR" ] && echo "    NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=$SP1_VERIFIER_ADDR"
     echo "  (restart the Next dev server to pick the new values up: bash script/stop-services.sh && bash script/start-services.sh)"
 fi
 
