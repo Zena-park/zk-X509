@@ -63,7 +63,13 @@ if [ -z "$FACTORY_ADDR" ]; then
     echo "$DEPLOY_OUTPUT"
     exit 1
 fi
+# DeployLocal.s.sol also deploys an SP1VerifierGroth16 ahead of the
+# factory; capture its address so the frontend env sync below can
+# point NEXT_PUBLIC_SP1_VERIFIER_ADDRESS at the live verifier instead
+# of leaving it on the previous anvil session's stale address.
+SP1_VERIFIER_ADDR=$(echo "$DEPLOY_OUTPUT" | awk '/SP1VerifierGroth16/ {print $NF; exit}')
 echo "  ✓ RegistryFactory: $FACTORY_ADDR"
+[ -n "$SP1_VERIFIER_ADDR" ] && echo "  ✓ SP1VerifierGroth16: $SP1_VERIFIER_ADDR"
 
 # ========================================
 # Step 2: Seed an IdentityRegistry via the factory
@@ -158,6 +164,54 @@ escape_dotenv() {
     printf 'DEPLOYER_KEY="%s"\n'     "$(escape_dotenv "$DEPLOYER_KEY")"
     printf 'SERVICE_NAME="%s"\n'     "$(escape_dotenv "$SERVICE_NAME")"
 } > .env.shared-anvil
+
+# Keep frontend/.env.local in sync with the freshly-deployed addresses
+# so the Next dev server doesn't read stale REGISTRY/FACTORY addresses
+# from a previous anvil session (every fresh anvil mints new ones, and
+# the frontend's WalletProvider would otherwise hit `0x` on owner() →
+# BAD_DATA on every page that depends on the on-chain config).
+#
+# Opt out with `SYNC_FRONTEND_ENV=0`; override the file location with
+# `FRONTEND_ENV_FILE=...`.
+SYNC_FRONTEND_ENV="${SYNC_FRONTEND_ENV:-1}"
+FRONTEND_ENV_FILE="${FRONTEND_ENV_FILE:-$(pwd)/frontend/.env.local}"
+if [ "$SYNC_FRONTEND_ENV" = "1" ] && [ -f "$FRONTEND_ENV_FILE" ]; then
+    # Updates only the address lines; leaves any user-added keys
+    # (analytics IDs, custom feature flags) untouched. Stage the
+    # rewrite next to the target file so the final `mv` is an atomic
+    # rename — `mktemp` defaults to /tmp, which may sit on a different
+    # filesystem and degrade into copy+unlink (losing the atomicity
+    # guarantee and resetting file mode/owner).
+    env_dir=$(cd "$(dirname "$FRONTEND_ENV_FILE")" && pwd)
+    tmp=$(mktemp "$env_dir/.env.local.XXXXXX")
+    # Quote every value through `escape_dotenv` so `source` and strict
+    # dotenv parsers don't choke on spaces / `#` / `=` in future values
+    # — matches what `.env.shared-anvil` does just above.
+    Q_RPC=$(escape_dotenv "$RPC_URL")
+    Q_REG=$(escape_dotenv "$REGISTRY_ADDR")
+    Q_FAC=$(escape_dotenv "$FACTORY_ADDR")
+    Q_SP1=$(escape_dotenv "$SP1_VERIFIER_ADDR")
+    awk -v rpc="$Q_RPC" -v reg="$Q_REG" -v fac="$Q_FAC" -v sp1="$Q_SP1" '
+        /^NEXT_PUBLIC_RPC_URL=/              { print "NEXT_PUBLIC_RPC_URL=\"" rpc "\"";              seen_rpc=1; next }
+        /^NEXT_PUBLIC_REGISTRY_ADDRESS=/     { print "NEXT_PUBLIC_REGISTRY_ADDRESS=\"" reg "\"";     seen_reg=1; next }
+        /^NEXT_PUBLIC_FACTORY_ADDRESS=/      { print "NEXT_PUBLIC_FACTORY_ADDRESS=\"" fac "\"";      seen_fac=1; next }
+        /^NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=/ { if (sp1 != "") { print "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=\"" sp1 "\""; seen_sp1=1 } else { print } ; next }
+        { print }
+        END {
+            if (!seen_rpc) print "NEXT_PUBLIC_RPC_URL=\"" rpc "\""
+            if (!seen_reg) print "NEXT_PUBLIC_REGISTRY_ADDRESS=\"" reg "\""
+            if (!seen_fac) print "NEXT_PUBLIC_FACTORY_ADDRESS=\"" fac "\""
+            if (!seen_sp1 && sp1 != "") print "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=\"" sp1 "\""
+        }
+    ' "$FRONTEND_ENV_FILE" > "$tmp"
+    mv "$tmp" "$FRONTEND_ENV_FILE"
+    echo "  Synced frontend env: $FRONTEND_ENV_FILE"
+    echo "    NEXT_PUBLIC_RPC_URL=$RPC_URL"
+    echo "    NEXT_PUBLIC_REGISTRY_ADDRESS=$REGISTRY_ADDR"
+    echo "    NEXT_PUBLIC_FACTORY_ADDRESS=$FACTORY_ADDR"
+    [ -n "$SP1_VERIFIER_ADDR" ] && echo "    NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=$SP1_VERIFIER_ADDR"
+    echo "  (restart the Next dev server to pick the new values up: bash script/stop-services.sh && bash script/start-services.sh)"
+fi
 
 echo ""
 echo "=== Done ==="
