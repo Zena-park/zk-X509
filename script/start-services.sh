@@ -26,9 +26,14 @@
 # Re-exec under native arm64 bash before any work so every child
 # inherits the right arch.
 if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "x86_64" ] \
-    && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ] \
-    && [ -x /opt/homebrew/bin/bash ]; then
-    exec arch -arm64 /opt/homebrew/bin/bash "$0" "$@"
+    && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+    # Prefer Homebrew's arm64 bash when present (handles users that
+    # explicitly installed it); fall back to /bin/bash, the system
+    # universal binary that always exists on macOS and switches arch
+    # cleanly under `arch -arm64`.
+    BASH_BIN="/bin/bash"
+    [ -x /opt/homebrew/bin/bash ] && BASH_BIN="/opt/homebrew/bin/bash"
+    exec arch -arm64 "$BASH_BIN" "$0" "$@"
 fi
 
 set -euo pipefail
