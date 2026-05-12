@@ -49,7 +49,7 @@ echo ""
 # ========================================
 # Step 1: Deploy RegistryFactory
 # ========================================
-echo "[1/3] Deploying RegistryFactory..."
+echo "[1/4] Deploying RegistryFactory..."
 cd contracts
 DEPLOY_OUTPUT=$(forge script script/DeployLocal.s.sol --tc DeployLocalScript \
     --rpc-url "$RPC_URL" \
@@ -68,7 +68,7 @@ echo "  ✓ RegistryFactory: $FACTORY_ADDR"
 # ========================================
 # Step 2: Seed an IdentityRegistry via the factory
 # ========================================
-echo "[2/3] Creating IdentityRegistry via factory..."
+echo "[2/4] Creating IdentityRegistry via factory..."
 # Capture both stdout+stderr and the exit status separately so a
 # forge failure surfaces with full context (previously masked by
 # `|| true`, which forced the awk-empty branch to print a
@@ -94,10 +94,50 @@ fi
 echo "  ✓ IdentityRegistry: $REGISTRY_ADDR"
 
 # ========================================
-# Step 3: Verify reads
+# Step 3: Seed the registry with the test CA (default-on for dev)
 # ========================================
 cd ..
-echo "[3/3] Verifying deployment..."
+# Optional: seed the registry with the test CA from certs/ca_pub.der.
+# Enabled by default so a freshly-deployed dev registry isn't stuck
+# at caMerkleRoot=0 (which forbids every register() call). Disable
+# with `SEED_TEST_CA=0` if you intend to add CAs manually later.
+SEED_TEST_CA="${SEED_TEST_CA:-1}"
+CA_CERT_PATH="${CA_CERT_PATH:-$(pwd)/certs/ca_pub.der}"
+
+# Portable SHA-256: prefer GNU coreutils' `sha256sum` when present
+# (Linux / CI images), fall back to macOS's `shasum -a 256`, then to
+# `openssl dgst -sha256` on stripped-down images that have neither.
+sha256_hex() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1; exit}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1; exit}'
+    else
+        openssl dgst -sha256 "$1" | awk '{print $NF; exit}'
+    fi
+}
+
+if [ "$SEED_TEST_CA" = "1" ]; then
+    if [ ! -f "$CA_CERT_PATH" ]; then
+        echo "[3/4] ⚠ SEED_TEST_CA=1 but $CA_CERT_PATH not found — skipping addCA."
+        echo "    Run \`bash certs/generate-test-certs.sh\` to create test certs."
+    else
+        # `addCA(bytes32 caHash)` per IdentityRegistry.sol — caHash is
+        # SHA-256 of the CA's SPKI DER bytes (same hash the prover uses
+        # when binding a registration proof to a trusted CA).
+        CA_HASH="0x$(sha256_hex "$CA_CERT_PATH")"
+        echo "[3/4] Seeding test CA on the registry..."
+        echo "  cert:    $CA_CERT_PATH"
+        echo "  caHash:  $CA_HASH"
+        cast send "$REGISTRY_ADDR" "addCA(bytes32)" "$CA_HASH" \
+            --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" > /dev/null
+        echo "  ✓ CA added"
+    fi
+else
+    echo "[3/4] Skipping test-CA seed (SEED_TEST_CA=0)."
+fi
+
+echo "[4/4] Verifying deployment..."
 CA_ROOT=$(cast call "$REGISTRY_ADDR" "caMerkleRoot()(bytes32)" --rpc-url "$RPC_URL" 2>/dev/null)
 echo "  caMerkleRoot: $CA_ROOT"
 PAUSED=$(cast call "$REGISTRY_ADDR" "paused()(bool)" --rpc-url "$RPC_URL" 2>/dev/null)

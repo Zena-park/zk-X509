@@ -59,7 +59,7 @@ fi
 # process tree we spawned (npm/ts-node wrappers don't always
 # surface the source path in pgrep -f).
 # ----------------------------------------------------------------
-echo "[1/2] Starting backend on :$BACKEND_PORT…"
+echo "[1/2] Starting backend on :${BACKEND_PORT}…"
 (cd backend && PORT="$BACKEND_PORT" \
     CORS_ORIGIN="http://localhost:$FRONTEND_PORT" \
     nohup npm run dev > "$LOG_DIR/backend.log" 2>&1 &
@@ -73,7 +73,7 @@ sleep 2
 # can stay as a template. Next reads .env.local at boot; the
 # overrides here win for this run only.
 # ----------------------------------------------------------------
-echo "[2/2] Starting frontend on :$FRONTEND_PORT…"
+echo "[2/2] Starting frontend on :${FRONTEND_PORT}…"
 (cd frontend && \
     NEXT_PUBLIC_BACKEND_URL="http://localhost:$BACKEND_PORT" \
     NEXT_PUBLIC_RPC_URL="$RPC_URL" \
