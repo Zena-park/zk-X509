@@ -159,6 +159,40 @@ escape_dotenv() {
     printf 'SERVICE_NAME="%s"\n'     "$(escape_dotenv "$SERVICE_NAME")"
 } > .env.shared-anvil
 
+# Keep frontend/.env.local in sync with the freshly-deployed addresses
+# so the Next dev server doesn't read stale REGISTRY/FACTORY addresses
+# from a previous anvil session (every fresh anvil mints new ones, and
+# the frontend's WalletProvider would otherwise hit `0x` on owner() →
+# BAD_DATA on every page that depends on the on-chain config).
+#
+# Opt out with `SYNC_FRONTEND_ENV=0`; override the file location with
+# `FRONTEND_ENV_FILE=...`.
+SYNC_FRONTEND_ENV="${SYNC_FRONTEND_ENV:-1}"
+FRONTEND_ENV_FILE="${FRONTEND_ENV_FILE:-$(pwd)/frontend/.env.local}"
+if [ "$SYNC_FRONTEND_ENV" = "1" ] && [ -f "$FRONTEND_ENV_FILE" ]; then
+    # Updates only the three RPC / REGISTRY / FACTORY lines; leaves any
+    # user-added keys (analytics IDs, custom feature flags) untouched.
+    # Use a temp file so partial writes don't corrupt the live file.
+    tmp=$(mktemp)
+    awk -v rpc="$RPC_URL" -v reg="$REGISTRY_ADDR" -v fac="$FACTORY_ADDR" '
+        /^NEXT_PUBLIC_RPC_URL=/         { print "NEXT_PUBLIC_RPC_URL=" rpc;        seen_rpc=1; next }
+        /^NEXT_PUBLIC_REGISTRY_ADDRESS=/ { print "NEXT_PUBLIC_REGISTRY_ADDRESS=" reg; seen_reg=1; next }
+        /^NEXT_PUBLIC_FACTORY_ADDRESS=/  { print "NEXT_PUBLIC_FACTORY_ADDRESS=" fac; seen_fac=1; next }
+        { print }
+        END {
+            if (!seen_rpc) print "NEXT_PUBLIC_RPC_URL=" rpc
+            if (!seen_reg) print "NEXT_PUBLIC_REGISTRY_ADDRESS=" reg
+            if (!seen_fac) print "NEXT_PUBLIC_FACTORY_ADDRESS=" fac
+        }
+    ' "$FRONTEND_ENV_FILE" > "$tmp"
+    mv "$tmp" "$FRONTEND_ENV_FILE"
+    echo "  Synced frontend env: $FRONTEND_ENV_FILE"
+    echo "    NEXT_PUBLIC_RPC_URL=$RPC_URL"
+    echo "    NEXT_PUBLIC_REGISTRY_ADDRESS=$REGISTRY_ADDR"
+    echo "    NEXT_PUBLIC_FACTORY_ADDRESS=$FACTORY_ADDR"
+    echo "  (restart the Next dev server to pick the new values up: bash script/stop-services.sh && bash script/start-services.sh)"
+fi
+
 echo ""
 echo "=== Done ==="
 echo "  Saved to: .env.shared-anvil"
