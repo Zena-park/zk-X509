@@ -15,6 +15,27 @@
 # address in frontend/.env.local is stale.
 # ============================================================
 
+# On Apple Silicon Macs, the frontend's native deps (lightningcss,
+# better-sqlite3, esbuild) ship as platform-specific .node files —
+# the optional-dep install only picks up the arch matching the npm
+# process that ran `install`. If this script is launched from an
+# x86_64 shell (common when /usr/local/bin/bash is on PATH first or
+# the wrapping terminal is in Rosetta), npm's child `node` reports
+# `process.arch === "x64"` and tries to load `lightningcss.darwin-x64`
+# even though only the arm64 variant is installed → MODULE_NOT_FOUND.
+# Re-exec under native arm64 bash before any work so every child
+# inherits the right arch.
+if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "x86_64" ] \
+    && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+    # Prefer Homebrew's arm64 bash when present (handles users that
+    # explicitly installed it); fall back to /bin/bash, the system
+    # universal binary that always exists on macOS and switches arch
+    # cleanly under `arch -arm64`.
+    BASH_BIN="/bin/bash"
+    [ -x /opt/homebrew/bin/bash ] && BASH_BIN="/opt/homebrew/bin/bash"
+    exec arch -arm64 "$BASH_BIN" "$0" "$@"
+fi
+
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
