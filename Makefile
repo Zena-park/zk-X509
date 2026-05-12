@@ -70,10 +70,17 @@ desktop:           ## Build Tauri desktop app (DMG) with Docker-matched vkey
 	cd desktop && npm ci && PREBUILT_ELF="$(CURDIR)/elf/zk-x509-program" npx tauri build
 	@echo ""
 	@echo "Desktop app built:"
-	@# Tauri writes to target/release/bundle/dmg when building for the host
-	@# triple, and target/<triple>/release/bundle/dmg when --target is set.
-	@ls target/release/bundle/dmg/*.dmg target/*/release/bundle/dmg/*.dmg 2>/dev/null \
-	    || echo "  (DMG not found — check target/release/bundle/ or target/<triple>/release/bundle/)"
+	@# Tauri writes to target/release/bundle/dmg for host builds and
+	@# target/<triple>/release/bundle/dmg when --target is set. Use `find`
+	@# so an unmatched glob doesn't trip the fallback when the other path
+	@# did match (POSIX sh leaves unmatched globs as literal args, which
+	@# makes `ls` exit non-zero even on a successful host-build listing).
+	@DMGS=$$(find target -maxdepth 5 -path '*/release/bundle/dmg/*.dmg' 2>/dev/null); \
+	 if [ -n "$$DMGS" ]; then \
+	     printf '  %s\n' $$DMGS; \
+	 else \
+	     echo "  (DMG not found — check target/release/bundle/ or target/<triple>/release/bundle/)"; \
+	 fi
 	@echo ""
 	@echo "To install: open the DMG and drag to Applications"
 
