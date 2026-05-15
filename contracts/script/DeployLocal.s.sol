@@ -13,8 +13,22 @@ contract DeployLocalScript is Script {
         SP1Verifier verifier = new SP1Verifier();
         console.log("SP1VerifierGroth16 (v6.0.0):", address(verifier));
 
-        // Deploy RegistryFactory (deploys implementation + beacon internally)
-        bytes32 vkey = vm.envOr("PROGRAM_V_KEY", bytes32(0x001f3272fa4043ac0b428241e62131888f8ce4b3208f425e46b991c890c57d13));
+        // Deploy RegistryFactory (deploys implementation + beacon internally).
+        //
+        // PROGRAM_V_KEY is REQUIRED — no in-script default. A baked-in literal
+        // here goes stale every time the SP1 program is rebuilt (the ELF VK is
+        // derived from program bytecode and the SP1 SDK version), and a stale
+        // VK on the factory makes every Groth16 proof revert with
+        // `ProofInvalid()` from the underlying verifier when users try to
+        // register — an opaque failure mode that wastes time tracing.
+        //
+        // Callers (notably `script/deploy-on-existing-anvil.sh`) must extract
+        // the live ELF VK first via the `script::vkey` binary and pass it:
+        //   PROGRAM_V_KEY=0x… forge script script/DeployLocal.s.sol …
+        // Without it, `vm.envBytes32` reverts the script before any contract
+        // is deployed — fail-fast beats deploying a registry that will only
+        // surface the mismatch much later inside a user's wallet UI.
+        bytes32 vkey = vm.envBytes32("PROGRAM_V_KEY");
         // Deploy with no platform fee (free mode for local development)
         RegistryFactory factory = new RegistryFactory(address(verifier), vkey, address(0), 0, address(0));
         console.log("RegistryFactory:", address(factory));
