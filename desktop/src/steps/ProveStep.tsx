@@ -23,11 +23,37 @@ type Props = {
 
 const STAGES = [
   { key: "consent", label: "Signing Consent" },
-  { key: "signing", label: "Signing" },
-  { key: "ca-merkle", label: "CA Merkle Tree" },
-  { key: "proving", label: "Generating Proof" },
+  { key: "signing", label: "Signing Wallet Bindings" },
+  // `ca-resolve` and `ca-merkle` used to be a single stage labeled
+  // "CA Merkle Tree", but the backend actually does CA lookup (RPC +
+  // remote repo fetch, often several seconds) BEFORE building the
+  // inclusion proof. Splitting them gives the user visible motion
+  // through that previously-frozen window.
+  { key: "ca-resolve", label: "Resolving Issuing CA" },
+  { key: "ca-merkle", label: "Building CA Merkle Proof" },
+  { key: "proving", label: "Generating ZK Proof" },
+  // Delegated-prove sub-stages — filtered out on self-prove paths
+  // below by the same `visibleStages` logic that hides `consent`.
+  { key: "encrypting", label: "Encrypting Certificate" },
+  { key: "sending", label: "Sending to Prover" },
   { key: "done", label: "Complete" },
 ];
+
+// Synthetic rotating sub-messages displayed underneath the active
+// "Generating ZK Proof" stage. SP1 itself emits no progress events
+// during the 1–3 minute proof phase, so without this the UI sits
+// frozen on one line — looks like a hang to the operator. The
+// messages roughly track what SP1's internal pipeline is doing
+// (witness gen → recursion fold → gnark wrap → compress) but the
+// rotation is timer-driven, not tied to actual SP1 sub-events. The
+// goal is a "still working" affordance, not pinpoint accuracy.
+const SP1_SUBSTEPS = [
+  "Executing program (≈12M RISC-V cycles)…",
+  "Compressing shard proofs (recursion tree fold)…",
+  "Building Groth16 wrapping circuit…",
+  "Final pairing check and proof compression…",
+];
+const SP1_SUBSTEP_ROTATION_MS = 15_000;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -144,43 +170,82 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
     }
   };
 
-  // Start proof on mount
+  // Combined effect: attach the progress listener BEFORE firing the
+  // `invoke("generate_proof")` IPC. The previous design split these
+  // into two separate effects, which is a race — both `invoke` and
+  // `listen` are async, but `invoke` arrives at the Rust side first
+  // and starts emitting "ca-resolve" / "signing" within milliseconds.
+  // If the `listen` IPC is still in flight at that moment, those
+  // emits get dropped and the UI shows all-gray bullets until the
+  // first stage that happens to fire *after* listener registration.
+  // Sequencing them with `await listen(...)` before `startProof()`
+  // closes the window — once `listen` resolves, the Rust event bus
+  // has the handler registered, so subsequent emits are delivered.
   useEffect(() => {
-    startProof();
+    let cancelled = false;
+    let unlistenFn: (() => void) | undefined;
+
+    (async () => {
+      const fn = await listen<ProofProgress>("proof-progress", (event) => {
+        if (!cancelled) {
+          setField("proofProgress", event.payload);
+        }
+      });
+      if (cancelled) {
+        fn();
+        return;
+      }
+      unlistenFn = fn;
+      // Listener is now guaranteed registered — safe to start proving.
+      void startProof();
+    })();
+
     return () => {
+      cancelled = true;
+      unlistenFn?.();
       if (timerRef.current) clearInterval(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Listen for progress events — safe cleanup with cancelled flag
+  // Rotate sub-messages under the active "proving" stage so the user
+  // sees motion during the 1–3 minute SP1 phase. The unconditional
+  // reset at the top covers both entering and leaving the stage —
+  // re-entering (retry) starts the rotation from index 0 again.
+  const [sp1SubstepIdx, setSp1SubstepIdx] = useState(0);
   useEffect(() => {
-    let cancelled = false;
-    let unlistenFn: (() => void) | undefined;
+    setSp1SubstepIdx(0);
+    if (state.proofProgress?.stage !== "proving") return;
+    const t = setInterval(
+      () => setSp1SubstepIdx((i) => (i + 1) % SP1_SUBSTEPS.length),
+      SP1_SUBSTEP_ROTATION_MS,
+    );
+    return () => clearInterval(t);
+  }, [state.proofProgress?.stage]);
 
-    listen<ProofProgress>("proof-progress", (event) => {
-      if (!cancelled) {
-        setField("proofProgress", event.payload);
-      }
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-      } else {
-        unlistenFn = fn;
-      }
-    });
+  // Per-stage elapsed counter. `stageStart` snapshots the global
+  // `elapsed` value at every stage transition so we can render
+  // `(elapsed - stageStart)` as the time spent on the active stage —
+  // useful when SP1 has been running for 90s and the operator wants
+  // to know whether they're still on the proving stage or stuck on
+  // CA resolve.
+  const [stageStart, setStageStart] = useState(0);
+  useEffect(() => {
+    setStageStart(elapsed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.proofProgress?.stage]);
 
-    return () => {
-      cancelled = true;
-      unlistenFn?.();
-    };
-  }, [setField]);
-
-  // Filter stages: hide "consent" for non-delegated proving
-  const visibleStages =
-    paramsRef.current.proofMode === "delegated"
-      ? STAGES
-      : STAGES.filter((s) => s.key !== "consent");
+  // Hide stages that don't apply to the current proof mode.
+  //   - `consent` and `encrypting` / `sending` only fire on the
+  //     delegated-prove path (off-host prover server).
+  //   - Self-prove mode goes straight from signing → ca-resolve →
+  //     ca-merkle → proving → done.
+  const isDelegated = paramsRef.current.proofMode === "delegated";
+  const visibleStages = STAGES.filter((s) =>
+    isDelegated
+      ? true
+      : s.key !== "consent" && s.key !== "encrypting" && s.key !== "sending",
+  );
 
   const currentStageIndex = visibleStages.findIndex(
     (s) => s.key === state.proofProgress?.stage,
@@ -218,14 +283,20 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
               const done = i < currentStageIndex;
               const active = i === currentStageIndex;
               const pending = i > currentStageIndex;
+              // Stage-local elapsed shown only on the active row so
+              // the operator can tell "is this stage stuck?" without
+              // mental subtraction. `Math.max` floors it to 0 in
+              // case `stageStart` updates land after `elapsed`.
+              const stageElapsed = active ? Math.max(0, elapsed - stageStart) : 0;
+              const showSp1Substep = active && stage.key === "proving";
               return (
                 <div
                   key={stage.key}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
+                  className={`relative overflow-hidden flex items-start gap-3 px-3 py-2.5 rounded-lg transition-all ${
                     active ? "bg-tertiary/5" : ""
                   }`}
                 >
-                  <div className="w-5 h-5 flex items-center justify-center">
+                  <div className="w-5 h-5 flex items-center justify-center mt-0.5">
                     {done ? (
                       <CheckCircle2 className="w-4 h-4 text-secondary" />
                     ) : active ? (
@@ -241,24 +312,60 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
                       />
                     )}
                   </div>
-                  <div className="flex-1">
-                    <span
-                      className={`text-sm ${
-                        done
-                          ? "text-secondary"
-                          : active
-                            ? "text-on-surface"
-                            : "text-on-surface-variant/40"
-                      }`}
-                    >
-                      {stage.label}
-                    </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className={`text-sm ${
+                          done
+                            ? "text-secondary"
+                            : active
+                              ? "text-on-surface"
+                              : "text-on-surface-variant/40"
+                        }`}
+                      >
+                        {stage.label}
+                      </span>
+                      {active && (
+                        <span className="text-[10px] font-mono text-on-surface-variant/50 tabular-nums">
+                          {formatElapsed(stageElapsed)}
+                        </span>
+                      )}
+                    </div>
                     {active && state.proofProgress?.message && (
                       <p className="text-xs text-on-surface-variant/60 mt-0.5">
                         {state.proofProgress.message}
                       </p>
                     )}
+                    {/* Synthetic SP1 sub-message rotation — only on
+                        the "proving" stage where the backend goes
+                        silent for 1–3 minutes. AnimatePresence-style
+                        crossfade keyed on the substep index so each
+                        rotation tick visibly transitions. */}
+                    {showSp1Substep && (
+                      <motion.p
+                        key={sp1SubstepIdx}
+                        initial={{ opacity: 0, y: 2 }}
+                        animate={{ opacity: 0.7, y: 0 }}
+                        transition={{ duration: 0.4 }}
+                        className="text-[11px] text-on-surface-variant/55 mt-1 italic"
+                      >
+                        {SP1_SUBSTEPS[sp1SubstepIdx]}
+                      </motion.p>
+                    )}
                   </div>
+                  {/* Indeterminate motion bar under the active row.
+                      Gives a clear "this stage is running" signal
+                      independent of the spinner — especially useful
+                      during the long SP1 phase where the message
+                      lines change but no other element moves. */}
+                  {active && (
+                    <motion.div
+                      className="absolute bottom-0 left-0 h-px w-1/3 bg-gradient-to-r from-transparent via-tertiary to-transparent"
+                      initial={{ x: "-100%" }}
+                      animate={{ x: "300%" }}
+                      transition={{ duration: 2.4, repeat: Infinity, ease: "linear" }}
+                    />
+                  )}
                 </div>
               );
             })}

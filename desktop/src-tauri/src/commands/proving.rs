@@ -50,6 +50,27 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str) {
     std::thread::sleep(std::time::Duration::from_millis(50));
 }
 
+/// Resolve the issuing CA and build its merkle inclusion proof, with
+/// paired UI progress emits. Used by both the self-prove and delegated
+/// paths — kept here as a free function so the duplicated 4-line block
+/// at both call sites can't drift out of sync (and so the UI sees the
+/// same two-stage transition regardless of which prove mode the user
+/// picked).
+fn resolve_ca_and_build_merkle(
+    app: &AppHandle,
+    cert_der: &[u8],
+    rpc_url: &str,
+    registry_bytes: &[u8; 20],
+    chain_id: u64,
+) -> Result<(Vec<u8>, [u8; 32], Vec<[u8; 32]>), String> {
+    emit_progress(app, "ca-resolve", "Resolving issuing CA on-chain...");
+    let ca_pub_key = resolve_ca(cert_der, rpc_url, registry_bytes, chain_id)?;
+    emit_progress(app, "ca-merkle", "Building CA Merkle inclusion proof...");
+    let (ca_merkle_root, ca_merkle_proof) =
+        zk_x509_script::onchain::build_ca_merkle(rpc_url, registry_bytes, &ca_pub_key);
+    Ok((ca_pub_key, ca_merkle_root, ca_merkle_proof))
+}
+
 /// Resolve CA public key for the user's cert via remote repo + local scan.
 fn resolve_ca(
     cert_der: &[u8],
@@ -168,12 +189,18 @@ pub async fn generate_proof(
             zk_x509_script::ownership::nullifier_challenge_hash(&registry_bytes, params.chain_id);
         let nullifier_sig = identity.sign_prehash(&nullifier_hash)?;
 
-        emit_progress(&app, "ca-merkle", "Building CA Merkle tree...");
-
-        let ca_pub_key = resolve_ca(&cert_der, &params.rpc_url, &registry_bytes, params.chain_id)?;
-
-        let (ca_merkle_root, ca_merkle_proof) =
-            zk_x509_script::onchain::build_ca_merkle(&params.rpc_url, &registry_bytes, &ca_pub_key);
+        // ca-resolve (RPC + remote repo fetch, several seconds) and
+        // ca-merkle (inclusion proof build) used to be a single stage
+        // emit, so the UI sat on the same label for two distinct work
+        // windows. The helper splits them with paired emits so the
+        // operator sees real motion through that previously-frozen gap.
+        let (ca_pub_key, ca_merkle_root, ca_merkle_proof) = resolve_ca_and_build_merkle(
+            &app,
+            &cert_der,
+            &params.rpc_url,
+            &registry_bytes,
+            params.chain_id,
+        )?;
 
         let cert_chain = vec![ca_pub_key];
         // CRL is intentionally empty: the ZK circuit validates certificate expiry
@@ -331,11 +358,14 @@ pub async fn delegated_prove(
             zk_x509_script::ownership::nullifier_challenge_hash(&registry_bytes, params.chain_id);
         let nullifier_sig = identity.sign_prehash(&nullifier_hash)?;
 
-        emit_progress(&app, "ca-merkle", "Building CA Merkle tree...");
-
-        let ca_pub_key = resolve_ca(&cert_der, &params.rpc_url, &registry_bytes, params.chain_id)?;
-        let (ca_merkle_root, ca_merkle_proof) =
-            zk_x509_script::onchain::build_ca_merkle(&params.rpc_url, &registry_bytes, &ca_pub_key);
+        // Same split as in `generate_proof`; see helper docstring.
+        let (ca_pub_key, ca_merkle_root, ca_merkle_proof) = resolve_ca_and_build_merkle(
+            &app,
+            &cert_der,
+            &params.rpc_url,
+            &registry_bytes,
+            params.chain_id,
+        )?;
 
         use base64::Engine;
         let cert_chain_b64 = vec![base64::engine::general_purpose::STANDARD.encode(&ca_pub_key)];
