@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Tauri release binaries served by /download. Each rebuild produces a
+# ~24 MB DMG; tracking those in git would balloon history fast. The
+# /download page HEAD-probes for the file at runtime and shows a
+# "Build Required" card with these exact instructions when missing —
+# operator workflow from the repo root:
+#
+#   (cd desktop && npx tauri build)
+#   mkdir -p frontend/public/downloads
+#   cp target/release/bundle/dmg/zk-X509_*.dmg frontend/public/downloads/
+#
+# Production should serve these from GitHub Releases / S3 instead.
+public/downloads/*.dmg
+public/downloads/*.app.tar.gz
