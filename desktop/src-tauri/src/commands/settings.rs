@@ -61,6 +61,31 @@ pub fn check_docker() -> bool {
         use std::os::unix::net::UnixStream;
 
         let mut candidates: Vec<String> = Vec::new();
+
+        // 1. Respect `DOCKER_HOST` first — same env var the docker CLI
+        //    consults before anything else (`docker info` uses it via
+        //    moby-engine's client). Covers rootless setups, custom
+        //    socket paths, and dev containers that point DOCKER_HOST at
+        //    a project-local sock. Only honor the `unix://` scheme
+        //    (and bare paths); TCP / HTTP endpoints aren't reachable
+        //    via UnixStream so we skip those rather than fail noisily.
+        if let Ok(dh) = std::env::var("DOCKER_HOST") {
+            let trimmed = dh.trim();
+            if let Some(path) = trimmed.strip_prefix("unix://") {
+                if !path.is_empty() {
+                    candidates.push(path.to_string());
+                }
+            } else if !trimmed.is_empty()
+                && !trimmed.starts_with("tcp://")
+                && !trimmed.starts_with("http://")
+                && !trimmed.starts_with("https://")
+                && !trimmed.starts_with("ssh://")
+            {
+                // Bare-path form (no scheme) — treat as a unix socket.
+                candidates.push(trimmed.to_string());
+            }
+        }
+
         if let Ok(home) = std::env::var("HOME") {
             // Docker Desktop on macOS keeps the socket under the user's
             // home; `/var/run/docker.sock` is usually a symlink to it but
@@ -69,6 +94,16 @@ pub fn check_docker() -> bool {
             // colima default profile — common Docker-Desktop alternative
             // on Apple Silicon dev machines.
             candidates.push(format!("{}/.colima/default/docker.sock", home));
+        }
+        // Rootless Linux installs (Docker / Podman) keep the per-user
+        // socket under $XDG_RUNTIME_DIR — usually `/run/user/<uid>/`.
+        // Honor that before the system-wide `/var/run/docker.sock`,
+        // since on a rootless host the system socket either doesn't
+        // exist or is owned by another user.
+        if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
+            candidates.push(format!("{}/docker.sock", xdg));
+            // Podman + DOCKER_HOST-emulation socket location.
+            candidates.push(format!("{}/podman/podman.sock", xdg));
         }
         candidates.push("/var/run/docker.sock".to_string());
 

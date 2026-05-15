@@ -269,6 +269,15 @@ pub async fn generate_proof(
                 .setup(ZK_X509_ELF)
                 .map_err(|e| format!("Proving setup failed (Docker may be required for Groth16): {}", e))?;
 
+            // Was previously missing on the Groth16 path — the execute
+            // branch above emits "proving" but Groth16 jumped straight
+            // from "ca-merkle" to "done", which made the UI sit on the
+            // CA-merkle row for the entire 1–3 minute SP1 phase. Same
+            // event name as the execute branch so the frontend stage
+            // table doesn't need a Groth16-specific entry.
+            emit_progress(&app, "proving",
+                "Generating Groth16 ZK proof (~12M cycles + recursion wrap). Typically 1-3 minutes.");
+
             let proof: SP1ProofWithPublicValues = client
                 .prove(&pk, stdin)
                 .groth16()

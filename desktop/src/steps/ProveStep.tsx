@@ -170,35 +170,67 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
     }
   };
 
-  // Combined effect: attach the progress listener BEFORE firing the
-  // `invoke("generate_proof")` IPC. The previous design split these
-  // into two separate effects, which is a race — both `invoke` and
-  // `listen` are async, but `invoke` arrives at the Rust side first
-  // and starts emitting "ca-resolve" / "signing" within milliseconds.
-  // If the `listen` IPC is still in flight at that moment, those
-  // emits get dropped and the UI shows all-gray bullets until the
-  // first stage that happens to fire *after* listener registration.
-  // Sequencing them with `await listen(...)` before `startProof()`
-  // closes the window — once `listen` resolves, the Rust event bus
-  // has the handler registered, so subsequent emits are delivered.
+  // Live status of the backend→frontend progress channel. Surfaces
+  // three things at a glance for the operator: did `listen()` resolve
+  // (would catch a Tauri ACL / capability misconfig), how many events
+  // arrived, and which stage was last reported. Filled in by the
+  // single listener below — no separate handler for the panel, since
+  // registering listen() twice on the same event just doubles the
+  // dispatch cost without giving us new information.
+  const [channelStatus, setChannelStatus] = useState({
+    listenState: "pending" as "pending" | "registered" | "error",
+    emitCount: 0,
+    lastStage: "",
+    error: null as string | null,
+  });
+
+  // Single effect: register the progress listener AND kick off the
+  // proof concurrently. The earlier sequential design (await listen
+  // → startProof) starved the elapsed timer when `listen()` was slow
+  // or threw, so users saw a frozen 0s with all-gray bullets. Firing
+  // in parallel keeps the timer ticking from mount while closing the
+  // race in practice: invoke's IPC + listen's IPC reach Rust on the
+  // same event-loop tick, and the first emit (`signing`) doesn't
+  // fire until spawn-blocking + cert-load (~100ms+) — enough for
+  // listener registration to land. The single handler updates both
+  // `state.proofProgress` (drives the stage pipeline) and
+  // `channelStatus` (drives the live-status panel) atomically.
   useEffect(() => {
     let cancelled = false;
     let unlistenFn: (() => void) | undefined;
 
-    (async () => {
-      const fn = await listen<ProofProgress>("proof-progress", (event) => {
-        if (!cancelled) {
-          setField("proofProgress", event.payload);
+    listen<ProofProgress>("proof-progress", (event) => {
+      if (cancelled) return;
+      setField("proofProgress", event.payload);
+      setChannelStatus((d) => ({
+        ...d,
+        emitCount: d.emitCount + 1,
+        lastStage: event.payload?.stage ?? "(no stage)",
+      }));
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
         }
+        unlistenFn = fn;
+        setChannelStatus((d) => ({ ...d, listenState: "registered" }));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setChannelStatus((d) => ({
+            ...d,
+            listenState: "error",
+            error: String(err),
+          }));
+        }
+        // Also log so a Tauri-side regression (event-name typo,
+        // API rename) is visible during dev even if the panel
+        // is later hidden.
+        console.error("listen('proof-progress') failed:", err);
       });
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unlistenFn = fn;
-      // Listener is now guaranteed registered — safe to start proving.
-      void startProof();
-    })();
+
+    startProof();
 
     return () => {
       cancelled = true;
@@ -240,6 +272,14 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
   //     delegated-prove path (off-host prover server).
   //   - Self-prove mode goes straight from signing → ca-resolve →
   //     ca-merkle → proving → done.
+  // Per-stage status uses a *set of seen stage keys* instead of a
+  // pure index comparison. Delegated proving is non-linear:
+  // encrypted requests fire `encrypting` then `proving` (skipping
+  // `sending`); plaintext fallback fires `sending` then `proving`
+  // (skipping `encrypting`). An index-only "everything before
+  // current is done" rule would mark the skipped stage as done,
+  // which is wrong — the seen-set keeps unseen stages pending
+  // (gray) so the operator sees what actually happened.
   const isDelegated = paramsRef.current.proofMode === "delegated";
   const visibleStages = STAGES.filter((s) =>
     isDelegated
@@ -247,9 +287,26 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
       : s.key !== "consent" && s.key !== "encrypting" && s.key !== "sending",
   );
 
-  const currentStageIndex = visibleStages.findIndex(
-    (s) => s.key === state.proofProgress?.stage,
-  );
+  const currentStage = state.proofProgress?.stage ?? "";
+
+  const [seenStages, setSeenStages] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!currentStage) return;
+    setSeenStages((prev) => {
+      if (prev.has(currentStage)) return prev;
+      const next = new Set(prev);
+      next.add(currentStage);
+      return next;
+    });
+  }, [currentStage]);
+
+  // Reset the seen-set on retry — `startProof()` clears
+  // `state.proofProgress`, so observing that flip lets us forget
+  // the previous run's stages without coupling to startProof()
+  // internals.
+  useEffect(() => {
+    if (state.proofProgress === null) setSeenStages(new Set());
+  }, [state.proofProgress]);
 
   const formatElapsed = (s: number) => {
     const m = Math.floor(s / 60);
@@ -277,12 +334,55 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
             </div>
           </div>
 
+          {/* Live status of the backend↔frontend progress channel.
+              See useState at top for rationale. */}
+          <div className="text-[10px] font-mono bg-tertiary/5 border border-tertiary/20 rounded p-2 leading-tight">
+            <div className="text-tertiary mb-0.5">Live status · proof-progress channel</div>
+            <div>
+              listen:{" "}
+              <span
+                className={
+                  channelStatus.listenState === "error"
+                    ? "text-error"
+                    : channelStatus.listenState === "registered"
+                      ? "text-secondary"
+                      : "text-on-surface-variant"
+                }
+              >
+                {channelStatus.listenState}
+              </span>
+            </div>
+            <div>
+              events received:{" "}
+              <span
+                className={
+                  channelStatus.emitCount > 0
+                    ? "text-secondary"
+                    : "text-on-surface-variant/60"
+                }
+              >
+                {channelStatus.emitCount}
+              </span>
+            </div>
+            <div>
+              last stage:{" "}
+              <span className="text-on-surface">
+                {channelStatus.lastStage || "(none)"}
+              </span>
+            </div>
+            {channelStatus.error && (
+              <div className="text-error break-all mt-0.5">
+                {channelStatus.error}
+              </div>
+            )}
+          </div>
+
           {/* Stage pipeline */}
           <div className="flex flex-col gap-1">
-            {visibleStages.map((stage, i) => {
-              const done = i < currentStageIndex;
-              const active = i === currentStageIndex;
-              const pending = i > currentStageIndex;
+            {visibleStages.map((stage) => {
+              const active = stage.key === currentStage;
+              const done = !active && seenStages.has(stage.key);
+              const pending = !active && !done;
               // Stage-local elapsed shown only on the active row so
               // the operator can tell "is this stage stuck?" without
               // mental subtraction. `Math.max` floors it to 0 in
