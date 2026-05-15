@@ -175,10 +175,32 @@ fi
 # otherwise fall back to the snapshot.
 EXPECTED_VKEY="${LIVE_VKEY:-$ENV_VKEY}"
 
+# Helper: run a `cast call`, return value on success, or fail() with
+# the captured stderr included. Without this, a reverted call was
+# diagnosed as "call reverted" with no clue *why* it reverted —
+# Gemini review on PR #125. The `2>&1` capture is then split: if the
+# call exited 0 the merged output is the bytes32/address answer; if
+# it exited non-zero, it's the foundry error message verbatim.
+cast_call_or_fail() {
+    local _addr="$1" _sig="$2" _label="$3" _hint="$4"
+    set +e
+    local _out
+    _out=$(cast call "$_addr" "$_sig" --rpc-url "$RPC_URL" 2>&1)
+    local _status=$?
+    set -e
+    if [ "$_status" -ne 0 ]; then
+        fail "$_label call failed" \
+             "cast error: $_out" \
+             "$_hint"
+    fi
+    printf '%s' "$_out"
+}
+
 # ── 3. factory.currentProgramVKey() ────────────────────────
 echo "[3/7] factory.currentProgramVKey()..."
-FACT_VK=$(cast call "$FACTORY_ADDRESS" "currentProgramVKey()(bytes32)" --rpc-url "$RPC_URL" 2>&1) \
-    || fail "factory.currentProgramVKey() call reverted" "Factory may not be a RegistryFactory: $FACTORY_ADDRESS"
+FACT_VK=$(cast_call_or_fail "$FACTORY_ADDRESS" "currentProgramVKey()(bytes32)" \
+    "factory.currentProgramVKey()" \
+    "Factory may not be a RegistryFactory: $FACTORY_ADDRESS")
 echo "  $FACT_VK"
 if [ "$(lower "$FACT_VK")" != "$(lower "$EXPECTED_VKEY")" ]; then
     fail "factory VK ≠ ELF VK" \
@@ -188,8 +210,9 @@ echo "  ✓ matches ELF VK"
 
 # ── 4. registry.effectiveProgramVKey() ─────────────────────
 echo "[4/7] registry.effectiveProgramVKey()..."
-REG_VK=$(cast call "$REGISTRY_ADDRESS" "effectiveProgramVKey()(bytes32)" --rpc-url "$RPC_URL" 2>&1) \
-    || fail "registry.effectiveProgramVKey() reverted" "Address is not an IdentityRegistry proxy: $REGISTRY_ADDRESS"
+REG_VK=$(cast_call_or_fail "$REGISTRY_ADDRESS" "effectiveProgramVKey()(bytes32)" \
+    "registry.effectiveProgramVKey()" \
+    "Address is not an IdentityRegistry proxy: $REGISTRY_ADDRESS")
 echo "  $REG_VK"
 if [ "$(lower "$REG_VK")" != "$(lower "$EXPECTED_VKEY")" ]; then
     fail "registry effective VK ≠ ELF VK" \
@@ -199,8 +222,9 @@ echo "  ✓ matches ELF VK"
 
 # ── 5. registry.factory() wiring ───────────────────────────
 echo "[5/7] registry.factory()..."
-REG_FACTORY=$(cast call "$REGISTRY_ADDRESS" "factory()(address)" --rpc-url "$RPC_URL" 2>&1) \
-    || fail "registry.factory() reverted" "Older non-factory-mode registries lack this getter."
+REG_FACTORY=$(cast_call_or_fail "$REGISTRY_ADDRESS" "factory()(address)" \
+    "registry.factory()" \
+    "Older non-factory-mode registries lack this getter.")
 echo "  $REG_FACTORY"
 if [ "$(lower "$REG_FACTORY")" != "$(lower "$FACTORY_ADDRESS")" ]; then
     fail "registry.factory() ≠ deployed factory ($FACTORY_ADDRESS)" \
@@ -210,8 +234,9 @@ echo "  ✓ wired to factory"
 
 # ── 6. registry.caMerkleRoot() ─────────────────────────────
 echo "[6/7] registry.caMerkleRoot()..."
-CA_ROOT=$(cast call "$REGISTRY_ADDRESS" "caMerkleRoot()(bytes32)" --rpc-url "$RPC_URL" 2>&1) \
-    || fail "registry.caMerkleRoot() reverted"
+CA_ROOT=$(cast_call_or_fail "$REGISTRY_ADDRESS" "caMerkleRoot()(bytes32)" \
+    "registry.caMerkleRoot()" \
+    "Registry proxy may be uninitialized or paused.")
 echo "  $CA_ROOT"
 ZERO_BYTES32="0x0000000000000000000000000000000000000000000000000000000000000000"
 if [ "$(lower "$CA_ROOT")" = "$ZERO_BYTES32" ]; then
@@ -222,8 +247,9 @@ echo "  ✓ non-zero"
 
 # ── 7. registry.paused() ───────────────────────────────────
 echo "[7/7] registry.paused()..."
-PAUSED=$(cast call "$REGISTRY_ADDRESS" "paused()(bool)" --rpc-url "$RPC_URL" 2>&1) \
-    || fail "registry.paused() reverted"
+PAUSED=$(cast_call_or_fail "$REGISTRY_ADDRESS" "paused()(bool)" \
+    "registry.paused()" \
+    "Registry proxy may be uninitialized.")
 echo "  $PAUSED"
 if [ "$PAUSED" = "true" ]; then
     fail "Registry is paused — register()/unregister() reject" \
