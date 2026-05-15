@@ -20,7 +20,12 @@ if [ "$PRIVATE_KEY" = "$DEFAULT_PRIVATE_KEY" ]; then
   esac
 fi
 
-# Read vkey from shared volume (written by vkey-init container) or auto-detect
+# Read vkey from shared volume (written by vkey-init container) or auto-detect.
+# `DeployLocal.s.sol` no longer carries an in-script default — it calls
+# `vm.envBytes32("PROGRAM_V_KEY")` and reverts when unset — so we MUST
+# resolve a value here before invoking forge. The old "WARNING: using
+# hardcoded default" branch became a silent ProofInvalid() at register
+# time downstream once the literal bit-rotted; promote to a hard error.
 if [ -z "$PROGRAM_V_KEY" ] && [ -f /shared/vkey.txt ]; then
   DETECTED_VKEY=$(cat /shared/vkey.txt | tr -d '[:space:]')
   if [ -n "$DETECTED_VKEY" ]; then
@@ -34,9 +39,17 @@ if [ -z "$PROGRAM_V_KEY" ] && command -v cargo >/dev/null 2>&1; then
   if [ -n "$DETECTED_VKEY" ]; then
     export PROGRAM_V_KEY="$DETECTED_VKEY"
     echo "PROGRAM_V_KEY=$PROGRAM_V_KEY (auto-detected)"
-  else
-    echo "WARNING: Could not auto-detect vkey, using hardcoded default"
   fi
+fi
+if [ -z "$PROGRAM_V_KEY" ]; then
+  echo "ERROR: PROGRAM_V_KEY is unset and could not be derived." >&2
+  echo "       Tried: /shared/vkey.txt (vkey-init container output)," >&2
+  echo "              cargo run --release --bin vkey (workspace fallback)." >&2
+  echo "       Provide one of:" >&2
+  echo "         export PROGRAM_V_KEY=0x… (32-byte ELF VK)" >&2
+  echo "         run the vkey-init container so /shared/vkey.txt is populated" >&2
+  echo "         install rustup so 'cargo' is on PATH" >&2
+  exit 1
 fi
 
 echo "=== Deploying contracts ==="

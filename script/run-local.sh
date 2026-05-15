@@ -68,12 +68,33 @@ echo "  ✅ CA Merkle Root: $CA_MERKLE_ROOT"
 echo ""
 
 # ========================================
-# Step 3a: Deploy RegistryFactory
+# Step 3a: Extract ELF program VK + deploy RegistryFactory
 # ========================================
+# `DeployLocal.s.sol` requires `PROGRAM_V_KEY` (no in-script default) so
+# a stale literal can never silently misalign the factory's VK with the
+# ELF the desktop prover uses. The vkey binary derives the VK from the
+# workspace-bundled ELF — same path `client.setup(ELF)` follows at proof
+# time — so the two are guaranteed to stay in lock-step.
+#
+# Pass `ELF_VKEY=0x…` to skip the cargo run on tight iteration loops.
+ELF_VKEY="${ELF_VKEY:-}"
+if [ -z "$ELF_VKEY" ]; then
+    echo "[3/6] Extracting ELF program VK (cargo run --release --bin vkey)..."
+    VK_OUT=$(cargo run --release --bin vkey --quiet 2>&1)
+    ELF_VKEY=$(printf '%s\n' "$VK_OUT" | awk '/Verification Key:/ {print $NF; exit}')
+    if [ -z "$ELF_VKEY" ] || [[ ! "$ELF_VKEY" =~ ^0x[0-9a-fA-F]{64}$ ]]; then
+        echo "❌ Could not extract a 32-byte VK from vkey binary output:"
+        printf '%s\n' "$VK_OUT" | tail -20
+        kill $ANVIL_PID 2>/dev/null
+        exit 1
+    fi
+    echo "  ✅ ELF VK: $ELF_VKEY"
+fi
+
 echo "[3/6] Deploying RegistryFactory..."
 
 cd contracts
-DEPLOY_OUTPUT=$(forge script script/DeployLocal.s.sol --tc DeployLocalScript \
+DEPLOY_OUTPUT=$(PROGRAM_V_KEY="$ELF_VKEY" forge script script/DeployLocal.s.sol --tc DeployLocalScript \
     --rpc-url http://localhost:8545 \
     --broadcast \
     --sender $DEPLOYER_ADDR \

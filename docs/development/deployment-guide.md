@@ -14,8 +14,14 @@ This starts Anvil + deploys contracts + prints test commands.
 # Terminal 1: Start Anvil
 anvil
 
-# Terminal 2: Deploy
+# Terminal 2: Extract the program VK from the bundled SP1 ELF and deploy.
+# DeployLocal.s.sol requires `PROGRAM_V_KEY` — no in-script default —
+# so a stale literal can never silently misalign the factory's VK with
+# the ELF the desktop prover uses. The vkey binary takes ~1m30s cold,
+# ~1s warm (cached under target/release/).
+PROGRAM_V_KEY=$(cargo run --release --bin vkey --quiet | awk '/Verification Key:/ {print $NF}')
 cd contracts
+PROGRAM_V_KEY="$PROGRAM_V_KEY" \
 forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --rpc-url http://localhost:8545 \
   --broadcast \
