@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Tauri release binaries served by /download — built locally with
+# `cd ../desktop && npx tauri build`, then copied here. Each rebuild
+# produces a ~24 MB DMG; tracking those in git would balloon history
+# fast. Operators copy the produced file in manually:
+#   cp ../target/release/bundle/dmg/zk-X509_*.dmg public/downloads/
+# Production should serve these from GitHub Releases / S3 instead.
+public/downloads/*.dmg
+public/downloads/*.app.tar.gz

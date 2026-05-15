@@ -17,8 +17,11 @@ const stagger = (delay: number) => ({
   transition: { duration: 0.5, delay },
 });
 
-const MACOS_DOWNLOAD_URL =
-  "https://github.com/tokamak-network/zk-X509/releases/latest";
+// Served as a static asset from frontend/public/downloads/.
+// Bumped when the bundled DMG version changes — keeps the URL explicit
+// about what the user is actually getting (no silent rev'ing).
+const MACOS_DOWNLOAD_URL = "/downloads/zk-X509_0.1.0_aarch64.dmg";
+const MACOS_DOWNLOAD_FILENAME = "zk-X509_0.1.0_aarch64.dmg";
 
 export default function DownloadPage() {
   return (
@@ -49,15 +52,14 @@ export default function DownloadPage() {
               macOS
             </h2>
             <p className="text-on-surface-variant text-sm mb-1">
-              Apple Silicon & Intel
+              Apple Silicon (aarch64)
             </p>
             <p className="text-on-surface-variant/60 text-xs mb-6">
               macOS 12 Monterey or later
             </p>
             <a
               href={MACOS_DOWNLOAD_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+              download={MACOS_DOWNLOAD_FILENAME}
               className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-surface font-headline text-sm font-bold rounded-full transition-transform active:scale-95 hover:shadow-lg hover:shadow-primary/20"
             >
               <ArrowDownToLine className="w-4 h-4" />
