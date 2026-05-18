@@ -12,6 +12,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::settings::configure_settings,
             commands::settings::check_docker,
+            commands::settings::open_docker_desktop,
             commands::certificates::scan_certificates,
             commands::proving::generate_proof,
             commands::proving::delegated_prove,

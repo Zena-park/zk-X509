@@ -138,3 +138,29 @@ pub fn check_docker() -> bool {
         false
     }
 }
+
+/// Launch Docker Desktop. Returns Ok(()) when the launch was dispatched —
+/// the daemon still takes several seconds to come up, so the UI should
+/// poll `check_docker` afterwards rather than assume immediate readiness.
+#[tauri::command]
+pub fn open_docker_desktop() -> Result<(), String> {
+    use std::process::Command;
+    #[cfg(target_os = "macos")]
+    let result = Command::new("open").args(["-a", "Docker"]).spawn();
+    #[cfg(target_os = "windows")]
+    let result = Command::new("cmd")
+        .args(["/C", "start", "", "Docker Desktop"])
+        .spawn();
+    #[cfg(target_os = "linux")]
+    let result = Command::new("systemctl")
+        .args(["--user", "start", "docker-desktop"])
+        .spawn();
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    let result: std::io::Result<std::process::Child> = Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "platform not supported",
+    ));
+    result
+        .map(|_| ())
+        .map_err(|e| format!("Failed to launch Docker Desktop: {}", e))
+}

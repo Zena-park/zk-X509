@@ -251,10 +251,30 @@ export default function DashboardContent() {
           transition={{ delay: 0.3 }}
           className="md:col-span-12 glass-panel rounded-2xl p-5 space-y-3"
         >
-          {/* Proof Generation Guide */}
-          <details className="bg-surface-container-low/50 rounded-xl border border-outline-variant/10">
-            <summary className="px-4 py-3 text-sm font-headline font-medium text-tertiary cursor-pointer hover:text-primary transition-colors">
-              How to Generate Proof
+          {/* Proof Generation Guide — auto-opens for unverified wallets so the
+              registration flow is visible without an extra click. Verified
+              users get the collapsed default. */}
+          <details
+            open={verified === false}
+            className={
+              verified === false
+                ? "bg-primary/5 rounded-xl border border-primary/40 ring-1 ring-primary/30 shadow-sm shadow-primary/10"
+                : "bg-surface-container-low/50 rounded-xl border border-outline-variant/10"
+            }
+          >
+            <summary className="px-4 py-3 text-sm font-headline font-medium text-tertiary cursor-pointer hover:text-primary transition-colors flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                How to Generate Proof
+                {verified === false && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 border border-primary/30 rounded-full px-2 py-0.5">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary"></span>
+                    </span>
+                    Start here
+                  </span>
+                )}
+              </span>
             </summary>
             <div className="px-4 pb-4 space-y-3">
             <div>
