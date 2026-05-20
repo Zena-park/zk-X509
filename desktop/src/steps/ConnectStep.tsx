@@ -41,12 +41,23 @@ export default function ConnectStep({ state, setField, dispatch }: Props) {
     }
   };
 
-  // Local Groth16 proving runs inside a Docker container. When the
-  // registry doesn't mandate delegated proving and Docker isn't reachable,
-  // there's no proving path forward — block Next and surface the fix.
+  // Local Groth16 proving runs inside a Docker container. Block Next
+  // only when no proving path forward is available:
+  //   - registry mandates delegated proving → never block (delegated
+  //     path is always taken regardless of Docker)
+  //   - operator has a delegated prover URL configured → never block
+  //     (user can still select Delegated in the Configure step)
+  //   - else (no delegated path) → Docker is the only viable proving
+  //     backend → block when Docker isn't reachable
+  // This avoids blocking users who can finish the flow without Docker
+  // (Copilot review on PR #127).
+  const hasDelegatedFallback =
+    state.registryInfo !== null &&
+    (state.registryInfo.delegated_required ||
+      (state.registryInfo.prover_url ?? "").trim() !== "");
   const dockerBlocking =
     state.registryInfo !== null &&
-    !state.registryInfo.delegated_required &&
+    !hasDelegatedFallback &&
     !state.dockerAvailable;
   const canProceed = state.registryInfo !== null && !dockerBlocking;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { ShieldCheck, Wallet, Send, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
@@ -23,6 +23,23 @@ export default function DashboardContent() {
   const [verified, setVerified] = useState<boolean | null>(null);
   const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [identityLoading, setIdentityLoading] = useState(false);
+
+  /* ---------- How-to auto-open ----------
+   * Binding `open={verified === false}` makes the element controlled —
+   * unverified users couldn't collapse it (React would re-apply `open`
+   * on every re-render). Instead, mount-once: set `open` via ref the
+   * first time `verified` resolves to false, then let the browser own
+   * the toggle state. The flag prevents re-opening when `verified`
+   * flips false → true → false (e.g. user re-checks identity).
+   */
+  const howtoRef = useRef<HTMLDetailsElement>(null);
+  const howtoAutoOpened = useRef(false);
+  useEffect(() => {
+    if (verified === false && !howtoAutoOpened.current && howtoRef.current) {
+      howtoRef.current.open = true;
+      howtoAutoOpened.current = true;
+    }
+  }, [verified]);
 
   /* ---------- constraints state ---------- */
   const [constraints, setConstraints] = useState<string[]>([]);
@@ -251,11 +268,12 @@ export default function DashboardContent() {
           transition={{ delay: 0.3 }}
           className="md:col-span-12 glass-panel rounded-2xl p-5 space-y-3"
         >
-          {/* Proof Generation Guide — auto-opens for unverified wallets so the
-              registration flow is visible without an extra click. Verified
-              users get the collapsed default. */}
+          {/* Proof Generation Guide — auto-opens once for unverified
+              wallets (via the howtoRef effect above) so the registration
+              flow is visible without an extra click. The browser owns
+              toggle state after that, so users can collapse it. */}
           <details
-            open={verified === false}
+            ref={howtoRef}
             className={
               verified === false
                 ? "bg-primary/5 rounded-xl border border-primary/40 ring-1 ring-primary/30 shadow-sm shadow-primary/10"

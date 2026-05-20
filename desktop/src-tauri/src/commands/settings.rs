@@ -148,9 +148,34 @@ pub fn open_docker_desktop() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let result = Command::new("open").args(["-a", "Docker"]).spawn();
     #[cfg(target_os = "windows")]
-    let result = Command::new("cmd")
-        .args(["/C", "start", "", "Docker Desktop"])
-        .spawn();
+    let result = {
+        // `cmd /C start "" "Docker Desktop"` only resolves entries on
+        // PATH — Start Menu shortcuts aren't reachable that way, so the
+        // launch silently no-ops on most installs. Probe the canonical
+        // install paths first; fall back to a PATH lookup of the bare
+        // executable name so corporate installs that put Docker
+        // Desktop on PATH still work. (Copilot review on PR #127.)
+        let candidates: [std::path::PathBuf; 3] = [
+            std::env::var_os("ProgramFiles")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Program Files"))
+                .join(r"Docker\Docker\Docker Desktop.exe"),
+            std::env::var_os("ProgramFiles(x86)")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Program Files (x86)"))
+                .join(r"Docker\Docker\Docker Desktop.exe"),
+            std::env::var_os("LOCALAPPDATA")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_default()
+                .join(r"Programs\Docker\Docker\Docker Desktop.exe"),
+        ];
+        let exe = candidates
+            .iter()
+            .find(|p| p.exists())
+            .cloned()
+            .unwrap_or_else(|| std::path::PathBuf::from("Docker Desktop.exe"));
+        Command::new(exe).spawn()
+    };
     #[cfg(target_os = "linux")]
     let result = Command::new("systemctl")
         .args(["--user", "start", "docker-desktop"])
