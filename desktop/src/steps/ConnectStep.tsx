@@ -41,7 +41,25 @@ export default function ConnectStep({ state, setField, dispatch }: Props) {
     }
   };
 
-  const canProceed = state.registryInfo !== null;
+  // Local Groth16 proving runs inside a Docker container. Block Next
+  // only when no proving path forward is available:
+  //   - registry mandates delegated proving → never block (delegated
+  //     path is always taken regardless of Docker)
+  //   - operator has a delegated prover URL configured → never block
+  //     (user can still select Delegated in the Configure step)
+  //   - else (no delegated path) → Docker is the only viable proving
+  //     backend → block when Docker isn't reachable
+  // This avoids blocking users who can finish the flow without Docker
+  // (Copilot review on PR #127).
+  const hasDelegatedFallback =
+    state.registryInfo !== null &&
+    (state.registryInfo.delegated_required ||
+      (state.registryInfo.prover_url ?? "").trim() !== "");
+  const dockerBlocking =
+    state.registryInfo !== null &&
+    !hasDelegatedFallback &&
+    !state.dockerAvailable;
+  const canProceed = state.registryInfo !== null && !dockerBlocking;
 
   return (
     <div className="flex-1 flex flex-col gap-4">
@@ -148,9 +166,48 @@ export default function ConnectStep({ state, setField, dispatch }: Props) {
                 </>
               )}
               <span>Docker</span>
-              <span className={`font-mono ${state.dockerAvailable ? "text-secondary" : "text-on-surface-variant/50"}`}>
+              <span
+                className={`font-mono ${
+                  state.dockerAvailable
+                    ? "text-secondary"
+                    : dockerBlocking
+                      ? "text-error font-semibold"
+                      : "text-on-surface-variant/50"
+                }`}
+              >
                 {state.dockerAvailable ? "Available" : "Not found"}
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* Docker required but not running — block Next until fixed. */}
+        {dockerBlocking && (
+          <div className="rounded-xl border border-error/40 bg-error/10 p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-error font-label font-semibold text-sm">
+              <AlertCircle className="w-4 h-4" />
+              Docker is not running
+            </div>
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              This registry allows local proving, which runs the SP1 Groth16
+              wrapper inside a Docker container. Start Docker Desktop and click
+              Connect again to continue. (If a delegated prover becomes
+              available for this registry, Docker is not required.)
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                onClick={() => invoke("open_docker_desktop").catch(() => {})}
+                className="text-xs font-label font-semibold bg-error/20 hover:bg-error/30 text-error rounded-lg px-3 py-1.5 transition"
+              >
+                Open Docker Desktop
+              </button>
+              <button
+                onClick={handleConnect}
+                disabled={state.loading}
+                className="text-xs font-label font-semibold bg-tertiary/20 hover:bg-tertiary/30 text-tertiary rounded-lg px-3 py-1.5 transition disabled:opacity-40"
+              >
+                Re-check
+              </button>
             </div>
           </div>
         )}
