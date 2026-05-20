@@ -100,15 +100,20 @@ DEPLOY_OUTPUT=$(PROGRAM_V_KEY="$ELF_VKEY" forge script script/DeployLocal.s.sol 
     --sender $DEPLOYER_ADDR \
     --private-key $DEPLOYER_KEY 2>&1)
 
-# Extract factory address from logs
+# Extract factory + SP1Verifier addresses from logs. SP1Verifier is
+# the first contract DeployLocal.s.sol creates ("SP1VerifierGroth16
+# (v6.0.0):") and is needed by the frontend env for the consent /
+# proof-flow pages.
 FACTORY_ADDR=$(echo "$DEPLOY_OUTPUT" | awk '/RegistryFactory:/ {print $2; exit}')
+SP1_VERIFIER_ADDR=$(echo "$DEPLOY_OUTPUT" | awk '/SP1VerifierGroth16/ {print $NF; exit}')
 if [ -z "$FACTORY_ADDR" ]; then
     echo "❌ Deploy failed:"
     echo "$DEPLOY_OUTPUT"
     kill $ANVIL_PID 2>/dev/null
     exit 1
 fi
-echo "  ✅ RegistryFactory: $FACTORY_ADDR"
+echo "  ✅ RegistryFactory:  $FACTORY_ADDR"
+echo "  ✅ SP1Verifier:      $SP1_VERIFIER_ADDR"
 echo ""
 
 # ========================================
@@ -190,6 +195,43 @@ DEPLOYER_ADDRESS=$DEPLOYER_ADDR
 DEPLOYER_KEY=$DEPLOYER_KEY
 EOF
 echo "  Environment saved to .env.local"
+
+# Sync frontend/.env.local with just-deployed addresses. Without this
+# the next dev server boots against whatever was deployed on the PRIOR
+# anvil run — every wallet.tsx contract call hits an empty address and
+# fails with `could not decode result data (value="0x")` from ethers.
+# Docker-compose has its own path (scripts/frontend-entrypoint.sh reads
+# /shared/addresses.json); this is the host-local equivalent.
+# Backend port (also written into frontend env below). Port 4444 is
+# the default because scatter-dex's shared-orderbook owns :4000 on a
+# co-hosted anvil; override with BACKEND_PORT=NNNN if running solo.
+BACKEND_PORT="${BACKEND_PORT:-4444}"
+
+FRONTEND_ENV="frontend/.env.local"
+if [ -d frontend ]; then
+    # Preserve any unrelated operator-set keys (anything outside the
+    # deploy-/port-driven set the script owns).
+    PRESERVED=""
+    if [ -f "$FRONTEND_ENV" ]; then
+        PRESERVED=$(grep -Ev '^(NEXT_PUBLIC_RPC_URL|NEXT_PUBLIC_CHAIN_ID|NEXT_PUBLIC_REGISTRY_ADDRESS|NEXT_PUBLIC_SP1_VERIFIER_ADDRESS|NEXT_PUBLIC_FACTORY_ADDRESS|NEXT_PUBLIC_BACKEND_URL|#|$)' "$FRONTEND_ENV" 2>/dev/null || true)
+    fi
+    {
+        echo "# Auto-written by script/run-local.sh on every anvil reboot."
+        echo "# Update these by re-running run-local.sh, not by hand."
+        echo "NEXT_PUBLIC_RPC_URL=\"http://localhost:8545\""
+        echo "NEXT_PUBLIC_CHAIN_ID=31337"
+        echo "NEXT_PUBLIC_REGISTRY_ADDRESS=\"$REGISTRY_ADDR\""
+        echo "NEXT_PUBLIC_SP1_VERIFIER_ADDRESS=\"$SP1_VERIFIER_ADDR\""
+        echo "NEXT_PUBLIC_FACTORY_ADDRESS=\"$FACTORY_ADDR\""
+        echo "NEXT_PUBLIC_BACKEND_URL=\"http://localhost:$BACKEND_PORT\""
+        if [ -n "$PRESERVED" ]; then
+            echo ""
+            echo "# Preserved from prior $FRONTEND_ENV:"
+            printf '%s\n' "$PRESERVED"
+        fi
+    } > "$FRONTEND_ENV"
+    echo "  Frontend env saved to $FRONTEND_ENV"
+fi
 echo ""
 # ========================================
 # Step 6/6: Start prover server + frontend
@@ -202,6 +244,49 @@ cargo run --release --bin server &
 SERVER_PID=$!
 sleep 3
 echo "  ✅ Prover server: http://localhost:8080"
+
+# Start backend (background). The frontend's wallet/admin pages hit
+# `${NEXT_PUBLIC_BACKEND_URL}/api/registries/...` on every load; without
+# the backend the browser console floods with `ERR_CONNECTION_REFUSED`
+# even though anvil / prover / frontend are all up. Port 4444 is used
+# instead of the package default (:4000) because scatter-dex's shared
+# orderbook already owns :4000 on the same anvil — keep this in sync
+# with frontend/.env.local's NEXT_PUBLIC_BACKEND_URL.
+BACKEND_PORT="${BACKEND_PORT:-4444}"
+if [ -d "backend" ] && [ -f "backend/package.json" ]; then
+    echo "  Starting backend on :$BACKEND_PORT..."
+    ( cd backend && PORT="$BACKEND_PORT" npm run dev ) &
+    BACKEND_PID=$!
+    # Wait for /health instead of a flat sleep — first ts-node boot can
+    # take >3 s and a premature PUT below would race the listener.
+    for i in $(seq 1 30); do
+        if curl -fsS "http://localhost:$BACKEND_PORT/health" > /dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    echo "  ✅ Backend: http://localhost:$BACKEND_PORT"
+
+    # Seed the just-created IdentityRegistry into the backend's
+    # registries DB. Without this, the first frontend page load 404s
+    # on /api/registries/<addr> + /announcements + /ca-guides because
+    # the DB only knows about whatever registries a prior session
+    # PUT-ed. PUT auto-creates with default metadata; the route
+    # lowercases the address key, matching frontend GET calls.
+    if [ -n "$REGISTRY_ADDR" ]; then
+        if curl -fsS -X PUT "http://localhost:$BACKEND_PORT/api/registries/$REGISTRY_ADDR" \
+            -H "Content-Type: application/json" \
+            -d '{"description":"Local dev registry (auto-seeded by run-local.sh)","category":"other","listed":true}' \
+            > /dev/null 2>&1; then
+            echo "  ✅ Backend seeded with registry $REGISTRY_ADDR"
+        else
+            echo "  ⚠️  Backend seed PUT failed (browser may 404 on first load)"
+        fi
+    fi
+else
+    BACKEND_PID=""
+    echo "  ⚠️  Backend not found, skipping"
+fi
 
 # Start frontend (background)
 if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
@@ -222,6 +307,9 @@ echo ""
 echo "=== All Services Running ==="
 echo "  Anvil:    http://localhost:8545 (PID: $ANVIL_PID)"
 echo "  Server:   http://localhost:8080 (PID: $SERVER_PID)"
+if [ -n "$BACKEND_PID" ]; then
+echo "  Backend:  http://localhost:$BACKEND_PORT (PID: $BACKEND_PID)"
+fi
 if [ -n "$FRONTEND_PID" ]; then
 echo "  Frontend: http://localhost:3000 (PID: $FRONTEND_PID)"
 fi
@@ -238,6 +326,7 @@ cleanup() {
     echo "Stopping services..."
     kill $ANVIL_PID 2>/dev/null
     kill $SERVER_PID 2>/dev/null
+    [ -n "$BACKEND_PID" ] && kill $BACKEND_PID 2>/dev/null
     [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID 2>/dev/null
     echo "Done."
 }
