@@ -213,7 +213,19 @@ if [ -d frontend ]; then
     # deploy-/port-driven set the script owns).
     PRESERVED=""
     if [ -f "$FRONTEND_ENV" ]; then
-        PRESERVED=$(grep -Ev '^(NEXT_PUBLIC_RPC_URL|NEXT_PUBLIC_CHAIN_ID|NEXT_PUBLIC_REGISTRY_ADDRESS|NEXT_PUBLIC_SP1_VERIFIER_ADDRESS|NEXT_PUBLIC_FACTORY_ADDRESS|NEXT_PUBLIC_BACKEND_URL|#|$)' "$FRONTEND_ENV" 2>/dev/null || true)
+        # Preserve only operator-set KEY=value lines that this script
+        # doesn't own. Two-stage filter:
+        #   (a) match `^[A-Z_][A-Z0-9_]*=` so we only carry over
+        #       real env vars (comments, blank lines, and the previous
+        #       auto-written header are dropped — preventing the
+        #       preserved block from accumulating across reruns);
+        #   (b) drop the deploy-/port-driven keys this script overwrites.
+        # The trailing `=` anchor on (b) prevents `NEXT_PUBLIC_CHAIN_ID`
+        # from accidentally matching e.g. `NEXT_PUBLIC_CHAIN_ID_FALLBACK`.
+        # (Gemini review on PR #128.)
+        PRESERVED=$(grep -E '^[A-Z_][A-Z0-9_]*=' "$FRONTEND_ENV" 2>/dev/null \
+            | grep -Ev '^(NEXT_PUBLIC_RPC_URL|NEXT_PUBLIC_CHAIN_ID|NEXT_PUBLIC_REGISTRY_ADDRESS|NEXT_PUBLIC_SP1_VERIFIER_ADDRESS|NEXT_PUBLIC_FACTORY_ADDRESS|NEXT_PUBLIC_BACKEND_URL)=' \
+            || true)
     fi
     {
         echo "# Auto-written by script/run-local.sh on every anvil reboot."
@@ -251,21 +263,37 @@ echo "  ✅ Prover server: http://localhost:8080"
 # even though anvil / prover / frontend are all up. Port 4444 is used
 # instead of the package default (:4000) because scatter-dex's shared
 # orderbook already owns :4000 on the same anvil — keep this in sync
-# with frontend/.env.local's NEXT_PUBLIC_BACKEND_URL.
-BACKEND_PORT="${BACKEND_PORT:-4444}"
+# with frontend/.env.local's NEXT_PUBLIC_BACKEND_URL (defined above).
 if [ -d "backend" ] && [ -f "backend/package.json" ]; then
+    # Install backend deps before `npm run dev` so a clean checkout (no
+    # `backend/node_modules`) doesn't immediately fall over with
+    # `ts-node: not found`. `--silent` matches the frontend block below;
+    # a real install error still bubbles up via the non-zero exit /
+    # subsequent `npm run dev` failure surfaced in the health-check loop.
+    # (Gemini + Copilot review on PR #128.)
+    echo "  Installing backend deps (idempotent)..."
+    ( cd backend && npm install --silent 2>/dev/null )
     echo "  Starting backend on :$BACKEND_PORT..."
     ( cd backend && PORT="$BACKEND_PORT" npm run dev ) &
     BACKEND_PID=$!
     # Wait for /health instead of a flat sleep — first ts-node boot can
     # take >3 s and a premature PUT below would race the listener.
+    # Track whether /health ever responded so a silent crash doesn't
+    # masquerade as a successful start. (Copilot review on PR #128.)
+    BACKEND_READY=0
     for i in $(seq 1 30); do
         if curl -fsS "http://localhost:$BACKEND_PORT/health" > /dev/null 2>&1; then
+            BACKEND_READY=1
             break
         fi
         sleep 1
     done
-    echo "  ✅ Backend: http://localhost:$BACKEND_PORT"
+    if [ "$BACKEND_READY" = "1" ]; then
+        echo "  ✅ Backend: http://localhost:$BACKEND_PORT"
+    else
+        echo "  ⚠️  Backend did NOT respond on :$BACKEND_PORT/health after 30s"
+        echo "      (frontend will show ERR_CONNECTION_REFUSED until you start it manually)"
+    fi
 
     # Seed the just-created IdentityRegistry into the backend's
     # registries DB. Without this, the first frontend page load 404s
@@ -273,7 +301,11 @@ if [ -d "backend" ] && [ -f "backend/package.json" ]; then
     # the DB only knows about whatever registries a prior session
     # PUT-ed. PUT auto-creates with default metadata; the route
     # lowercases the address key, matching frontend GET calls.
-    if [ -n "$REGISTRY_ADDR" ]; then
+    # Skip when the backend never came up — a PUT against a dead
+    # listener would hang for the curl default connect timeout and
+    # produce a misleading "seed failed" without telling the operator
+    # the real cause.
+    if [ "$BACKEND_READY" = "1" ] && [ -n "$REGISTRY_ADDR" ]; then
         if curl -fsS -X PUT "http://localhost:$BACKEND_PORT/api/registries/$REGISTRY_ADDR" \
             -H "Content-Type: application/json" \
             -d '{"description":"Local dev registry (auto-seeded by run-local.sh)","category":"other","listed":true}' \
