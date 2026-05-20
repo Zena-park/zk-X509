@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Default capability for the main desktop window — grants the core event channel (listen/emit) the proof-progress UI depends on, the core defaults invoke uses, and shell-open for the certificate-help link.","local":true,"windows":["main"],"permissions":["core:default","core:event:default","core:webview:default","core:window:default","shell:allow-open"]}}
