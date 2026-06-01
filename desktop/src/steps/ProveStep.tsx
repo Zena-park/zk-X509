@@ -12,6 +12,7 @@ import {
   AlertCircle,
   RotateCcw,
   X,
+  ShieldCheck,
 } from "lucide-react";
 import type { AppState, Action, ProofResult, ProofProgress } from "../App";
 
@@ -54,6 +55,15 @@ const SP1_SUBSTEPS = [
   "Final pairing check and proof compression…",
 ];
 const SP1_SUBSTEP_ROTATION_MS = 15_000;
+
+// Certificate data transmitted to the prover under delegated proving.
+// Shown in the consent dialog so the user knows exactly what leaves the
+// device before agreeing. Mirrors the disclosure in the CLI consent prompt.
+const DELEGATED_SHARED_DATA = [
+  "Certificate subject (name, organization, country)",
+  "Certificate chain and validity period",
+  "Your wallet address",
+];
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -109,6 +119,18 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
     disclosureMask: state.disclosureMask,
     proverUrl: state.registryInfo?.prover_url ?? "",
   });
+
+  const isDelegated = paramsRef.current.proofMode === "delegated";
+
+  // Delegated proving transmits certificate PII (name, org, …) to a
+  // third-party prover, so the design requires explicit consent before
+  // any data leaves the device. Consent is implied once proving has been
+  // initiated (proofStatus leaves "idle"), so we derive it rather than
+  // track a separate flag — this survives step navigation (ProveStep
+  // remounts on step change) so a finished proof isn't re-gated. Self-
+  // prove needs no consent (nothing leaves the machine) and starts
+  // immediately on mount.
+  const consentGiven = !isDelegated || state.proofStatus !== "idle";
 
   const startProof = async () => {
     // Guard against StrictMode double-invocation and concurrent retries
@@ -230,7 +252,10 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
         console.error("listen('proof-progress') failed:", err);
       });
 
-    startProof();
+    // Delegated mode defers proving until the consent dialog (rendered
+    // below) is accepted, which calls startProof() via handleConsentAgree.
+    // Self-prove transmits nothing off-device, so it starts immediately.
+    if (!isDelegated) startProof();
 
     return () => {
       cancelled = true;
@@ -280,7 +305,6 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
   // current is done" rule would mark the skipped stage as done,
   // which is wrong — the seen-set keeps unseen stages pending
   // (gray) so the operator sees what actually happened.
-  const isDelegated = paramsRef.current.proofMode === "delegated";
   const visibleStages = STAGES.filter((s) =>
     isDelegated
       ? true
@@ -315,6 +339,76 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
       ? `${m}m ${sec.toString().padStart(2, "0")}s`
       : `${sec}s`;
   };
+
+  // ── Consent gate (delegated proving only) ──
+  // Shown before any proving begins. The user must explicitly agree to
+  // transmit their certificate data to the prover server. Declining goes
+  // back to Configure; no certificate data has left the device at this point.
+  if (isDelegated && !consentGiven) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-6">
+        <div className="glass-panel rounded-2xl p-8 w-full max-w-md flex flex-col gap-5">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-tertiary" />
+            <h2 className="font-headline text-xl font-semibold text-on-surface">
+              Personal Data Consent
+            </h2>
+          </div>
+
+          <p className="text-sm text-on-surface-variant leading-relaxed">
+            This registry requires{" "}
+            <span className="text-on-surface font-semibold">delegated proving</span>.
+            Your certificate information will be sent to the prover server below,
+            which generates the zero-knowledge proof on your behalf.
+          </p>
+
+          <div className="bg-surface-container-low border border-outline-variant/15 rounded-xl p-3 font-mono text-xs text-tertiary break-all">
+            {paramsRef.current.proverUrl || "(prover URL not set)"}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-label text-on-surface-variant tracking-wide uppercase">
+              Data shared with the prover
+            </span>
+            <ul className="flex flex-col gap-1.5 text-sm text-on-surface-variant">
+              {DELEGATED_SHARED_DATA.map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="text-tertiary mt-0.5">•</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="text-xs leading-relaxed border-t border-outline-variant/10 pt-3 flex flex-col gap-1.5">
+            <span className="flex items-start gap-1.5 text-secondary">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              Your private key is never sent — only one-time signatures.
+            </span>
+            <span className="flex items-start gap-1.5 text-on-surface-variant/70">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-on-surface-variant/60" />
+              The prover may store this information for compliance purposes.
+            </span>
+          </div>
+
+          <div className="flex gap-3 justify-end pt-1">
+            <button
+              onClick={() => dispatch({ type: "PREV_STEP" })}
+              className="font-label text-sm text-on-surface-variant hover:text-on-surface transition py-2.5 px-4"
+            >
+              Decline
+            </button>
+            <button
+              onClick={startProof}
+              className="bg-tertiary text-background font-label text-sm font-semibold rounded-xl py-2.5 px-5 hover:brightness-110 transition"
+            >
+              I Agree &amp; Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Proving state ──
   if (state.proofStatus === "proving" || state.proofStatus === "idle") {
