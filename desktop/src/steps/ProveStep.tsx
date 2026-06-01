@@ -132,6 +132,10 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
   // immediately on mount.
   const consentGiven = !isDelegated || state.proofStatus !== "idle";
 
+  // A delegated registry with no prover URL configured can't prove at all —
+  // agreeing would only kick off a delegated_prove that fails. Block it.
+  const proverUrlMissing = isDelegated && !paramsRef.current.proverUrl;
+
   const startProof = async () => {
     // Guard against StrictMode double-invocation and concurrent retries
     if (provingRef.current) return;
@@ -253,7 +257,7 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
       });
 
     // Delegated mode defers proving until the consent dialog (rendered
-    // below) is accepted, which calls startProof() via handleConsentAgree.
+    // below) is accepted, where the Agree button calls startProof().
     // Self-prove transmits nothing off-device, so it starts immediately.
     if (!isDelegated) startProof();
 
@@ -362,9 +366,21 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
             which generates the zero-knowledge proof on your behalf.
           </p>
 
-          <div className="bg-surface-container-low border border-outline-variant/15 rounded-xl p-3 font-mono text-xs text-tertiary break-all">
+          <div
+            className={`bg-surface-container-low border rounded-xl p-3 font-mono text-xs break-all ${
+              proverUrlMissing
+                ? "border-error/30 text-error"
+                : "border-outline-variant/15 text-tertiary"
+            }`}
+          >
             {paramsRef.current.proverUrl || "(prover URL not set)"}
           </div>
+          {proverUrlMissing && (
+            <p className="text-xs text-error -mt-2">
+              This service has not configured a prover server yet, so
+              registration is unavailable. Go back and try again later.
+            </p>
+          )}
 
           <div className="flex flex-col gap-2">
             <span className="text-xs font-label text-on-surface-variant tracking-wide uppercase">
@@ -400,7 +416,8 @@ export default function ProveStep({ state, setField, dispatch }: Props) {
             </button>
             <button
               onClick={startProof}
-              className="bg-tertiary text-background font-label text-sm font-semibold rounded-xl py-2.5 px-5 hover:brightness-110 transition"
+              disabled={proverUrlMissing}
+              className="bg-tertiary text-background font-label text-sm font-semibold rounded-xl py-2.5 px-5 hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
             >
               I Agree &amp; Continue
             </button>
