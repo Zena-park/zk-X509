@@ -1,5 +1,9 @@
 # zk-X509 Deployment Guide
 
+This guide covers deploying the **contracts**. If your registry uses delegated
+proving, the operator running the prover server should also follow the
+[Prover-Server Operator Guide](prover-server-guide.md).
+
 ## 1. Local Development (Anvil)
 
 ### One-command setup
