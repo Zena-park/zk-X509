@@ -1616,7 +1616,7 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
 
                   {/* Save button */}
                   <button
-                    className="w-full py-3 bg-tertiary text-on-tertiary hover:brightness-110 transition-all font-bold text-xs rounded-xl uppercase tracking-widest disabled:opacity-50"
+                    className="w-full py-3 bg-tertiary text-background hover:brightness-110 transition-all font-bold text-xs rounded-xl uppercase tracking-widest disabled:opacity-50"
                     disabled={
                       disabled ||
                       isBusy(dpTx) ||

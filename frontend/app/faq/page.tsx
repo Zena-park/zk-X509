@@ -134,6 +134,30 @@ const faqItems = [
     answer:
       "Yes, it is safe by design. There are three layers of defense: (1) Certificate vs. Private Key separation — the certificate contains your public key and identity details. Without the private key (stored securely in your OS keychain), no one can generate the required signature. (2) Wallet-bound signatures — the ownership signature includes your specific wallet address, timestamp, and chain ID. Even if an attacker obtains your signature, they cannot redirect it to their own wallet — the ZK circuit will reject the mismatch. (3) Front-running protection — the smart contract verifies that the proof's embedded wallet address matches the transaction sender (msg.sender). An intercepted proof is useless to any other address. In Delegated Proving, you only send a one-time signature (not your private key) to the cloud prover. The prover generates the ZK proof but cannot forge your identity or register a different wallet.",
   },
+  {
+    question:
+      "As a service operator, how do I enable Delegated Proving when creating my service?",
+    answer:
+      "When you create a service (Auth Policy / registry), there is a 'Require Delegated Proving' toggle in the creation form. Turning it on stores a delegatedProvingRequired flag on-chain. The toggle alone is not enough to go live, though — you also need to publish your prover server's address. After the registry is deployed, open its Admin panel and set the Prover Server URL (e.g. https://prover.your-service.com) via 'Save Delegated Proving Settings', which calls the owner-only setDelegatedProving(required, proverUrl) function. Until a non-empty URL is set, users cannot register, and the admin panel shows a 'Prover URL not set' warning. You can also toggle delegated proving on or off later from the same panel — it is not locked at creation time. Running the prover server itself requires deploying the prover-server binary (SP1 + GPU) that accepts certificate data and consent signatures and returns a ZK proof.",
+  },
+  {
+    question:
+      "Do users choose between local and delegated proving, or is it decided by the service?",
+    answer:
+      "It is decided by the service's on-chain configuration, not by the user. When the desktop app connects to a registry it reads two fields: delegatedProvingRequired and proverUrl. There are three outcomes: (1) delegatedProvingRequired is false → the app generates the proof locally (the default flow, full privacy). (2) delegatedProvingRequired is true and proverUrl is set → the app shows a consent dialog, and only after you explicitly agree does it send your certificate and one-time signatures to that prover. (3) delegatedProvingRequired is true but proverUrl is empty → registration is unavailable until the operator configures the prover. Because the consent message is signed by your certificate key (via the OS keychain) and is scoped to that specific prover, registry, chain, and timestamp, no certificate data is transmitted before you consent, and the consent cannot be reused elsewhere.",
+  },
+  {
+    question:
+      "As a service operator, how do I run the delegated prover server?",
+    answer:
+      "The server is the prover-server binary in script/src/bin/prover-server.rs (not server.rs, which is the local client-side prover). Build and run it with: RUST_LOG=info cargo run --release --bin prover-server (from the script/ directory). Configure it with environment variables: PROVER_URL (this server's public URL, used to verify consent signatures — default http://localhost:9090), PROVER_PORT (listen port, default 9090), PROVER_LOG_DIR (compliance log directory, default ./logs), and PROVER_ECIES_KEY (the key used to decrypt encrypted requests — if unset, one is generated and persisted to logs/.ecies_key). Critical: PROVER_URL must exactly match the prover URL you register in the Admin panel and the URL users read on-chain — if they differ, every request is rejected with 403 because the reconstructed consent message won't match. Proof generation uses SP1 in Groth16 mode, which requires Docker locally (~3-5 min per proof, ~16GB RAM); for GPU acceleration set SP1_PROVER=network with a NETWORK_PRIVATE_KEY to use the Succinct prover network. Verify the server with: curl http://localhost:9090/api/health. The endpoints are POST /api/prove (generate a proof from consent + cert + signatures), GET /api/pubkey (ECIES public key for encrypting requests), and GET /api/health (status).",
+  },
+  {
+    question:
+      "What does the prover server store, and what does the user actually send it?",
+    answer:
+      "The user never sends their private key — only a one-time consent signature, the certificate and its chain, and the ownership/nullifier signatures (all produced by the OS keychain). The server first reconstructs the consent message from the request and verifies the consent signature against the certificate's public key, rejecting anything older than 10 minutes or signed for a different prover/registry/chain. Only after consent is verified does it run the proof. For compliance it appends a record to logs/compliance-<epoch-day>.jsonl (the day bucket is the Unix timestamp divided by 86400) containing the registrant address, certificate subject, certificate expiry, the consent message, and the consent signature — enough to demonstrate the certificate owner agreed, without retaining the full certificate by default (operators under KYC/AML rules can extend this). Requests can optionally be ECIES-encrypted end-to-end: the user fetches the server's public key from /api/pubkey, encrypts the sensitive fields, and the server decrypts them in memory.",
+  },
 ];
 
 export default function FAQPage() {

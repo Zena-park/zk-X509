@@ -1,5 +1,9 @@
 # Delegated Proving Design
 
+> **Running the server?** This is the design doc. For practical "how do I run the
+> prover server" instructions (build, env vars, SP1 backend, deployment), see the
+> [Prover-Server Operator Guide](prover-server-guide.md).
+
 ## Problem
 
 Currently, users must run the SP1 prover locally (~5 min CPU). This requires:
