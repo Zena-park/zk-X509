@@ -439,35 +439,50 @@ async fn compliance_handler(
     }
 
     let log_dir = std::env::var("PROVER_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
-    let mut records: Vec<ComplianceRecord> = Vec::new();
+    let wallet_for_scan = wallet.clone();
 
-    if let Ok(entries) = std::fs::read_dir(&log_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if !(name.starts_with("compliance-") && name.ends_with(".jsonl")) {
-                continue;
-            }
-            let Ok(content) = std::fs::read_to_string(entry.path()) else {
-                continue;
-            };
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() {
+    // The log scan is blocking file I/O + JSON parsing; run it on the blocking
+    // pool so it never stalls the async runtime thread (same rationale as the
+    // proving work in prove_handler).
+    let records = tokio::task::spawn_blocking(move || {
+        let mut records: Vec<ComplianceRecord> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&log_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if !(name.starts_with("compliance-") && name.ends_with(".jsonl")) {
                     continue;
                 }
-                let Ok(rec) = serde_json::from_str::<ComplianceRecord>(line) else {
+                let Ok(content) = std::fs::read_to_string(entry.path()) else {
                     continue;
                 };
-                if rec.registrant.eq_ignore_ascii_case(&wallet) {
-                    records.push(rec);
+                for line in content.lines() {
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let Ok(rec) = serde_json::from_str::<ComplianceRecord>(line) else {
+                        continue;
+                    };
+                    if rec.registrant.eq_ignore_ascii_case(&wallet_for_scan) {
+                        records.push(rec);
+                    }
                 }
             }
         }
-    }
-
-    // Newest first.
-    records.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        // Newest first.
+        records.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        records
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("compliance scan task failed: {}", e),
+            }),
+        )
+    })?;
 
     Ok(Json(ComplianceResponse { wallet, records }))
 }
