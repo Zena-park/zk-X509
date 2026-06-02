@@ -80,6 +80,7 @@ curl http://localhost:9090/api/health
 | `PROVER_PORT` | Port to listen on. | `9090` |
 | `PROVER_LOG_DIR` | Directory for compliance logs and the persisted ECIES key. | `./logs` |
 | `PROVER_ECIES_KEY` | secp256k1 key (32-byte hex) for decrypting ECIES requests. If unset, a key is generated and persisted to `<PROVER_LOG_DIR>/.ecies_key` (mode `0600`). | auto-generated |
+| `PROVER_COMPLIANCE_TOKEN` | Optional shared secret guarding `GET /api/compliance`. If set, callers must send it in an `X-Compliance-Token` header (else `401`). Leave unset only when the endpoint is already isolated behind your admin auth boundary. | unset (no token check) |
 
 Plus the standard SP1 proving variables (see below).
 
@@ -233,10 +234,12 @@ false`.)
   unknown fields come back as empty strings.
 
 > **Access control / privacy.** This endpoint exposes certificate identity and is
-> intended for the operator's trusted admin network — not the public internet. In
-> production, keep `/api/compliance` behind the same auth boundary as your admin
-> panel (reverse-proxy allowlist, mTLS, or an auth header), even though `/api/prove`
-> is reachable by end users.
+> intended for the operator's trusted admin network — not the public internet. Set
+> `PROVER_COMPLIANCE_TOKEN` to require an `X-Compliance-Token` header on every
+> request (application-level guard), and in production also keep `/api/compliance`
+> behind the same auth boundary as your admin panel (reverse-proxy allowlist, mTLS),
+> even though `/api/prove` is reachable by end users. The token is defense-in-depth,
+> not a substitute for the network boundary.
 
 ## Local proving requires Docker — dev environments without it
 

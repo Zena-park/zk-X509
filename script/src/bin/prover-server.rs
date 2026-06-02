@@ -260,6 +260,13 @@ fn decode_address(s: &str) -> Result<[u8; 20], String> {
     Ok(arr)
 }
 
+/// Canonical lowercase `0x`-prefixed form of an address. Used as the stable
+/// compliance join key so the logged `registrant` and a query `wallet` match
+/// regardless of how the caller cased or prefixed the input.
+fn canonical_address(bytes: &[u8; 20]) -> String {
+    format!("0x{}", hex::encode(bytes))
+}
+
 fn build_consent_message(
     prover_url: &str,
     registry_address: &str,
@@ -386,7 +393,7 @@ fn parse_cert_subject(cert_der: &[u8]) -> CertSubject {
 fn log_compliance(record: &ComplianceRecord) {
     let log_dir = std::env::var("PROVER_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
     let _ = std::fs::create_dir_all(&log_dir);
-    let Ok(line) = serde_json::to_string(record) else {
+    let Ok(mut line) = serde_json::to_string(record) else {
         return;
     };
     let path = format!("{}/compliance-{}.jsonl", log_dir, record.timestamp / 86400);
@@ -396,7 +403,10 @@ fn log_compliance(record: &ComplianceRecord) {
         .open(&path)
     {
         use std::io::Write;
-        let _ = writeln!(f, "{}", line);
+        // Write the line + newline in one buffer so concurrent O_APPEND writes
+        // from parallel proofs don't interleave and corrupt JSONL lines.
+        line.push('\n');
+        let _ = f.write_all(line.as_bytes());
     }
 }
 
@@ -425,26 +435,56 @@ async fn pubkey_handler(State(state): State<Arc<AppState>>) -> Json<PubkeyRespon
 /// Reads all `compliance-*.jsonl` files under `PROVER_LOG_DIR`; each line
 /// deserializes into a `ComplianceRecord`, so legacy lines that predate a
 /// field degrade gracefully to its default (via `#[serde(default)]`).
+///
+/// This endpoint returns certificate identity (PII). If `PROVER_COMPLIANCE_TOKEN`
+/// is set, callers must present it in an `X-Compliance-Token` header; this is an
+/// application-level guard on top of (not a replacement for) keeping the endpoint
+/// behind the operator's admin auth boundary.
 async fn compliance_handler(
+    headers: axum::http::HeaderMap,
     Query(q): Query<ComplianceQuery>,
 ) -> Result<Json<ComplianceResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let wallet = q.wallet.trim().to_lowercase();
-    if decode_address(&wallet).is_err() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "wallet must be a 0x-prefixed 20-byte address".to_string(),
-            }),
-        ));
+    // Optional shared-secret guard for the PII-bearing compliance data.
+    if let Ok(expected) = std::env::var("PROVER_COMPLIANCE_TOKEN") {
+        if !expected.is_empty() {
+            let provided = headers
+                .get("x-compliance-token")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            if provided != expected {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(ErrorResponse {
+                        error: "missing or invalid X-Compliance-Token".to_string(),
+                    }),
+                ));
+            }
+        }
     }
+
+    // Normalize to the canonical join key so matching works whether the caller
+    // passed the address with/without `0x` or in mixed case.
+    let wallet = match decode_address(q.wallet.trim()) {
+        Ok(bytes) => canonical_address(&bytes),
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "wallet must be a 20-byte hex address (0x-prefixed)".to_string(),
+                }),
+            ))
+        }
+    };
 
     let log_dir = std::env::var("PROVER_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
     let wallet_for_scan = wallet.clone();
 
     // The log scan is blocking file I/O + JSON parsing; run it on the blocking
     // pool so it never stalls the async runtime thread (same rationale as the
-    // proving work in prove_handler).
+    // proving work in prove_handler). Lines are streamed via BufReader so peak
+    // memory stays bounded to a single line, not a whole day's file.
     let records = tokio::task::spawn_blocking(move || {
+        use std::io::{BufRead, BufReader};
         let mut records: Vec<ComplianceRecord> = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&log_dir) {
             for entry in entries.flatten() {
@@ -453,10 +493,11 @@ async fn compliance_handler(
                 if !(name.starts_with("compliance-") && name.ends_with(".jsonl")) {
                     continue;
                 }
-                let Ok(content) = std::fs::read_to_string(entry.path()) else {
+                let Ok(file) = std::fs::File::open(entry.path()) else {
                     continue;
                 };
-                for line in content.lines() {
+                for line in BufReader::new(file).lines() {
+                    let Ok(line) = line else { break };
                     let line = line.trim();
                     if line.is_empty() {
                         continue;
@@ -632,7 +673,16 @@ async fn prove_handler(
     //    registration — survives any future reordering of the struct.
     let nullifier = match PublicValuesStruct::abi_decode(public_values.as_slice()) {
         Ok(pv) => format!("0x{}", hex::encode(pv.nullifier)),
-        Err(_) => String::new(),
+        Err(e) => {
+            // A successful proof with undecodable public values is an internal
+            // inconsistency. Don't fail the user's valid proof, but surface it
+            // loudly rather than silently logging a record without its join key.
+            tracing::warn!(
+                "compliance: could not decode public values for nullifier (registrant={}): {}",
+                req.registrant, e
+            );
+            String::new()
+        }
     };
     let logged_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -640,7 +690,8 @@ async fn prove_handler(
         .as_secs();
     log_compliance(&ComplianceRecord {
         timestamp: logged_at,
-        registrant: req.registrant.clone(),
+        // Canonical form so the logged join key matches query normalization.
+        registrant: canonical_address(&registrant),
         common_name: cert_subject.common_name,
         org: cert_subject.org,
         org_unit: cert_subject.org_unit,

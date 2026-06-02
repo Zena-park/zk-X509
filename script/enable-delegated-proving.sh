@@ -46,6 +46,18 @@ if ! cast block-number --rpc-url "$RPC_URL" > /dev/null 2>&1; then
 fi
 echo "  ✓ Anvil reachable at $RPC_URL"
 
+# Safety: never sign with the well-known Anvil dev key on a non-local chain.
+ANVIL_DEFAULT_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+if [ "$DEPLOYER_KEY" = "$ANVIL_DEFAULT_KEY" ]; then
+    CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo "")"
+    if [ "$CHAIN_ID" != "31337" ]; then
+        echo "❌ Refusing to use the well-known Anvil dev key on chain-id '$CHAIN_ID' (expected 31337)."
+        echo "   Set DEPLOYER_KEY explicitly for non-local chains."
+        exit 1
+    fi
+    echo "  ✓ Default dev key allowed on local chain (31337)"
+fi
+
 # Sanity: confirm a contract actually lives at REGISTRY_ADDR.
 CODE="$(cast code "$REGISTRY_ADDR" --rpc-url "$RPC_URL" 2>/dev/null || echo 0x)"
 if [ "$CODE" = "0x" ] || [ -z "$CODE" ]; then
