@@ -14,17 +14,21 @@
 //!   PROVER_LOG_DIR - Directory for compliance logs (default: ./logs)
 //!
 //! Endpoints:
-//!   POST /api/prove  - Generate a ZK proof from pre-signed inputs
-//!   GET  /api/health - Server status (SP1 version, Docker availability)
+//!   POST /api/prove      - Generate a ZK proof from pre-signed inputs
+//!   GET  /api/pubkey     - ECIES public key for encrypting requests
+//!   GET  /api/health     - Server status (SP1 version, prover URL)
+//!   GET  /api/compliance - Query logged compliance records by wallet (KYC reconciliation)
 
 use axum::{
-    extract::{Json, State},
+    extract::{Json, Query, State},
     http::StatusCode,
     routing::{get, post},
     Router,
 };
+use alloy_sol_types::SolType;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zk_x509_lib::PublicValuesStruct;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
     include_elf, Elf, SP1ProofWithPublicValues,
@@ -122,6 +126,43 @@ struct HealthResponse {
 #[derive(Serialize)]
 struct ErrorResponse {
     error: String,
+}
+
+/// One compliance record — the single source of truth for both the
+/// `compliance-{day}.jsonl` log line (written after a proof succeeds) and the
+/// `GET /api/compliance` response. The admin KYC-reconciliation screen joins
+/// `nullifier` against the on-chain IdentityRegistry registration and shows the
+/// cert identity for review.
+///
+/// `#[serde(default)]` lets legacy log lines that predate the structured format
+/// deserialize gracefully (unknown/missing fields fall back to defaults).
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct ComplianceRecord {
+    timestamp: u64,
+    registrant: String,
+    common_name: String,
+    org: String,
+    org_unit: String,
+    country: String,
+    serial: String,
+    not_after: i64,
+    nullifier: String,
+    consent_verified: bool,
+    consent_message: String,
+    consent_signature: String,
+}
+
+#[derive(Serialize)]
+struct ComplianceResponse {
+    wallet: String,
+    records: Vec<ComplianceRecord>,
+}
+
+/// Query params for `GET /api/compliance?wallet=0x..`.
+#[derive(Deserialize)]
+struct ComplianceQuery {
+    wallet: String,
 }
 
 /// Server state: holds the ECIES private key for decrypting delegated requests.
@@ -295,43 +336,67 @@ fn verify_consent(
     }
 }
 
-/// Log compliance record (consent + identity mapping).
+/// Certificate identity fields extracted from the subject DN, for compliance
+/// logging and the admin KYC reconciliation screen.
+struct CertSubject {
+    common_name: String,
+    org: String,
+    org_unit: String,
+    country: String,
+    serial: String, // 0x-prefixed hex
+    not_after: i64, // unix seconds
+}
+
+/// Parse the certificate subject into individual RDN fields. A failed parse
+/// yields empty fields so the compliance record always has a stable shape.
+fn parse_cert_subject(cert_der: &[u8]) -> CertSubject {
+    use x509_parser::prelude::FromDer;
+    let first = |attr: Option<&x509_parser::x509::AttributeTypeAndValue>| {
+        attr.and_then(|a| a.as_str().ok()).unwrap_or("").to_string()
+    };
+    match x509_parser::certificate::X509Certificate::from_der(cert_der) {
+        Ok((_, c)) => CertSubject {
+            common_name: first(c.subject().iter_common_name().next()),
+            org: first(c.subject().iter_organization().next()),
+            org_unit: first(c.subject().iter_organizational_unit().next()),
+            country: first(c.subject().iter_country().next()),
+            serial: format!("0x{}", hex::encode(c.raw_serial())),
+            not_after: c.validity().not_after.timestamp(),
+        },
+        Err(_) => CertSubject {
+            common_name: String::new(),
+            org: String::new(),
+            org_unit: String::new(),
+            country: String::new(),
+            serial: String::new(),
+            not_after: 0,
+        },
+    }
+}
+
+/// Append a compliance record as one JSON line to `compliance-{day}.jsonl`.
+/// Called only after the proof succeeds, so `record.nullifier` matches the
+/// value registered on-chain — the key the admin KYC-reconciliation screen
+/// joins on. The day partition is derived from `record.timestamp`.
 ///
-/// NOTE: This default implementation logs only the consent signature and
-/// certificate subject (not the full certificate). Service operators subject
-/// to KYC/AML regulations may need to extend this to store additional data
-/// (e.g., full certificate DER, disclosure fields, proof timestamps) per
-/// their jurisdiction's data retention requirements. The decrypted sensitive
-/// payload is available at the call site for this purpose.
-fn log_compliance(
-    registrant: &str,
-    cert_subject: &str,
-    cert_not_after: &str,
-    consent_message: &str,
-    consent_sig: &str,
-) {
+/// NOTE: Service operators subject to KYC/AML regulations may extend the
+/// `ComplianceRecord` to store additional data (e.g., full certificate DER,
+/// disclosure fields) per their jurisdiction's data retention requirements;
+/// the decrypted sensitive payload is available at the call site.
+fn log_compliance(record: &ComplianceRecord) {
     let log_dir = std::env::var("PROVER_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
     let _ = std::fs::create_dir_all(&log_dir);
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let log_entry = serde_json::json!({
-        "timestamp": timestamp,
-        "registrant": registrant,
-        "cert_subject": cert_subject,
-        "cert_not_after": cert_not_after,
-        "consent_message": consent_message,
-        "consent_signature": consent_sig,
-    });
-    let path = format!("{}/compliance-{}.jsonl", log_dir, timestamp / 86400);
+    let Ok(line) = serde_json::to_string(record) else {
+        return;
+    };
+    let path = format!("{}/compliance-{}.jsonl", log_dir, record.timestamp / 86400);
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)
     {
         use std::io::Write;
-        let _ = writeln!(f, "{}", log_entry);
+        let _ = writeln!(f, "{}", line);
     }
 }
 
@@ -351,6 +416,60 @@ async fn pubkey_handler(State(state): State<Arc<AppState>>) -> Json<PubkeyRespon
     Json(PubkeyResponse {
         pubkey: format!("0x{}", hex::encode(&state.ecies_public_key)),
     })
+}
+
+/// GET /api/compliance?wallet=0x..
+///
+/// Returns every compliance record logged for the given wallet (registrant),
+/// newest first, in the schema the admin KYC-reconciliation screen consumes.
+/// Reads all `compliance-*.jsonl` files under `PROVER_LOG_DIR`; each line
+/// deserializes into a `ComplianceRecord`, so legacy lines that predate a
+/// field degrade gracefully to its default (via `#[serde(default)]`).
+async fn compliance_handler(
+    Query(q): Query<ComplianceQuery>,
+) -> Result<Json<ComplianceResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let wallet = q.wallet.trim().to_lowercase();
+    if decode_address(&wallet).is_err() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "wallet must be a 0x-prefixed 20-byte address".to_string(),
+            }),
+        ));
+    }
+
+    let log_dir = std::env::var("PROVER_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
+    let mut records: Vec<ComplianceRecord> = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&log_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !(name.starts_with("compliance-") && name.ends_with(".jsonl")) {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(entry.path()) else {
+                continue;
+            };
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                let Ok(rec) = serde_json::from_str::<ComplianceRecord>(line) else {
+                    continue;
+                };
+                if rec.registrant.eq_ignore_ascii_case(&wallet) {
+                    records.push(rec);
+                }
+            }
+        }
+    }
+
+    // Newest first.
+    records.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+    Ok(Json(ComplianceResponse { wallet, records }))
 }
 
 async fn prove_handler(
@@ -432,27 +551,14 @@ async fn prove_handler(
         return Err(err("Consent expired (>10 min)".to_string()));
     }
 
-    // 3. Log compliance (consent verified, identity observable)
-    let (cert_subject, cert_not_after) = {
-        use x509_parser::prelude::FromDer;
-        x509_parser::certificate::X509Certificate::from_der(&cert_der)
-            .map(|(_, c)| (
-                c.subject().to_string(),
-                c.validity().not_after.timestamp().to_string(),
-            ))
-            .unwrap_or_else(|_| ("unknown".to_string(), "unknown".to_string()))
-    };
-    log_compliance(
-        &req.registrant,
-        &cert_subject,
-        &cert_not_after,
-        &expected_consent,
-        &sensitive.consent_signature,
-    );
+    // 3. Parse the certificate subject (consent verified, identity observable).
+    //    The compliance record is written after proving (see below) so it can
+    //    include the on-chain nullifier.
+    let cert_subject = parse_cert_subject(&cert_der);
 
     tracing::info!(
-        "Proving for registrant={} cert_subject={}",
-        req.registrant, cert_subject
+        "Proving for registrant={} cn={} serial={}",
+        req.registrant, cert_subject.common_name, cert_subject.serial
     );
 
     // 4. Build SP1 stdin and generate proof
@@ -505,6 +611,33 @@ async fn prove_handler(
 
     tracing::info!("Proof generated: proving_time={}ms", proving_time_ms);
 
+    // 6. Log compliance now that the proof (and thus the nullifier) exists.
+    //    Decode the public values via the canonical `PublicValuesStruct` so the
+    //    nullifier — the join key against the on-chain IdentityRegistry
+    //    registration — survives any future reordering of the struct.
+    let nullifier = match PublicValuesStruct::abi_decode(public_values.as_slice()) {
+        Ok(pv) => format!("0x{}", hex::encode(pv.nullifier)),
+        Err(_) => String::new(),
+    };
+    let logged_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    log_compliance(&ComplianceRecord {
+        timestamp: logged_at,
+        registrant: req.registrant.clone(),
+        common_name: cert_subject.common_name,
+        org: cert_subject.org,
+        org_unit: cert_subject.org_unit,
+        country: cert_subject.country,
+        serial: cert_subject.serial,
+        not_after: cert_subject.not_after,
+        nullifier,
+        consent_verified: true,
+        consent_message: expected_consent,
+        consent_signature: sensitive.consent_signature.clone(),
+    });
+
     Ok(Json(ProveResponse {
         proof: format!("0x{}", hex::encode(&proof_bytes)),
         public_values: format!("0x{}", hex::encode(&public_values)),
@@ -539,6 +672,7 @@ fn main() {
                 .route("/api/prove", post(prove_handler))
                 .route("/api/pubkey", get(pubkey_handler))
                 .route("/api/health", get(health_handler))
+                .route("/api/compliance", get(compliance_handler))
                 .with_state(app_state)
                 .layer(cors)
                 .layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024)); // 10MB
@@ -546,9 +680,10 @@ fn main() {
             let addr = format!("0.0.0.0:{}", port);
             tracing::info!("Delegated prover server at {}", prover_url);
             println!("Delegated prover server running at {}", prover_url);
-            println!("   POST /api/prove   - Generate ZK proof (supports ECIES encryption)");
-            println!("   GET  /api/pubkey  - ECIES public key for encrypting requests");
-            println!("   GET  /api/health  - Server status");
+            println!("   POST /api/prove      - Generate ZK proof (supports ECIES encryption)");
+            println!("   GET  /api/pubkey     - ECIES public key for encrypting requests");
+            println!("   GET  /api/health     - Server status");
+            println!("   GET  /api/compliance - Query compliance records by wallet (KYC reconciliation)");
 
             let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
             axum::serve(listener, app).await.unwrap();
