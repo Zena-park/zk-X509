@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { RegistryStore } from "./RegistryStore";
-import { DB, RegistryEntry, makeDefaultEntry, DEFAULT_REGISTRIES_DB_PATH } from "./types";
+import { DB, RegistryEntry, makeDefaultEntry, normalizeEntry, DEFAULT_REGISTRIES_DB_PATH } from "./types";
 
 /// Local JSON-file store — the original backend behavior, kept as the default
 /// and as a zero-dependency fallback for local development (no Firebase setup
@@ -40,12 +40,12 @@ export class FileRegistryStore implements RegistryStore {
 
   async get(addr: string): Promise<RegistryEntry | null> {
     const db = this.readDB();
-    return db[addr] ?? null;
+    return db[addr] ? normalizeEntry(db[addr]) : null;
   }
 
   async getOrCreate(addr: string): Promise<RegistryEntry> {
     const db = this.readDB();
-    return db[addr] ?? makeDefaultEntry();
+    return db[addr] ? normalizeEntry(db[addr]) : makeDefaultEntry();
   }
 
   async save(addr: string, entry: RegistryEntry): Promise<void> {

@@ -48,6 +48,21 @@ export type DB = Record<string, RegistryEntry>;
 /** Disclosure fields a registry explorer may expose / filter on. */
 export const VALID_DISCLOSURE_FIELDS = ["country", "org", "orgUnit", "commonName"];
 
+/// Guard the two collection fields that callers mutate/iterate
+/// (`announcements.push`, `caGuides[hash]`). A document written by an older
+/// schema or hand-edited could omit them, which would crash the routes. Scalar
+/// optionals (listed/explorer*) are read with `??` defaults at the call sites,
+/// so we deliberately do NOT inject them here — that keeps GET responses
+/// shape-identical to what was stored.
+export function normalizeEntry(entry: RegistryEntry): RegistryEntry {
+  if (entry.announcements && entry.caGuides) return entry;
+  return {
+    ...entry,
+    announcements: entry.announcements ?? [],
+    caGuides: entry.caGuides ?? {},
+  };
+}
+
 export function makeDefaultEntry(): RegistryEntry {
   return {
     description: "",

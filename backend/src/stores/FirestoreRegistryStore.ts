@@ -1,7 +1,7 @@
 import { initializeApp, getApps, applicationDefault } from "firebase-admin/app";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
 import { RegistryStore } from "./RegistryStore";
-import { RegistryEntry, makeDefaultEntry } from "./types";
+import { RegistryEntry, makeDefaultEntry, normalizeEntry } from "./types";
 
 /// Cloud Firestore store — serverless production backend for the CMS metadata.
 /// One document per registry under collection `registries`, doc id = the
@@ -25,6 +25,9 @@ export class FirestoreRegistryStore implements RegistryStore {
       );
     }
     this.db = getFirestore();
+    // RegistryEntry has optional fields that can be `undefined`; without this
+    // the Admin SDK throws on `set()` ("Unsupported field value: undefined").
+    this.db.settings({ ignoreUndefinedProperties: true });
     this.collection = collection;
   }
 
@@ -34,7 +37,7 @@ export class FirestoreRegistryStore implements RegistryStore {
 
   private async snapToEntry(addr: string): Promise<RegistryEntry | null> {
     const snap = await this.doc(addr).get();
-    return snap.exists ? (snap.data() as RegistryEntry) : null;
+    return snap.exists ? normalizeEntry(snap.data() as RegistryEntry) : null;
   }
 
   async listListed(): Promise<string[]> {

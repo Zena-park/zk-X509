@@ -30,5 +30,14 @@ export function createApp(): Express {
     res.json({ status: "ok" });
   });
 
+  // JSON error handler — the async route wrapper (`h()` in routes/registries.ts)
+  // forwards store/handler errors here via next(err). Without this, Express'
+  // default handler returns HTML and can leak a stack trace; respond with the
+  // API's JSON shape and keep internals server-side.
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error("Unhandled error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  });
+
   return app;
 }

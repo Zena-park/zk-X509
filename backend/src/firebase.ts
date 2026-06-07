@@ -15,7 +15,10 @@ const CA_REGISTRY_GITHUB_TOKEN = defineSecret("CA_REGISTRY_GITHUB_TOKEN");
 // Store selection is centralized in getRegistryStore(): on Cloud Functions
 // (`K_SERVICE` set by the runtime) it defaults to Firestore, since the file
 // store has no durable disk here. No env mutation needed at this entry point.
+// CORS is handled by the Express `cors({ origin: CORS_ORIGIN })` middleware
+// (single source of truth) — do NOT also set onRequest's `cors`, which would
+// layer a second, broader policy and produce inconsistent headers.
 export const api = onRequest(
-  { secrets: [CA_REGISTRY_GITHUB_TOKEN], cors: true, region: "us-central1" },
+  { secrets: [CA_REGISTRY_GITHUB_TOKEN], region: "us-central1" },
   createApp()
 );

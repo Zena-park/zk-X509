@@ -7,9 +7,15 @@ import { RegistryEntry } from "./types";
 /// identical regardless of backend (frontend stays unchanged).
 ///
 /// The metadata document is small (one per registry address), so writes use a
-/// full read-modify-save on the whole entry — atomic at the document level in
-/// Firestore — mirroring the original file store's behavior exactly. Callers
-/// validate/normalize the entry, then persist it via `save`.
+/// full read-modify-save on the whole entry: callers `get`/`getOrCreate`,
+/// mutate, then `save`. Each `save` is a single full-document write (atomic for
+/// that one write), but the read→modify→save *sequence* is NOT atomic across
+/// concurrent writers — two interleaved writes to the same registry are
+/// last-writer-wins (a lost update). This is an accepted tradeoff for this
+/// single-admin, very-low-write CMS (registry owners editing their own
+/// metadata); if write concurrency ever becomes real, add an atomic
+/// `update(addr, mutator)` (Firestore `runTransaction` + a file-store
+/// serialized write) and route the PUT/POST/DELETE handlers through it.
 export interface RegistryStore {
   /** Addresses of registries that are not explicitly unlisted (`listed !== false`). */
   listListed(): Promise<string[]>;
