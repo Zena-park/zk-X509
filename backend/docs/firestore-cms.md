@@ -53,17 +53,44 @@ REGISTRY_STORE=firestore FIRESTORE_EMULATOR_HOST=localhost:8080 npm run seed
 GOOGLE_CLOUD_PROJECT=<project-id> npm run seed
 ```
 
+## Prerequisites — one-time project setup (account owner)
+
+These steps require Firebase **account/billing permissions**, so they are done
+**by the account owner**, not in CI/automation:
+
+1. **Create the Firebase project** (or reuse an existing one) and point
+   `.firebaserc` at it. The committed default id is `zk-x509-backend`; if you
+   create a different id, update `.firebaserc` (`projects.default`) or run
+   `firebase use <project-id>`.
+   ```bash
+   firebase login
+   firebase projects:create zk-x509-backend   # or: firebase use <existing-id>
+   ```
+2. **Enable Cloud Firestore** in **Native mode** (Firebase console → Firestore
+   → Create database).
+3. **Upgrade to the Blaze plan.** 2nd-gen Cloud Functions (and their outbound
+   network calls — ethers RPC, GitHub) require Blaze. At this traffic the cost
+   is effectively ~$0 (see *Cost* below); Spark only suffices for the local
+   emulator, not a deployed function.
+4. **Set the GitHub secret** for the CA-registry PR flow:
+   ```bash
+   firebase functions:secrets:set CA_REGISTRY_GITHUB_TOKEN
+   ```
+
+Everything below (config, code, migration, emulator verification) is already in
+the repo; only the four account-owner steps above are external.
+
 ## Deploy (Firebase)
 
 Hosting rewrites `/api/**` and `/health` to a single 2nd-gen HTTPS function
 (`api`) that serves the whole Express app (`src/firebase.ts` → `createApp()`).
 
-```bash
-# set the project
-firebase use <project-id>            # or edit .firebaserc
+After the one-time prerequisites above (project selected, Firestore + Blaze
+enabled, secret set):
 
-# GitHub token for the CA-registry PR flow → Secret Manager (NOT committed env)
-firebase functions:secrets:set CA_REGISTRY_GITHUB_TOKEN
+```bash
+# (first run only, if not already migrated) seed Firestore from the JSON
+GOOGLE_CLOUD_PROJECT=<project-id> npm --prefix backend run seed
 
 # deploy rules + function + hosting
 firebase deploy --only firestore:rules,functions,hosting
