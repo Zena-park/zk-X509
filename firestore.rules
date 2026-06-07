@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// zk-X509 CMS metadata (registry descriptions, explorer settings,
+// announcements, CA guides). This is PUBLIC content, so reads are open.
+//
+// Writes are denied to ALL direct clients: the only writer is the backend
+// (Cloud Functions / self-hosted Express) via the Firebase Admin SDK, which
+// bypasses these rules. NOTE: this rule blocks tampering through the Firestore
+// client SDK; it does NOT authenticate the backend's own REST write endpoints
+// (PUT/POST/DELETE) — those remain unauthenticated as before this migration.
+// Wallet-signature auth on those endpoints is a separate follow-up.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /registries/{address} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Default-deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
