@@ -1,113 +1,67 @@
-// TODO: Add owner authentication (wallet signature) before production use
-import { Router } from "express";
-import * as fs from "fs";
-import * as path from "path";
+// TODO: Add owner authentication (wallet signature) before production use.
+// NOTE: write endpoints (PUT/POST/DELETE) are intentionally still unauthenticated
+// here — this migration preserves the prior behavior. The Firestore security
+// rules block *direct* client DB access (write: false), but they do NOT gate
+// these REST writes, which reach Firestore via the Admin SDK. Adding wallet-
+// signature auth is a separate follow-up.
+import { Router, Request, Response, NextFunction } from "express";
 import * as crypto from "crypto";
+import {
+  getRegistryStore,
+  Announcement,
+  VALID_DISCLOSURE_FIELDS,
+  makeDefaultEntry,
+} from "../stores";
 
 const router = Router();
-const DB_PATH = path.join(__dirname, "../../db/registries.json");
-const VALID_DISCLOSURE_FIELDS = ["country", "org", "orgUnit", "commonName"];
+const store = getRegistryStore();
 
-// --- DB helpers ---
+// Registry addresses are case-insensitive and stored/looked-up lowercased.
+// Normalize the `:address` param once here so every handler can use it as-is.
+router.param("address", (req, _res, next, value) => {
+  req.params.address = (value as string).toLowerCase();
+  next();
+});
 
-interface CaGuide {
-  name: string;
-  description: string;
-  issue_url: string;
-  instructions: string;
+// Public CMS content — cache GETs to cut Firestore reads / load. Short TTL with
+// stale-while-revalidate keeps edits visibly fresh while absorbing read bursts.
+const PUBLIC_CACHE = "public, max-age=60, stale-while-revalidate=300";
+function cacheable(res: Response) {
+  res.set("Cache-Control", PUBLIC_CACHE);
 }
 
-interface Announcement {
-  id: string;
-  title: string;
-  body: string;
-  createdAt: string;
-}
-
-interface RegistryEntry {
-  description: string;
-  logoUrl: string;
-  category: string;
-  website: string;
-  tags: string[];
-  listed?: boolean;
-  explorerEnabled?: boolean;
-  explorerVisibleFields?: string[];
-  explorerFilterableFields?: string[];
-  announcements: Announcement[];
-  caGuides: Record<string, CaGuide>;
-}
-
-type DB = Record<string, RegistryEntry>;
-
-function readDB(): DB {
-  try {
-    const raw = fs.readFileSync(DB_PATH, "utf-8");
-    return JSON.parse(raw);
-  } catch (error: any) {
-    if (error.code === "ENOENT") {
-      fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-      fs.writeFileSync(DB_PATH, "{}", "utf-8");
-      return {};
-    }
-    console.error("Error reading or parsing DB file at " + DB_PATH + ":", error);
-    throw error;
-  }
-}
-
-function writeDB(db: DB): void {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf-8");
-}
-
-function makeDefaultEntry(): RegistryEntry {
-  return {
-    description: "",
-    logoUrl: "",
-    category: "other",
-    website: "",
-    tags: [],
-    listed: true,
-    explorerEnabled: false,
-    explorerVisibleFields: ["country", "org", "orgUnit", "commonName"],
-    explorerFilterableFields: ["country", "org"],
-    announcements: [],
-    caGuides: {},
-  };
+// Express 4 doesn't forward async rejections — wrap handlers so store errors
+// become a clean 500 instead of an unhandled rejection.
+type Handler = (req: Request, res: Response) => Promise<void>;
+function h(fn: Handler) {
+  return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
 }
 
 // --- Routes ---
 
 // GET /api/registries — list all listed registry addresses
-router.get("/", (req, res) => {
-  const db = readDB();
-  const listed = Object.entries(db)
-    .filter(([, entry]) => entry.listed !== false)
-    .map(([addr]) => addr);
-  res.json(listed);
-});
+router.get("/", h(async (_req, res) => {
+  cacheable(res);
+  res.json(await store.listListed());
+}));
 
 // GET /api/registries/:address
-router.get("/:address", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
-  const entry = db[addr];
+router.get("/:address", h(async (req, res) => {
+  const addr = req.params.address as string;
+  const entry = await store.get(addr);
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
     return;
   }
+  cacheable(res);
   res.json(entry);
-});
+}));
 
 // PUT /api/registries/:address — update metadata (auto-create if not exists)
-router.put("/:address", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
+router.put("/:address", h(async (req, res) => {
+  const addr = req.params.address as string;
+  const entry = await store.getOrCreate(addr);
 
-  if (!db[addr]) {
-    db[addr] = makeDefaultEntry();
-  }
-
-  const entry = db[addr];
   const { description, logoUrl, category, website, tags, listed,
     explorerEnabled, explorerVisibleFields, explorerFilterableFields } = req.body;
   if (description !== undefined) entry.description = String(description);
@@ -139,40 +93,40 @@ router.put("/:address", (req, res) => {
     )];
   }
 
-  writeDB(db);
-  res.json(db[addr]);
-});
+  await store.save(addr, entry);
+  res.json(entry);
+}));
 
 // GET /api/registries/:address/explorer-settings
-router.get("/:address/explorer-settings", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
-  const entry = db[addr];
+router.get("/:address/explorer-settings", h(async (req, res) => {
+  const addr = req.params.address as string;
+  const entry = await store.get(addr);
   const defaults = makeDefaultEntry();
+  cacheable(res);
   res.json({
     explorerEnabled: entry?.explorerEnabled ?? defaults.explorerEnabled,
     explorerVisibleFields: entry?.explorerVisibleFields ?? defaults.explorerVisibleFields,
     explorerFilterableFields: entry?.explorerFilterableFields ?? defaults.explorerFilterableFields,
   });
-});
+}));
 
 // GET /api/registries/:address/announcements
-router.get("/:address/announcements", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
-  const entry = db[addr];
+router.get("/:address/announcements", h(async (req, res) => {
+  const addr = req.params.address as string;
+  const entry = await store.get(addr);
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
     return;
   }
+  cacheable(res);
   res.json(entry.announcements);
-});
+}));
 
 // POST /api/registries/:address/announcements
-router.post("/:address/announcements", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
-  if (!db[addr]) {
+router.post("/:address/announcements", h(async (req, res) => {
+  const addr = req.params.address as string;
+  const entry = await store.get(addr);
+  if (!entry) {
     res.status(404).json({ error: "Registry not found" });
     return;
   }
@@ -190,52 +144,49 @@ router.post("/:address/announcements", (req, res) => {
     createdAt: new Date().toISOString(),
   };
 
-  db[addr].announcements.push(announcement);
-  writeDB(db);
+  entry.announcements.push(announcement);
+  await store.save(addr, entry);
   res.status(201).json(announcement);
-});
+}));
 
 // DELETE /api/registries/:address/announcements/:id
-router.delete("/:address/announcements/:id", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
+router.delete("/:address/announcements/:id", h(async (req, res) => {
+  const addr = req.params.address as string;
   const annId = req.params.id as string;
-  if (!db[addr]) {
+  const entry = await store.get(addr);
+  if (!entry) {
     res.status(404).json({ error: "Registry not found" });
     return;
   }
 
-  const idx = db[addr].announcements.findIndex((a: Announcement) => a.id === annId);
+  const idx = entry.announcements.findIndex((a: Announcement) => a.id === annId);
   if (idx === -1) {
     res.status(404).json({ error: "Announcement not found" });
     return;
   }
 
-  db[addr].announcements.splice(idx, 1);
-  writeDB(db);
+  entry.announcements.splice(idx, 1);
+  await store.save(addr, entry);
   res.status(204).send();
-});
+}));
 
 // GET /api/registries/:address/ca-guides
-router.get("/:address/ca-guides", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
-  const entry = db[addr];
+router.get("/:address/ca-guides", h(async (req, res) => {
+  const addr = req.params.address as string;
+  const entry = await store.get(addr);
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
     return;
   }
+  cacheable(res);
   res.json(entry.caGuides);
-});
+}));
 
 // PUT /api/registries/:address/ca-guides/:caHash
-router.put("/:address/ca-guides/:caHash", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
+router.put("/:address/ca-guides/:caHash", h(async (req, res) => {
+  const addr = req.params.address as string;
   const caHash = req.params.caHash as string;
-  if (!db[addr]) {
-    db[addr] = makeDefaultEntry();
-  }
+  const entry = await store.getOrCreate(addr);
 
   const { name, description, issue_url, instructions } = req.body;
   if (!name) {
@@ -243,30 +194,30 @@ router.put("/:address/ca-guides/:caHash", (req, res) => {
     return;
   }
 
-  db[addr].caGuides[caHash] = {
+  entry.caGuides[caHash] = {
     name,
     description: description || "",
     issue_url: issue_url || "",
     instructions: instructions || "",
   };
 
-  writeDB(db);
-  res.json(db[addr].caGuides[caHash]);
-});
+  await store.save(addr, entry);
+  res.json(entry.caGuides[caHash]);
+}));
 
 // DELETE /api/registries/:address/ca-guides/:caHash — idempotent
-router.delete("/:address/ca-guides/:caHash", (req, res) => {
-  const db = readDB();
-  const addr = (req.params.address as string).toLowerCase();
+router.delete("/:address/ca-guides/:caHash", h(async (req, res) => {
+  const addr = req.params.address as string;
   const caHash = req.params.caHash as string;
-  if (!db[addr] || !db[addr].caGuides[caHash]) {
+  const entry = await store.get(addr);
+  if (!entry || !entry.caGuides[caHash]) {
     res.status(204).send();
     return;
   }
 
-  delete db[addr].caGuides[caHash];
-  writeDB(db);
+  delete entry.caGuides[caHash];
+  await store.save(addr, entry);
   res.status(204).send();
-});
+}));
 
 export default router;

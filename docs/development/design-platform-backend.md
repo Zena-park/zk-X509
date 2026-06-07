@@ -46,55 +46,76 @@ queried directly from contracts via RPC.
 └─────────────┘                              └───────────────┘
 ```
 
-No separate API server. Frontend accesses both directly.
+Off-chain metadata is served by a small **backend REST API** (`backend/`,
+Express) backed by a pluggable store — a local JSON file in dev, **Cloud
+Firestore** in production — deployed as a **Firebase Cloud Function behind
+Firebase Hosting** (`/api/**` → the `api` function). The frontend calls this
+REST API (`lib/platform.ts`); it does **not** access Firestore directly. The
+store is selected by `REGISTRY_STORE=file|firestore` so the same REST contract
+runs both locally (no Firebase setup) and in production. See
+`backend/docs/firestore-cms.md` for the operations runbook.
 
 ## Firebase Schema (Production)
+
+One document per registry under `registries/{registryAddress}` (doc id =
+**lowercased** address). To keep the REST responses byte-for-byte identical to
+the file store, `announcements` is an **embedded array** and `caGuides` an
+**embedded map** on the document (not subcollections) — the documents are tiny
+(one per registry) so a full-document read/write is cheap and atomic.
 
 ```
 firestore/
   registries/
-    {registryAddress}/
+    {lowercasedRegistryAddress}/        // one document
       description: string
       logoUrl: string
       category: "dao" | "defi" | "corporate" | "other"
       website: string
       tags: string[]
-      createdAt: timestamp
-      updatedAt: timestamp
-
-      announcements/
-        {announcementId}/
-          title: string
-          body: string
-          createdAt: timestamp
-
-      caGuides/
-        {caLeafHash}/
-          name: string          // "yessignCA Class 3"
-          description: string   // "Korean banking certificate"
-          issueUrl: string      // "https://www.yessign.or.kr"
-          instructions: string  // "Visit your bank branch..."
+      listed: boolean
+      explorerEnabled: boolean
+      explorerVisibleFields: string[]
+      explorerFilterableFields: string[]
+      announcements: [                  // embedded array
+        { id: string, title: string, body: string, createdAt: string }
+      ]
+      caGuides: {                        // embedded map, key = caLeafHash
+        "<caHash>": {
+          name: string,                 // "yessignCA Class 3"
+          description: string,          // "Korean banking certificate"
+          issue_url: string,            // "https://www.yessign.or.kr"
+          instructions: string          // "Visit your bank branch..."
+        }
+      }
 ```
+
+> Note: field names mirror the existing REST contract (`issue_url`, no
+> `createdAt`/`updatedAt` on the registry doc). The earlier draft used
+> subcollections + `issueUrl` + timestamps; the implemented schema above
+> supersedes it to preserve the frontend contract unchanged.
 
 ### Access Rules
 
 ```javascript
-// Firestore security rules
+// Firestore security rules (firestore.rules)
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Anyone can read registry metadata
-    match /registries/{registryAddr}/{document=**} {
-      allow read: if true;
+    match /registries/{address} {
+      allow read: if true;    // public CMS content
+      allow write: if false;  // writes only via the backend (Admin SDK), never the client SDK
     }
-    // Only registry owner can write (verified via wallet signature)
-    match /registries/{registryAddr}/{document=**} {
-      allow write: if request.auth != null
-        && request.auth.token.wallet == getRegistryOwner(registryAddr);
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }
 ```
+
+Writes go exclusively through the backend REST API (Admin SDK, which bypasses
+rules); `write: if false` blocks any direct client-SDK tampering. **The REST
+write endpoints themselves are currently unauthenticated** (preserved from the
+file-store backend — see the `TODO` in `routes/registries.ts`). Owner
+wallet-signature auth on those endpoints is a planned **follow-up**, after which
+the rule comment above (owner-gated writes) becomes the end state.
 
 ## Local Development Schema
 
@@ -156,12 +177,17 @@ backend/
 ```typescript
 // lib/platform.ts
 
-// Determine backend URL based on environment
+// The frontend always talks to the backend REST API — never Firestore directly.
+// In production this URL points at the Firebase-hosted function (/api/**);
+// locally it's the Express dev server.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
-
-// Or use Firebase directly in production
-const useFirebase = process.env.NEXT_PUBLIC_USE_FIREBASE === "true";
 ```
+
+> The earlier `NEXT_PUBLIC_USE_FIREBASE` / direct-Firestore-from-frontend idea
+> was dropped: the backend owns Firestore (via the Admin SDK) so the REST
+> contract — and the frontend — stay unchanged whether the store is the local
+> file or Firestore. The `firebase` switch now lives entirely in the backend
+> (`REGISTRY_STORE`).
 
 ## Registry Discovery Flow
 
