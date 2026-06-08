@@ -77,16 +77,27 @@ function serviceJsonUrl(chainId: string, registryAddr: string): string {
   return `${CA_REGISTRY_BASE}/services/${chainId}/${registryAddr.toLowerCase()}/service.json`;
 }
 
+/// Build fetch args that bypass the HTTP/CDN cache. Admin views must reflect a
+/// just-saved edit immediately, not the 60s-cached public copy: the unique
+/// query param defeats the CDN, `no-store` defeats the browser cache. Public
+/// reads omit `fresh` and keep using the cached responses.
+function cacheBust(url: string, fresh?: boolean): [string, RequestInit | undefined] {
+  if (!fresh) return [url, undefined];
+  const sep = url.includes("?") ? "&" : "?";
+  return [`${url}${sep}_=${Date.now()}`, { cache: "no-store" }];
+}
+
 /// Fetch CA guides: backend DB first, then Git repo fallback, merged.
 export async function getCaGuides(
   chainId: string,
   registryAddr: string,
+  opts?: { fresh?: boolean },
 ): Promise<Record<string, CaGuide>> {
   const [backendGuides, gitGuides] = await Promise.all([
     (async () => {
       try {
         validateAddress(registryAddr);
-        const res = await fetch(`${BACKEND_URL}/api/registries/${registryAddr.toLowerCase()}/ca-guides`);
+        const res = await fetch(...cacheBust(`${BACKEND_URL}/api/registries/${registryAddr.toLowerCase()}/ca-guides`, opts?.fresh));
         if (!res.ok) return {};
         return await res.json() as Record<string, CaGuide>;
       } catch { return {}; }
@@ -130,10 +141,10 @@ export async function getListedRegistries(chainId?: number | string): Promise<st
 
 // ── Backend Server (announcements, metadata not in Git) ─────────
 
-export async function getRegistryMetadata(address: string): Promise<RegistryMetadata | null> {
+export async function getRegistryMetadata(address: string, opts?: { fresh?: boolean }): Promise<RegistryMetadata | null> {
   try {
     validateAddress(address);
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}`);
+    const res = await fetch(...cacheBust(`${BACKEND_URL}/api/registries/${address.toLowerCase()}`, opts?.fresh));
     if (res.status === 404) return null;
     if (!res.ok) return null;
     return await res.json();
@@ -161,10 +172,10 @@ export async function updateRegistryMetadata(
 
 // ── Announcements (still backend-based) ─────────
 
-export async function getAnnouncements(address: string): Promise<Announcement[]> {
+export async function getAnnouncements(address: string, opts?: { fresh?: boolean }): Promise<Announcement[]> {
   try {
     validateAddress(address);
-    const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements`);
+    const res = await fetch(...cacheBust(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements`, opts?.fresh));
     if (!res.ok) return [];
     return await res.json();
   } catch {
