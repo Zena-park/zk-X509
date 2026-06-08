@@ -17,8 +17,12 @@ import { RegistryEntry } from "./types";
 /// `update(addr, mutator)` (Firestore `runTransaction` + a file-store
 /// serialized write) and route the PUT/POST/DELETE handlers through it.
 export interface RegistryStore {
-  /** Addresses of registries that are not explicitly unlisted (`listed !== false`). */
-  listListed(): Promise<string[]>;
+  /**
+   * Addresses of registries that are not explicitly unlisted (`listed !== false`).
+   * When `chainId` is given, restrict to registries deployed on that network
+   * (entries missing a `chainId` are excluded); when omitted, list every network.
+   */
+  listListed(chainId?: number): Promise<string[]>;
 
   /** Full entry for `addr` (already lowercased), or null if absent. */
   get(addr: string): Promise<RegistryEntry | null>;

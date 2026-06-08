@@ -117,9 +117,11 @@ export default function DashboardPage() {
           provider,
         );
 
+        // Scope the listed-set to the active network so it lines up with the
+        // on-chain `allAddresses` (already network-specific via the factory).
         const [allAddresses, listedAddresses]: [string[], string[] | null] = await Promise.all([
           factory.getRegistries(),
-          getListedRegistries(),
+          getListedRegistries(process.env.NEXT_PUBLIC_CHAIN_ID),
         ]);
 
         // null  = backend unreachable → show all on-chain registries

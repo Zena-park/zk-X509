@@ -20,6 +20,10 @@ pgo-data.profdata
 
 # Env
 .env
+# All per-environment dotenv files (may contain secrets / deploy config).
+# Keep .env.example tracked as the committed template.
+.env.*
+!.env.example
 
 # Node
 node_modules/

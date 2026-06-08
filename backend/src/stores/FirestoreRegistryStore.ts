@@ -40,12 +40,18 @@ export class FirestoreRegistryStore implements RegistryStore {
     return snap.exists ? normalizeEntry(snap.data() as RegistryEntry) : null;
   }
 
-  async listListed(): Promise<string[]> {
+  async listListed(chainId?: number): Promise<string[]> {
     // Small collection (one doc per registry): fetch all and filter in memory,
     // exactly like the file store (`listed !== false` ⇒ included, incl. absent).
+    // A `chainId` filter further restricts to that network (entries without a
+    // chainId are excluded from network-scoped lists).
     const snap = await this.db.collection(this.collection).get();
     return snap.docs
-      .filter((d) => (d.data() as RegistryEntry).listed !== false)
+      .filter((d) => {
+        const entry = d.data() as RegistryEntry;
+        if (entry.listed === false) return false;
+        return chainId === undefined || entry.chainId === chainId;
+      })
       .map((d) => d.id);
   }
 
