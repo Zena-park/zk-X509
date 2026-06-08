@@ -66,11 +66,14 @@ These steps require Firebase **account/billing permissions**, so they are done
    it does not collide with those targeted sites. To use a different project,
    update `.firebaserc` (`projects.default`) or run `firebase use <project-id>`.
    ```bash
+   # Run these from the repo root (where firebase.json / .firebaserc live).
    firebase login
    # Use the shared project (already created):
    firebase use zkscatter
-   # Or, to create a brand-new project instead:
+   # Or, to create a brand-new project instead — then select it so the
+   # subsequent commands target it (otherwise they stay on the active project):
    firebase projects:create <project-id>
+   firebase use <project-id>
    ```
 2. **Enable Cloud Firestore** in **Native mode** (Firebase console → Firestore
    → Create database).
