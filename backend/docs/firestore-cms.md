@@ -53,17 +53,51 @@ REGISTRY_STORE=firestore FIRESTORE_EMULATOR_HOST=localhost:8080 npm run seed
 GOOGLE_CLOUD_PROJECT=<project-id> npm run seed
 ```
 
+## Prerequisites — one-time project setup (account owner)
+
+These steps require Firebase **account/billing permissions**, so they are done
+**by the account owner**, not in CI/automation:
+
+1. **Create the Firebase project** (or reuse an existing one) and point
+   `.firebaserc` at it. The committed default id is `zk-x509-backend`; if you
+   create a different id, update `.firebaserc` (`projects.default`) or run
+   `firebase use <project-id>`.
+   ```bash
+   firebase login
+   # To create a new project:
+   firebase projects:create zk-x509-backend
+   # Or to use an existing project:
+   firebase use <existing-id>
+   ```
+2. **Enable Cloud Firestore** in **Native mode** (Firebase console → Firestore
+   → Create database).
+3. **Upgrade to the Blaze plan.** Blaze is required to *deploy* 2nd-gen Cloud
+   Functions at all (and for their outbound calls — ethers RPC, GitHub),
+   independent of usage. Within Blaze, the actual metered usage at this traffic
+   is effectively ~$0 and Firestore reads/writes stay within free-tier quotas
+   (see *Cost*). The Spark (free) plan only runs the **local emulator** — it
+   cannot host a deployed function.
+4. **Set the GitHub secret** for the CA-registry PR flow:
+   ```bash
+   firebase functions:secrets:set CA_REGISTRY_GITHUB_TOKEN
+   ```
+
+Everything below (config, code, migration, emulator verification) is already in
+the repo; only the four account-owner steps above are external.
+
 ## Deploy (Firebase)
 
 Hosting rewrites `/api/**` and `/health` to a single 2nd-gen HTTPS function
 (`api`) that serves the whole Express app (`src/firebase.ts` → `createApp()`).
 
-```bash
-# set the project
-firebase use <project-id>            # or edit .firebaserc
+After the one-time prerequisites above (project selected, Firestore + Blaze
+enabled, secret set). **Run these from the repo root** (where `firebase.json` /
+`.firebaserc` live) — not from `backend/`, or `firebase deploy` fails with
+"Not in a Firebase project directory":
 
-# GitHub token for the CA-registry PR flow → Secret Manager (NOT committed env)
-firebase functions:secrets:set CA_REGISTRY_GITHUB_TOKEN
+```bash
+# (first run only, if not already migrated) seed Firestore from the JSON
+GOOGLE_CLOUD_PROJECT=<project-id> npm --prefix backend run seed
 
 # deploy rules + function + hosting
 firebase deploy --only firestore:rules,functions,hosting
@@ -97,10 +131,12 @@ keeping edits visibly fresh within ~1 minute.
 
 ## Cost
 
-- **Spark (free tier)** is sufficient for testnet: the CMS is tiny (one small
-  doc per registry, ~18 today) and low-traffic; with caching the daily Firestore
-  reads stay well under free-tier limits.
-- **Blaze (pay-as-you-go)** is required for production Cloud Functions outbound
-  networking and beyond free quotas. At this traffic the effective cost is
-  ~$0/month; the `Cache-Control` headers keep read ops (the main cost driver)
-  near zero.
+- **Blaze (pay-as-you-go) is required to deploy the backend** — 2nd-gen Cloud
+  Functions and their outbound networking only run on Blaze (the Spark free
+  plan is emulator-only; see Prerequisites). Enabling Blaze does not by itself
+  cost anything.
+- **Metered usage is effectively ~$0/month at this traffic.** The CMS is tiny
+  (one small doc per registry, ~18 today) and low-traffic; the `Cache-Control`
+  headers keep Firestore read ops (the main cost driver) near zero, and reads/
+  writes/invocations stay within the always-free quotas. Spark's free tier is
+  enough only for local emulator development, not a deployed function.
