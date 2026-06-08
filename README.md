@@ -102,8 +102,39 @@ Point it at Sepolia in the connect step:
 - **Chain ID**: `11155111`
 - **Registry address**: `0x3cF6A96f1970053ffDf957074F988aD53D13ada3` (the `users` registry)
 
-The web frontend reads the same values from `frontend/.env.local`
-(`NEXT_PUBLIC_CHAIN_ID`, `NEXT_PUBLIC_REGISTRY_ADDRESS`, …).
+### Run the web frontend locally (Sepolia contracts + hosted backend)
+
+No local node, contract deploy, or backend is needed — point the frontend at the
+live Sepolia contracts above and the deployed `zkscatter` backend. Create
+`frontend/.env.local` (it is git-ignored, so it is not committed):
+
+```bash
+# frontend/.env.local
+# any Sepolia RPC
+NEXT_PUBLIC_RPC_URL="https://ethereum-sepolia.publicnode.com"
+NEXT_PUBLIC_CHAIN_ID=11155111
+NEXT_PUBLIC_FACTORY_ADDRESS="0x9e937dF6ac0E85979622519068412A518fa085d9"
+NEXT_PUBLIC_SP1_VERIFIER_ADDRESS="0x261a1619cC63273de7c64872B769305732761888"
+# users registry
+NEXT_PUBLIC_REGISTRY_ADDRESS="0x3cF6A96f1970053ffDf957074F988aD53D13ada3"
+# deployed backend (announcements + registry metadata)
+NEXT_PUBLIC_BACKEND_URL="https://zkscatter.web.app"
+# Optional — CA guides source; defaults to the public zk-x509-ca-registry repo:
+# NEXT_PUBLIC_CA_REGISTRY_URL="https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main"
+```
+
+Then install and run the dev server:
+
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:3000 (Next.js), talking to Sepolia + the zkscatter backend
+```
+
+> The addresses match [`deployments/11155111.json`](deployments/11155111.json).
+> To target your own deployment instead, swap in your factory/registry addresses
+> and point `NEXT_PUBLIC_BACKEND_URL` at your own backend.
 
 ### Option B — CLI prover
 
