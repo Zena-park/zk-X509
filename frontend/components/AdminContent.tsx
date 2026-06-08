@@ -801,10 +801,13 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
       setSvcGuidesLoading(true);
 
       try {
+        // Admin edits its own registry, so read past the public cache — a
+        // stale read would show the wrong "List on Explorer" toggle / metadata
+        // right after a save.
         const [meta, anncs, guides] = await Promise.all([
-          getRegistryMetadata(registryAddr),
-          getAnnouncements(registryAddr),
-          getCaGuides(chainId || "31337", registryAddr),
+          getRegistryMetadata(registryAddr, { fresh: true }),
+          getAnnouncements(registryAddr, { fresh: true }),
+          getCaGuides(chainId || "31337", registryAddr, { fresh: true }),
         ]);
         if (cancelled) return;
         setSvcBackendDown(false);
@@ -844,7 +847,13 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
     if (!registryAddr) return;
     setSvcMetaSaving(true);
     setSvcMetaMsg(null);
-    const ok = await updateRegistryMetadata(registryAddr, svcMetadata);
+    // Stamp the active wallet's network so the entry is visible to the
+    // network-scoped explorer query (?chainId=). Without it a "List on
+    // Explorer" toggle saves `listed:true` but stays hidden on the directory.
+    const ok = await updateRegistryMetadata(registryAddr, {
+      ...svcMetadata,
+      chainId: chainId ? Number(chainId) : undefined,
+    });
     setSvcMetaSaving(false);
     setSvcMetaMsg(ok ? "Metadata saved" : "Failed to save. Backend unavailable?");
   };

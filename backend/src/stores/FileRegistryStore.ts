@@ -10,7 +10,9 @@ export class FileRegistryStore implements RegistryStore {
   private readonly dbPath: string;
 
   constructor(dbPath?: string) {
-    this.dbPath = dbPath ?? DEFAULT_REGISTRIES_DB_PATH;
+    // Precedence: explicit arg > REGISTRIES_DB_PATH env (ops override / tests) >
+    // the committed default JSON path.
+    this.dbPath = dbPath ?? process.env.REGISTRIES_DB_PATH ?? DEFAULT_REGISTRIES_DB_PATH;
   }
 
   private readDB(): DB {
