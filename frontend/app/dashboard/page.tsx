@@ -117,11 +117,12 @@ export default function DashboardPage() {
           provider,
         );
 
-        // Scope the listed-set to the active network so it lines up with the
-        // on-chain `allAddresses` (already network-specific via the factory).
+        // Scope the listed-set to the same network as the on-chain factory
+        // (`cid` = active wallet chain) so `listedAddresses` and `allAddresses`
+        // can't come from different networks.
         const [allAddresses, listedAddresses]: [string[], string[] | null] = await Promise.all([
           factory.getRegistries(),
-          getListedRegistries(process.env.NEXT_PUBLIC_CHAIN_ID),
+          getListedRegistries(cid),
         ]);
 
         // null  = backend unreachable → show all on-chain registries
