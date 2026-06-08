@@ -194,9 +194,9 @@ make run`}
           <p className="text-xs text-on-surface-variant/70 mt-3">
             <strong className="text-on-surface-variant">Windows:</strong> extract
             the ELF in WSL/Git&nbsp;Bash with <code>make elf</code>, then in
-            PowerShell set <code>$env:PREBUILT_ELF</code> to{" "}
-            <code>elf\zk-x509-program</code> and run{" "}
-            <code>cargo build --release --bin interactive</code>.
+            PowerShell run{" "}
+            <code>$env:PREBUILT_ELF = &quot;$pwd\elf\zk-x509-program&quot;</code>{" "}
+            followed by <code>cargo build --release --bin interactive</code>.
           </p>
         </motion.div>
 
