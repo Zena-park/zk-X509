@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -22,6 +22,10 @@ beforeAll(async () => {
   dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "reg-route-"));
   process.env.REGISTRY_STORE = "file";
   process.env.REGISTRIES_DB_PATH = path.join(dbDir, "registries.json");
+  // The route module resolves its store singleton at import time; reset the
+  // module registry first so it re-initializes against the temp DB path above
+  // (and never the default/production JSON) regardless of prior imports.
+  vi.resetModules();
   const mod = await import("./registries");
   // Mount only this router so the test is independent of the rest of createApp.
   const express = (await import("express")).default;
@@ -31,7 +35,9 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  fs.rmSync(dbDir, { recursive: true, force: true });
+  // Guard against beforeAll failing before dbDir was assigned, so cleanup
+  // doesn't throw a TypeError that masks the real setup error.
+  if (dbDir) fs.rmSync(dbDir, { recursive: true, force: true });
 });
 
 describe("registries route — chainId network scoping", () => {
