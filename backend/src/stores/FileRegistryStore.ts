@@ -31,10 +31,11 @@ export class FileRegistryStore implements RegistryStore {
     fs.writeFileSync(this.dbPath, JSON.stringify(db, null, 2), "utf-8");
   }
 
-  async listListed(): Promise<string[]> {
+  async listListed(chainId?: number): Promise<string[]> {
     const db = this.readDB();
     return Object.entries(db)
-      .filter(([, entry]) => entry.listed !== false)
+      .filter(([, entry]) =>
+        entry.listed !== false && (chainId === undefined || entry.chainId === chainId))
       .map(([addr]) => addr);
   }
 

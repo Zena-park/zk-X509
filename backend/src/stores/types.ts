@@ -23,6 +23,11 @@ export interface Announcement {
 }
 
 export interface RegistryEntry {
+  /// EVM chain the registry contract is deployed on (e.g. 1 mainnet,
+  /// 11155111 Sepolia). Optional for backward compatibility with documents
+  /// written before network scoping; entries without it are returned only by
+  /// the unfiltered list, never by a `?chainId=` query.
+  chainId?: number;
   description: string;
   logoUrl: string;
   category: string;

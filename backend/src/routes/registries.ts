@@ -12,6 +12,7 @@ import {
   VALID_DISCLOSURE_FIELDS,
   makeDefaultEntry,
 } from "../stores";
+import { coerceChainId } from "../util/chainId";
 
 const router = Router();
 const store = getRegistryStore();
@@ -39,10 +40,21 @@ function h(fn: Handler) {
 
 // --- Routes ---
 
-// GET /api/registries — list all listed registry addresses
-router.get("/", h(async (_req, res) => {
+// GET /api/registries — list listed registry addresses.
+// Optional `?chainId=<n>` restricts the list to one network; omitting it lists
+// every network (back-compat). A malformed chainId is a 400.
+router.get("/", h(async (req, res) => {
+  let chainId: number | undefined;
+  if (req.query.chainId !== undefined) {
+    const parsed = coerceChainId(req.query.chainId);
+    if (parsed === null) {
+      res.status(400).json({ error: "Invalid chainId: must be a positive integer" });
+      return;
+    }
+    chainId = parsed;
+  }
   cacheable(res);
-  res.json(await store.listListed());
+  res.json(await store.listListed(chainId));
 }));
 
 // GET /api/registries/:address
@@ -62,8 +74,16 @@ router.put("/:address", h(async (req, res) => {
   const addr = req.params.address as string;
   const entry = await store.getOrCreate(addr);
 
-  const { description, logoUrl, category, website, tags, listed,
+  const { chainId, description, logoUrl, category, website, tags, listed,
     explorerEnabled, explorerVisibleFields, explorerFilterableFields } = req.body;
+  if (chainId !== undefined) {
+    const parsed = coerceChainId(chainId);
+    if (parsed === null) {
+      res.status(400).json({ error: "Invalid chainId: must be a positive integer" });
+      return;
+    }
+    entry.chainId = parsed;
+  }
   if (description !== undefined) entry.description = String(description);
   if (logoUrl !== undefined) entry.logoUrl = String(logoUrl);
   if (category !== undefined && ["dao", "defi", "corporate", "other"].includes(category)) {

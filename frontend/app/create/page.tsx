@@ -246,6 +246,7 @@ export default function CreateRegistryPage() {
       if (registryAddress) {
         try {
           await updateRegistryMetadata(registryAddress, {
+            chainId: chainId ? Number(chainId) : undefined,
             listed: true,
             tags: Array.from(selectedUseCases),
           });

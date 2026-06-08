@@ -30,6 +30,9 @@ export interface CaGuide {
 }
 
 export interface RegistryMetadata {
+  /// EVM chain the registry is deployed on (e.g. 1 mainnet, 11155111 Sepolia).
+  /// Sent on create/update so the backend can scope listings by network.
+  chainId?: number;
   description: string;
   logoUrl: string;
   category: "dao" | "defi" | "corporate" | "other";
@@ -111,10 +114,13 @@ export function getCaRegistryRepoUrl(): string {
 
 // ── Registry Listing ──────────────────────────────
 
-/// Fetch listed registry addresses from backend. Returns null if backend is unreachable.
-export async function getListedRegistries(): Promise<string[] | null> {
+/// Fetch listed registry addresses from backend. Pass `chainId` to restrict the
+/// list to one network; omit it to list every network. Returns null if backend
+/// is unreachable.
+export async function getListedRegistries(chainId?: number | string): Promise<string[] | null> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/registries`);
+    const qs = chainId !== undefined && chainId !== "" ? `?chainId=${encodeURIComponent(chainId)}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/registries${qs}`);
     if (!res.ok) return null;
     return await res.json();
   } catch {

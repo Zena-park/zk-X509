@@ -40,10 +40,17 @@ export class FirestoreRegistryStore implements RegistryStore {
     return snap.exists ? normalizeEntry(snap.data() as RegistryEntry) : null;
   }
 
-  async listListed(): Promise<string[]> {
-    // Small collection (one doc per registry): fetch all and filter in memory,
-    // exactly like the file store (`listed !== false` ⇒ included, incl. absent).
-    const snap = await this.db.collection(this.collection).get();
+  async listListed(chainId?: number): Promise<string[]> {
+    // Push the network filter down to Firestore (`where chainId ==`) so a
+    // ?chainId= query reads only that network's docs instead of the whole
+    // collection — Firestore bills per document read. Entries missing a chainId
+    // don't match the equality and are excluded from network-scoped lists.
+    // The `listed !== false` check stays in memory because it must also keep
+    // docs where the field is absent (which a Firestore `!= false` would drop).
+    const col = this.db.collection(this.collection);
+    const snap = await (chainId !== undefined
+      ? col.where("chainId", "==", chainId).get()
+      : col.get());
     return snap.docs
       .filter((d) => (d.data() as RegistryEntry).listed !== false)
       .map((d) => d.id);
