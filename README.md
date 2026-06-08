@@ -110,12 +110,15 @@ live Sepolia contracts above and the deployed `zkscatter` backend. Create
 
 ```bash
 # frontend/.env.local
-NEXT_PUBLIC_RPC_URL="https://ethereum-sepolia.publicnode.com"   # any Sepolia RPC
+# any Sepolia RPC
+NEXT_PUBLIC_RPC_URL="https://ethereum-sepolia.publicnode.com"
 NEXT_PUBLIC_CHAIN_ID=11155111
 NEXT_PUBLIC_FACTORY_ADDRESS="0x9e937dF6ac0E85979622519068412A518fa085d9"
 NEXT_PUBLIC_SP1_VERIFIER_ADDRESS="0x261a1619cC63273de7c64872B769305732761888"
-NEXT_PUBLIC_REGISTRY_ADDRESS="0x3cF6A96f1970053ffDf957074F988aD53D13ada3"  # users registry
-NEXT_PUBLIC_BACKEND_URL="https://zkscatter.web.app"             # deployed backend (announcements + registry metadata)
+# users registry
+NEXT_PUBLIC_REGISTRY_ADDRESS="0x3cF6A96f1970053ffDf957074F988aD53D13ada3"
+# deployed backend (announcements + registry metadata)
+NEXT_PUBLIC_BACKEND_URL="https://zkscatter.web.app"
 # Optional — CA guides source; defaults to the public zk-x509-ca-registry repo:
 # NEXT_PUBLIC_CA_REGISTRY_URL="https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main"
 ```
