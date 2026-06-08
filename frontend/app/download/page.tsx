@@ -175,8 +175,7 @@ export default function DownloadPage() {
             (<code>foundryup</code>), Docker Desktop, Node.js 20+.
           </p>
 
-          <pre className="px-4 py-3 bg-surface-container-low rounded-lg text-xs text-on-surface font-mono overflow-x-auto whitespace-pre">
-{`# clone
+          <pre className="px-4 py-3 bg-surface-container-low rounded-lg text-xs text-on-surface font-mono overflow-x-auto whitespace-pre">{`# clone
 git clone https://github.com/tokamak-network/zk-X509.git
 cd zk-X509
 
@@ -188,8 +187,7 @@ make elf
 make app && open dist/zk-X509.app
 
 #    …or run it directly without a bundle
-make run`}
-          </pre>
+make run`}</pre>
 
           <p className="text-xs text-on-surface-variant/70 mt-3">
             <strong className="text-on-surface-variant">Windows:</strong> extract
