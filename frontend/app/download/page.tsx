@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Monitor, Apple, ArrowDownToLine, Clock, ExternalLink } from "lucide-react";
+import { Monitor, Apple, ArrowDownToLine, Clock, ExternalLink, Terminal } from "lucide-react";
 
 const fadeUp = {
   initial: { opacity: 0, y: 30 },
@@ -111,17 +111,13 @@ export default function DownloadPage() {
               // do without sending them to a 404.
               <div className="flex flex-col items-center gap-2">
                 <span className="inline-flex items-center gap-2 px-6 py-3 bg-on-surface/10 text-on-surface-variant font-headline text-sm font-bold rounded-full cursor-not-allowed">
-                  <ArrowDownToLine className="w-4 h-4" />
-                  Build Required
+                  <Clock className="w-4 h-4" />
+                  Signed build coming soon
                 </span>
                 <p className="text-xs text-on-surface-variant/70 max-w-xs">
-                  No DMG bundled with this checkout. From repo root:
-                  <code className="block mt-1 px-2 py-1 bg-surface-container-low rounded text-[10px] text-on-surface font-mono whitespace-pre">
-{`(cd desktop && npx tauri build)
-mkdir -p frontend/public/downloads
-cp target/release/bundle/dmg/zk-X509_*.dmg \\
-   frontend/public/downloads/`}
-                  </code>
+                  The notarized installer is still being code-signed. For now,
+                  clone the repo and build &amp; run from source — see{" "}
+                  <strong className="text-on-surface">Run from source</strong> below.
                 </p>
               </div>
             )}
@@ -154,6 +150,53 @@ cp target/release/bundle/dmg/zk-X509_*.dmg \\
             </span>
           </motion.div>
         </div>
+
+        {/* Run from source */}
+        <motion.div
+          {...stagger(0.15)}
+          className="rounded-2xl border border-primary/20 bg-surface-container p-8 mb-8"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Terminal className="w-5 h-5 text-primary" />
+            <h3 className="text-lg font-headline font-semibold text-on-surface">
+              Run from source <span className="text-primary">(available now)</span>
+            </h3>
+          </div>
+          <p className="text-sm text-on-surface-variant mb-5">
+            Signed macOS &amp; Windows installers are pending Apple notarization
+            and code-signing — they&apos;ll land here soon. Until then, clone the
+            repo and build the app locally. It&apos;s the same prover, and the ELF
+            is pinned via Docker so its verification key matches what&apos;s
+            on-chain.
+          </p>
+
+          <p className="text-xs font-label text-on-surface-variant mb-2">
+            Prerequisites: Rust + SP1 (<code>sp1up</code>), Foundry
+            (<code>foundryup</code>), Docker Desktop, Node.js 20+.
+          </p>
+
+          <pre className="px-4 py-3 bg-surface-container-low rounded-lg text-xs text-on-surface font-mono overflow-x-auto whitespace-pre">{`# clone
+git clone https://github.com/tokamak-network/zk-X509.git
+cd zk-X509
+
+# 1) extract the pinned ELF from Docker — guarantees the prover's
+#    vkey matches the on-chain programVKey (don't skip this)
+make elf
+
+# 2) build & open the macOS app…
+make app && open dist/zk-X509.app
+
+#    …or run it directly without a bundle
+make run`}</pre>
+
+          <p className="text-xs text-on-surface-variant/70 mt-3">
+            <strong className="text-on-surface-variant">Windows:</strong> extract
+            the ELF in WSL/Git&nbsp;Bash with <code>make elf</code>, then in
+            PowerShell run{" "}
+            <code>$env:PREBUILT_ELF = &quot;$pwd\elf\zk-x509-program&quot;</code>{" "}
+            followed by <code>cargo build --release --bin interactive</code>.
+          </p>
+        </motion.div>
 
         {/* Info Section */}
         <motion.div
