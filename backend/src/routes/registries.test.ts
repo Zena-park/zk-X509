@@ -11,6 +11,8 @@ import request from "supertest";
 /// module loads, since it resolves the store singleton at import time.
 let app: Express;
 let dbDir: string;
+const ENV_KEYS = ["REGISTRY_STORE", "REGISTRIES_DB_PATH"] as const;
+const savedEnv: Record<string, string | undefined> = {};
 
 const MAINNET = 1;
 const SEPOLIA = 11155111;
@@ -19,6 +21,7 @@ const addrSepolia = "0xbBbB000000000000000000000000000000000002";
 const addrNoChain = "0xCccc000000000000000000000000000000000003";
 
 beforeAll(async () => {
+  for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
   dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "reg-route-"));
   process.env.REGISTRY_STORE = "file";
   process.env.REGISTRIES_DB_PATH = path.join(dbDir, "registries.json");
@@ -38,6 +41,12 @@ afterAll(() => {
   // Guard against beforeAll failing before dbDir was assigned, so cleanup
   // doesn't throw a TypeError that masks the real setup error.
   if (dbDir) fs.rmSync(dbDir, { recursive: true, force: true });
+  // Restore the env we mutated so we don't leak REGISTRY_STORE / DB path
+  // into other test files sharing the process.
+  for (const k of ENV_KEYS) {
+    if (savedEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = savedEnv[k];
+  }
 });
 
 describe("registries route — chainId network scoping", () => {

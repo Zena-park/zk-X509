@@ -11,8 +11,10 @@ export class FileRegistryStore implements RegistryStore {
 
   constructor(dbPath?: string) {
     // Precedence: explicit arg > REGISTRIES_DB_PATH env (ops override / tests) >
-    // the committed default JSON path.
-    this.dbPath = dbPath ?? process.env.REGISTRIES_DB_PATH ?? DEFAULT_REGISTRIES_DB_PATH;
+    // the committed default JSON path. An empty/blank env value counts as unset
+    // (otherwise fs would later throw on a "" path with a confusing error).
+    const envPath = process.env.REGISTRIES_DB_PATH?.trim();
+    this.dbPath = dbPath ?? (envPath || DEFAULT_REGISTRIES_DB_PATH);
   }
 
   private readDB(): DB {
