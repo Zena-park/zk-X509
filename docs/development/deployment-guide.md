@@ -31,6 +31,15 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --broadcast \
   --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+# DeployLocal only deploys the factory — it no longer auto-creates a registry.
+# Create one via SeedLocal.s.sol (FACTORY is logged by the step above):
+FACTORY=<FACTORY_ADDRESS> SERVICE_NAME=users \
+forge script script/SeedLocal.s.sol --tc SeedLocalScript \
+  --rpc-url http://localhost:8545 \
+  --broadcast \
+  --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
 ### Environment
@@ -46,15 +55,24 @@ forge script script/DeployLocal.s.sol --tc DeployLocalScript \
 
 ## 2. Testnet (Sepolia / Holesky)
 
+The live Sepolia deployment uses the **`RegistryFactory` + `BeaconProxy`**
+architecture: one factory holds the SP1 verifier and the global program vkey,
+then each service ("users", "relayers", …) gets its own registry instance
+created through `factory.createRegistry()`. The addresses are recorded in
+[`deployments/11155111.json`](../../deployments/11155111.json).
+
+> The single-registry `script/Deploy.s.sol` (ERC1967 proxy) still exists for
+> standalone use, but it is **not** how the shared testnet/platform deployment
+> is done. Use the factory flow below.
+
 ### Prerequisites
 - ETH on testnet (faucet: https://sepoliafaucet.com)
-- SP1 Verifier contract address (deployed by Succinct)
 - Program verification key (`vkey`)
 
 ### Step 1: Generate vkey
 ```bash
 cargo run --release --bin vkey
-# Output: Program Verification Key: 0x00abc...
+# Output: Program Verification Key: 0x0048b091...
 ```
 
 ### Step 2: Set environment
@@ -63,29 +81,63 @@ cp .env.example .env
 # Edit .env:
 #   RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
 #   PRIVATE_KEY=0xYOUR_DEPLOYER_KEY
-#   SP1_VERIFIER=0x3B6041173B80E77f038f3F2C0f9744f04837185e  # Sepolia SP1 verifier
-#   PROGRAM_VKEY=0x00abc...  # from step 1
-#   MAX_WALLETS_PER_CERT=1
-#   CA_MERKLE_ROOT=0x...  # compute from allowed CA list
+#   PROGRAM_V_KEY=0x0048b091...   # from step 1 (note: PROGRAM_V_KEY, not PROGRAM_VKEY)
 ```
 
-### Step 3: Deploy
+### Step 3: Deploy the factory (DeployLocal.s.sol)
+
+`DeployLocal.s.sol` deploys a fresh `SP1VerifierGroth16` + `RegistryFactory`
+(the factory creates the beacon and implementation internally). It requires
+`PROGRAM_V_KEY` — there is no in-script default, so a stale literal can never
+silently misalign the factory's vkey with the prover ELF.
+
 ```bash
 cd contracts
 source ../.env
-forge script script/Deploy.s.sol --tc DeployScript \
+PROGRAM_V_KEY="$PROGRAM_V_KEY" \
+forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --rpc-url $RPC_URL \
   --broadcast \
-  --verify \
   --private-key $PRIVATE_KEY
+# Logs: SP1VerifierGroth16, RegistryFactory, Beacon addresses
 ```
 
-### Step 4: Verify contract on Etherscan
+### Step 4: Create one registry per service (SeedLocal.s.sol)
+
 ```bash
-forge verify-contract <DEPLOYED_ADDRESS> IdentityRegistry \
-  --chain sepolia \
-  --constructor-args $(cast abi-encode "constructor(address,bytes32,uint32)" $SP1_VERIFIER $PROGRAM_VKEY 1)
+# "users" registry (e.g. up to 10 wallets per certificate)
+FACTORY=<FACTORY_ADDRESS> SERVICE_NAME=users MAX_WALLETS_PER_CERT=10 \
+forge script script/SeedLocal.s.sol --tc SeedLocalScript \
+  --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
+
+# "relayers" registry (e.g. up to 2 wallets per certificate)
+FACTORY=<FACTORY_ADDRESS> SERVICE_NAME=relayers MAX_WALLETS_PER_CERT=2 \
+forge script script/SeedLocal.s.sol --tc SeedLocalScript \
+  --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
+# Logs the created registry (proxy) address for each service.
 ```
+
+Optional env for each registry: `MIN_DISCLOSURE_MASK`, `MAX_PROOF_AGE`,
+`CA_MERKLE_ROOT` (CAs can also be registered later via `addCA`/`addCAs`).
+
+### Step 5: Record addresses + verify on Etherscan
+
+Record the deployed addresses in `deployments/<chainId>.json` (see the Sepolia
+ledger for the schema), then verify the factory source. Use the
+`SP1VerifierGroth16` address **deployed in Step 3** as the first constructor arg
+— not the Succinct gateway from `.env` — or the constructor args won't match and
+verification fails:
+
+```bash
+forge verify-contract <FACTORY_ADDRESS> RegistryFactory \
+  --chain sepolia \
+  --constructor-args $(cast abi-encode \
+    "constructor(address,bytes32,address,uint256,address)" \
+    <DEPLOYED_SP1_VERIFIER_ADDRESS> $PROGRAM_V_KEY 0x0000000000000000000000000000000000000000 0 0x0000000000000000000000000000000000000000)
+```
+
+> Registry instances are `BeaconProxy` contracts; verify them as proxies
+> pointing at the beacon's implementation.
 
 ---
 
@@ -109,18 +161,24 @@ cargo run --release --bin zk-x509 -- --execute \
 # TODO: dedicated CA root computation tool
 ```
 
-### Step 2: Deploy with real SP1 verifier
+### Step 2: Deploy factory + registries
+
+Use the same `RegistryFactory` flow as testnet (§2, Steps 3–4). `DeployLocal.s.sol`
+deploys its own production `SP1VerifierGroth16`, so no external verifier address
+is needed; `--slow` waits for confirmations on a live network.
+
 ```bash
-# Mainnet SP1 verifier: check https://docs.succinct.xyz for latest address
-SP1_VERIFIER=0x...  # mainnet SP1 Groth16 verifier
-PROGRAM_VKEY=0x...  # from `cargo run --bin vkey`
+export PROGRAM_V_KEY=0x...  # from `cargo run --release --bin vkey`
 
 cd contracts
-forge script script/Deploy.s.sol --tc DeployScript \
+PROGRAM_V_KEY="$PROGRAM_V_KEY" \
+forge script script/DeployLocal.s.sol --tc DeployLocalScript \
   --rpc-url $RPC_URL \
   --broadcast \
   --private-key $PRIVATE_KEY \
   --slow  # wait for confirmations
+
+# Then create each registry with SeedLocal.s.sol (see §2 Step 4).
 ```
 
 ### Step 3: Transfer ownership to multi-sig
@@ -196,17 +254,27 @@ cargo run --release --bin zk-x509 -- --prove \
 
 ## 5. Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|:--------:|
-| `RPC_URL` | Ethereum RPC endpoint | ✅ |
-| `PRIVATE_KEY` | Deployer private key | ✅ |
-| `SP1_VERIFIER` | SP1 on-chain verifier address | ✅ |
-| `PROGRAM_VKEY` | ZK program verification key | ✅ |
-| `MAX_WALLETS_PER_CERT` | Max wallets per certificate | ✅ |
-| `CA_MERKLE_ROOT` | Merkle root of allowed CAs | Deploy time |
-| `CRL_MERKLE_ROOT` | CRL sorted Merkle root | Optional |
-| `CHAIN_ID` | Target chain ID | Proof gen |
-| `REGISTRY_ADDRESS` | IdentityRegistry address | Proof gen |
+Exact names matter — these are the strings the scripts read via `vm.env*`.
+
+| Variable | Description | Read by |
+|----------|-------------|---------|
+| `RPC_URL` | Ethereum RPC endpoint | all deploy/seed steps |
+| `PRIVATE_KEY` | Deployer private key | all deploy/seed steps |
+| `PROGRAM_V_KEY` | ZK program verification key (from `vkey`) | DeployLocal, Deploy |
+| `SP1_VERIFIER_ADDRESS` | SP1 on-chain verifier address | Deploy (single-registry only) |
+| `FACTORY` | RegistryFactory address | SeedLocal |
+| `SERVICE_NAME` | Registry instance name (users, relayers, …) | SeedLocal |
+| `MAX_WALLETS_PER_CERT` | Max wallets per certificate | Seed, Deploy |
+| `MIN_DISCLOSURE_MASK` | Minimum disclosure bitmask (0x00–0x0F) | Seed, Deploy |
+| `MAX_PROOF_AGE` | Max accepted proof age (seconds) | Seed, Deploy |
+| `CA_MERKLE_ROOT` | Merkle root of allowed CAs | Seed, Deploy (optional) |
+| `CRL_MERKLE_ROOT` | CRL sorted Merkle root | optional (set via `cast`) |
+| `CHAIN_ID` | Target chain ID | CLI prover `--chain-id` |
+| `REGISTRY_ADDRESS` | Registry address | `verify-deployment.sh`, CLI `--registry-address` |
+
+> Common footgun: the scripts read `PROGRAM_V_KEY` and `SP1_VERIFIER_ADDRESS`
+> (with underscores), **not** `PROGRAM_VKEY` / `SP1_VERIFIER`. A misnamed var
+> makes `vm.envBytes32`/`vm.envAddress` revert before any contract is deployed.
 
 ---
 

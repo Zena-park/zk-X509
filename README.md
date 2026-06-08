@@ -37,10 +37,10 @@ cd certs && bash generate-test-certs.sh && cd ..
 ### Run tests
 
 ```bash
-# Rust tests (46 tests)
+# Rust unit tests (51 tests)
 cargo test -p zk-x509-script --lib
 
-# Solidity tests (40 tests)
+# Solidity tests (124 tests)
 cd contracts && forge test && cd ..
 ```
 
@@ -67,6 +67,69 @@ cargo run --release --bin zk-x509 -- --prove \
   --registrant 0xYOUR_WALLET --chain-id 31337 --registry-address 0xREGISTRY
 ```
 
+## Testing on Sepolia
+
+A live deployment is available on the **Sepolia** testnet (chain ID `11155111`).
+The authoritative address list is committed at
+[`deployments/11155111.json`](deployments/11155111.json):
+
+| Contract | Address |
+|----------|---------|
+| RegistryFactory | `0x9e937dF6ac0E85979622519068412A518fa085d9` |
+| Registry (`users`, maxWallets 10) | `0x3cF6A96f1970053ffDf957074F988aD53D13ada3` |
+| Registry (`relayers`, maxWallets 2) | `0x9fDE6182B1fd10F2eDfE15b704FE95787C170914` |
+| SP1 Verifier (Groth16 v6.0.0) | `0x261a1619cC63273de7c64872B769305732761888` |
+| Program VKey | `0x0048b091078fa9045ab90a788483ed51c0ec315eea7ca0d8fe118d1ae17b7e13` |
+
+> **vkey must match.** A Groth16 proof verifies on-chain only if your prover's
+> ELF produces the `programVKey` above. The released desktop app is built in CI
+> against this exact vkey — local builds may differ. Check yours with
+> `cargo run --release --bin vkey`.
+
+### Option A — Desktop app / web frontend (recommended)
+
+The interactive desktop app and the web frontend handle cert selection, proof
+generation, and on-chain submission for you.
+
+```bash
+# Interactive desktop prover (cert from OS keychain → proof → submit)
+make run
+```
+
+Point it at Sepolia in the connect step:
+
+- **RPC URL**: any Sepolia endpoint, e.g. `https://ethereum-sepolia.publicnode.com`
+- **Chain ID**: `11155111`
+- **Registry address**: `0x3cF6A96f1970053ffDf957074F988aD53D13ada3` (the `users` registry)
+
+The web frontend reads the same values from `frontend/.env.local`
+(`NEXT_PUBLIC_CHAIN_ID`, `NEXT_PUBLIC_REGISTRY_ADDRESS`, …).
+
+### Option B — CLI prover
+
+Generate a proof bound to the Sepolia chain ID and registry. Passing `--rpc-url`
+makes the prover fetch the registry's on-chain CA list (`getCaLeaves()`)
+automatically, so the CA Merkle tree matches the deployed contract:
+
+```bash
+cargo run --release --bin zk-x509 -- --prove \
+  --cert certs/signCert.der --key certs/signPri.key --ca-cert certs/ca_pub.der \
+  --registrant 0xYOUR_WALLET \
+  --chain-id 11155111 \
+  --registry-address 0x3cF6A96f1970053ffDf957074F988aD53D13ada3 \
+  --rpc-url https://ethereum-sepolia.publicnode.com
+```
+
+Then wrap the proof for the EVM verifier (`evm` binary) and submit with `cast`.
+See the [Deployment Guide](docs/development/deployment-guide.md) and
+[E2E Test Guide](docs/development/e2e-test-guide.md) for the full submit flow.
+
+### Deploy your own Sepolia instance
+
+To stand up a fresh deployment instead of using the shared one, follow
+[Deployment Guide §2 (Testnet)](docs/development/deployment-guide.md#2-testnet-sepolia--holesky)
+— it uses the same `RegistryFactory` + `BeaconProxy` flow as the live deployment.
+
 ## Project Structure
 
 ```
@@ -74,27 +137,31 @@ zk-X509/
 ├── program/          # SP1 zkVM guest program (Rust)
 │   └── src/main.rs   # ZK circuit: cert chain, ownership, nullifier, CRL, Merkle
 ├── contracts/        # Solidity smart contracts
-│   ├── src/IdentityRegistry.sol
-│   └── test/IdentityRegistry.t.sol
+│   ├── src/IdentityRegistry.sol  # Per-service identity registry (BeaconProxy)
+│   ├── src/RegistryFactory.sol   # Deploys/manages registries + global vkey
+│   └── test/                     # IdentityRegistry.t.sol, RegistryFactory.t.sol
 ├── script/           # Host scripts (prover, server, CLI tools)
-│   ├── src/bin/main.rs        # CLI prover
-│   ├── src/bin/server.rs      # HTTP prover server
-│   ├── src/bin/interactive.rs # Interactive NPKI CLI
-│   ├── src/bin/evm.rs         # Groth16/PLONK proof generation
-│   ├── src/ownership.rs       # Signature generation
-│   ├── src/merkle.rs          # CA Merkle tree
-│   ├── src/smt.rs             # CRL Sorted Merkle Tree
-│   └── src/npki.rs            # Korean NPKI key decryption
+│   ├── src/bin/main.rs          # CLI prover (zk-x509)
+│   ├── src/bin/server.rs        # HTTP prover server
+│   ├── src/bin/prover-server.rs # Delegated-proving server
+│   ├── src/bin/interactive.rs   # Interactive cert-selection CLI
+│   ├── src/bin/evm.rs           # Groth16/PLONK proof generation
+│   ├── src/bin/vkey.rs          # Extract program verification key from ELF
+│   ├── src/ownership.rs         # Signature generation
+│   ├── src/merkle.rs            # CA Merkle tree
+│   ├── src/smt.rs               # CRL Sorted Merkle Tree
+│   ├── src/keychain.rs          # OS keychain cert/identity access
+│   ├── src/ca.rs / ca_repo.rs   # CA registry + remote CA repository
+│   └── src/onchain.rs           # On-chain reads (getCaLeaves, etc.)
 ├── lib/              # Shared types (PublicValuesStruct)
 ├── frontend/         # Next.js web frontend
+├── desktop/          # Tauri desktop app
+├── backend/          # Firebase backend (CA registry CMS)
 ├── certs/            # Test certificates + generation scripts
-├── docs/             # Documentation
-│   ├── paper.md                  # Research paper
-│   ├── testing-guide.md          # How to test
-│   ├── deployment-guide.md       # How to deploy
-│   ├── architecture.md           # System architecture
-│   ├── crl-merkle-oracle-design.md
-│   └── benchmark-methodology.md
+├── deployments/      # On-chain deployment ledgers (e.g. 11155111.json = Sepolia)
+├── docs/
+│   ├── development/  # Architecture, testing, deployment, design docs
+│   └── paper/        # Research paper + benchmark methodology
 └── BENCHMARKS.md     # Performance measurements
 ```
 
@@ -102,11 +169,13 @@ zk-X509/
 
 | Document | Description |
 |----------|-------------|
-| [Architecture](docs/architecture.md) | System design and data flow |
-| [Testing Guide](docs/testing-guide.md) | Unit tests, E2E, interactive mode |
-| [Deployment Guide](docs/deployment-guide.md) | Local, testnet, mainnet, L2 |
+| [Architecture](docs/development/architecture.md) | System design and data flow |
+| [Testing Guide](docs/development/testing-guide.md) | Unit tests, E2E, interactive mode |
+| [E2E Test Guide](docs/development/e2e-test-guide.md) | End-to-end proof + on-chain submit |
+| [Deployment Guide](docs/development/deployment-guide.md) | Local, testnet, mainnet, L2 |
+| [Prover-Server Guide](docs/development/prover-server-guide.md) | Delegated proving operator setup |
 | [Benchmarks](BENCHMARKS.md) | Cycle counts and gas costs |
-| [Paper](docs/paper.md) | Research paper (IEEE Blockchain target) |
+| [Paper](docs/paper/paper.md) | Research paper (IEEE Blockchain target) |
 
 ## Performance
 
