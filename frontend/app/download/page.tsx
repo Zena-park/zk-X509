@@ -183,11 +183,11 @@ cd zk-X509
 #    vkey matches the on-chain programVKey (don't skip this)
 make elf
 
-# 2) build & open the macOS app…
-make app && open dist/zk-X509.app
+# 2) build the desktop app (Tauri GUI) — produces .app + DMG
+make desktop
 
-#    …or run it directly without a bundle
-make run`}</pre>
+#    install the DMG, or open the .app directly:
+open target/release/bundle/macos/zk-X509.app`}</pre>
 
           <p className="text-xs text-on-surface-variant/70 mt-3">
             <strong className="text-on-surface-variant">Windows:</strong> extract
