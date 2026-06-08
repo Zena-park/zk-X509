@@ -123,14 +123,17 @@ Optional env for each registry: `MIN_DISCLOSURE_MASK`, `MAX_PROOF_AGE`,
 ### Step 5: Record addresses + verify on Etherscan
 
 Record the deployed addresses in `deployments/<chainId>.json` (see the Sepolia
-ledger for the schema), then verify the factory source:
+ledger for the schema), then verify the factory source. Use the
+`SP1VerifierGroth16` address **deployed in Step 3** as the first constructor arg
+— not the Succinct gateway from `.env` — or the constructor args won't match and
+verification fails:
 
 ```bash
 forge verify-contract <FACTORY_ADDRESS> RegistryFactory \
   --chain sepolia \
   --constructor-args $(cast abi-encode \
     "constructor(address,bytes32,address,uint256,address)" \
-    <SP1_VERIFIER_ADDRESS> $PROGRAM_V_KEY 0x0000000000000000000000000000000000000000 0 0x0000000000000000000000000000000000000000)
+    <DEPLOYED_SP1_VERIFIER_ADDRESS> $PROGRAM_V_KEY 0x0000000000000000000000000000000000000000 0 0x0000000000000000000000000000000000000000)
 ```
 
 > Registry instances are `BeaconProxy` contracts; verify them as proxies
@@ -261,7 +264,7 @@ Exact names matter — these are the strings the scripts read via `vm.env*`.
 | `SP1_VERIFIER_ADDRESS` | SP1 on-chain verifier address | Deploy (single-registry only) |
 | `FACTORY` | RegistryFactory address | SeedLocal |
 | `SERVICE_NAME` | Registry instance name (users, relayers, …) | SeedLocal |
-| `MAX_WALLETS_PER_CERT` | Max wallets per certificate | DeployLocal*, Seed, Deploy |
+| `MAX_WALLETS_PER_CERT` | Max wallets per certificate | Seed, Deploy |
 | `MIN_DISCLOSURE_MASK` | Minimum disclosure bitmask (0x00–0x0F) | Seed, Deploy |
 | `MAX_PROOF_AGE` | Max accepted proof age (seconds) | Seed, Deploy |
 | `CA_MERKLE_ROOT` | Merkle root of allowed CAs | Seed, Deploy (optional) |
