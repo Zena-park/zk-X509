@@ -24,7 +24,7 @@ import {
   Search,
   Shield,
 } from "lucide-react";
-import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getRpcUrl, getFactoryAddress } from "@/lib/contract";
+import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI, getFactoryAddress } from "@/lib/contract";
 import { truncateHex, formatFieldConstraints } from "@/lib/utils";
 import {
   getRegistryMetadata,
@@ -34,10 +34,11 @@ import {
   type Announcement,
   type CaGuide,
 } from "@/lib/platform";
-import { useWallet, getChainName } from "@/lib/wallet";
+import { useWallet, getChainName, EXPECTED_CHAIN_ID } from "@/lib/wallet";
 import DashboardContent from "@/components/DashboardContent";
 import AdminContent from "@/components/AdminContent";
 import CopyButton from "@/components/CopyButton";
+import { ConnectWalletScreen } from "@/components/ConnectWalletScreen";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -92,7 +93,7 @@ function RegistryDetailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const address = params.address;
-  const { isOwner, chainId: walletChainId } = useWallet();
+  const { isOwner, chainId: walletChainId, account, browserProvider } = useWallet();
 
   const validTabs: PageTab[] = ["register", "manage", "info"];
   const raw = searchParams.get("tab");
@@ -112,7 +113,7 @@ function RegistryDetailContent() {
 
   // Contract addresses
   const [sp1Verifier, setSp1Verifier] = useState<string>("");
-  const serviceChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+  const serviceChainId = EXPECTED_CHAIN_ID;
 
   // Platform backend data
   const [metadata, setMetadata] = useState<RegistryMetadata | null>(null);
@@ -126,10 +127,15 @@ function RegistryDetailContent() {
       setLoading(false);
       return;
     }
+    // Reads go through the connected wallet's node. While it's still
+    // initializing (account set, provider pending) keep the loading state —
+    // the effect re-runs once `browserProvider` is ready. Disconnected users
+    // hit the `!account` ConnectWalletScreen, not this branch.
+    if (!browserProvider) return;
 
     (async () => {
       try {
-        const provider = new ethers.JsonRpcProvider(getRpcUrl());
+        const provider = browserProvider;
         const contract = new ethers.Contract(address, IDENTITY_REGISTRY_ABI, provider);
 
         const [owner, maxWallets, caCount, paused] = await Promise.all([
@@ -223,7 +229,12 @@ function RegistryDetailContent() {
         setLoading(false);
       }
     })();
-  }, [address]);
+  }, [address, browserProvider]);
+
+  /* ---------- not connected ---------- */
+  if (!account) {
+    return <ConnectWalletScreen message="Connect your wallet to view this service." />;
+  }
 
   /* ---------- Loading ---------- */
   if (loading) {

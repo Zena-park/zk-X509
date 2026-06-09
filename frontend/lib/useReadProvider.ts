@@ -1,16 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
 import { ethers } from "ethers";
-import { getRpcUrl } from "./contract";
+import { useWallet } from "./wallet";
 
 /**
- * Shared read-only JsonRpcProvider hook.
+ * Read-only provider = the connected wallet's node (MetaMask).
  *
- * Returns a stable provider instance that persists across re-renders.
- * Uses useMemo (not useRef) to avoid side effects during render phase.
- * Safe for React Strict Mode and concurrent features.
+ * All node access (read + write) goes through the user's wallet; there is no
+ * separate/operator RPC. Returns null until a wallet is connected, so callers
+ * must gate reads on a connected account/provider.
  */
-export function useReadProvider(): ethers.JsonRpcProvider {
-  return useMemo(() => new ethers.JsonRpcProvider(getRpcUrl()), []);
+export function useReadProvider(): ethers.BrowserProvider | null {
+  return useWallet().browserProvider;
 }

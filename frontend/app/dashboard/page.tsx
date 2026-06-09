@@ -11,17 +11,16 @@ import {
   Shield,
   ShieldCheck,
   LayoutGrid,
-  AlertTriangle,
 } from "lucide-react";
-import { useWallet, getChainName } from "@/lib/wallet";
+import { useWallet, getChainName, EXPECTED_CHAIN_ID } from "@/lib/wallet";
 import {
   REGISTRY_FACTORY_ABI,
   IDENTITY_REGISTRY_ABI,
   getFactoryAddress,
-  getRpcUrl,
 } from "@/lib/contract";
 import { getRegistryMetadata, getListedRegistries, type RegistryMetadata } from "@/lib/platform";
 import { useReadProvider } from "@/lib/useReadProvider";
+import { multicall, decodeResult, decodeResultFull, type Call3 } from "@/lib/multicall";
 import { bytes32ToString, formatFieldConstraints } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -60,24 +59,20 @@ function maskToLabels(mask: number): string {
 }
 
 
-function DeployedOnInfo({ chainName, chainId, rpcUrl, walletChainId }: { chainName: string; chainId: string; rpcUrl: string; walletChainId?: string }) {
-  const mismatch = walletChainId && walletChainId !== chainId;
+// Wrong-network warning + one-click switch lives globally in the Navbar
+// badge, so this just states where the service is deployed and that reads
+// flow through the connected wallet.
+function DeployedOnInfo({ chainName, chainId }: { chainName: string; chainId: string }) {
   return (
     <div className="mt-3 space-y-2">
       <div className="flex items-center gap-3 text-xs text-on-surface-variant">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10">
           Deployed on <span className="font-bold text-on-surface">{chainName} ({chainId})</span>
         </span>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10 font-mono truncate max-w-xs">
-          {rpcUrl}
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10">
+          Reads via connected wallet
         </span>
       </div>
-      {mismatch && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-error/20 bg-error/5 text-sm text-error">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          Your wallet is on Chain {walletChainId}. Please switch to <span className="font-bold">{chainName} ({chainId})</span>.
-        </div>
-      )}
     </div>
   );
 }
@@ -101,6 +96,12 @@ export default function DashboardPage() {
     (async () => {
       setLoading(true);
       setError(null);
+
+      // Reads go through the connected wallet's node. When `provider` is not
+      // ready yet (account set, BrowserProvider still initializing) keep the
+      // loading state — the effect re-runs once it's available. Disconnected
+      // users hit the `!account` connect screen, not this branch.
+      if (!provider) return;
 
       try {
         const cid = chainId || "31337";
@@ -136,73 +137,81 @@ export default function DashboardPage() {
 
         const cards: RegistryCard[] = [];
 
+        // Batch every registry's reads into ONE eth_call via Multicall3.
+        // Per registry: registryInfo (factory) + 6 state/constraint reads
+        // (+ 2 verification reads when connected). Flattened so N registries
+        // cost a single round-trip through the wallet node instead of ~9N.
+        const factoryIface = new ethers.Interface(REGISTRY_FACTORY_ABI);
+        const registryIface = new ethers.Interface(IDENTITY_REGISTRY_ABI);
+        const perReg = account ? 9 : 7;
+
+        const calls: Call3[] = [];
+        for (const addr of visibleAddresses) {
+          calls.push({ target: factoryAddr, callData: factoryIface.encodeFunctionData("registryInfo", [addr]) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("getCaCount", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("paused", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("requiredCountry", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("requiredOrg", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("requiredOrgUnit", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("requiredCommonName", []) });
+          if (account) {
+            calls.push({ target: addr, callData: registryIface.encodeFunctionData("isVerified", [account]) });
+            calls.push({ target: addr, callData: registryIface.encodeFunctionData("verifiedUntil", [account]) });
+          }
+        }
+
+        const results = await multicall(provider, calls);
+
         await Promise.all(
-          visibleAddresses.map(async (addr) => {
-            try {
-              const info = await factory.registryInfo(addr);
+          visibleAddresses.map(async (addr, idx) => {
+            const base = idx * perReg;
 
-              const registry = new ethers.Contract(
-                addr,
-                IDENTITY_REGISTRY_ABI,
-                provider,
-              );
-
-              const [caCount, paused, reqC, reqO, reqOU, reqCN] = await Promise.all([
-                registry.getCaCount(),
-                registry.paused(),
-                registry.requiredCountry().catch(() => ethers.ZeroHash),
-                registry.requiredOrg().catch(() => ethers.ZeroHash),
-                registry.requiredOrgUnit().catch(() => ethers.ZeroHash),
-                registry.requiredCommonName().catch(() => ethers.ZeroHash),
-              ]);
-
-              const constraints = formatFieldConstraints([reqC, reqO, reqOU, reqCN]);
-
-              const name: string = info.name ?? info[1];
-              const maxWallets: number = Number(info.maxWallets ?? info[2]);
-              const minDisclosureMask: number = Number(
-                info.minDisclosureMask ?? info[3],
-              );
-
-              // Check verification status if wallet is connected
-              let verified = false;
-              let verifiedUntil: Date | null = null;
-              if (account) {
-                try {
-                  const [isV, until] = await Promise.all([
-                    registry.isVerified(account),
-                    registry.verifiedUntil(account),
-                  ]);
-                  verified = Boolean(isV);
-                  const ts = Number(until);
-                  verifiedUntil = ts > 0 ? new Date(ts * 1000) : null;
-                } catch {
-                  // verification check failed, treat as not verified
-                }
-              }
-
-              let metadata: RegistryMetadata | null = null;
-              try {
-                metadata = await getRegistryMetadata(addr);
-              } catch {
-                // metadata is optional
-              }
-
-              cards.push({
-                address: addr,
-                name,
-                maxWallets,
-                minDisclosureMask,
-                caCount: Number(caCount),
-                paused: Boolean(paused),
-                metadata,
-                verified,
-                verifiedUntil,
-                constraints,
-              });
-            } catch (e) {
-              console.error(`Failed to load service ${addr}:`, e);
+            // registryInfo returns multiple named values — decode the whole Result.
+            const info = decodeResultFull(factoryIface, "registryInfo", results[base]);
+            if (!info) {
+              console.error(`Failed to load service ${addr}`);
+              return;
             }
+
+            const caCount = decodeResult<bigint>(registryIface, "getCaCount", results[base + 1], BigInt(0));
+            const paused = decodeResult<boolean>(registryIface, "paused", results[base + 2], false);
+            const reqC = decodeResult<string>(registryIface, "requiredCountry", results[base + 3], ethers.ZeroHash);
+            const reqO = decodeResult<string>(registryIface, "requiredOrg", results[base + 4], ethers.ZeroHash);
+            const reqOU = decodeResult<string>(registryIface, "requiredOrgUnit", results[base + 5], ethers.ZeroHash);
+            const reqCN = decodeResult<string>(registryIface, "requiredCommonName", results[base + 6], ethers.ZeroHash);
+            const constraints = formatFieldConstraints([reqC, reqO, reqOU, reqCN]);
+
+            const name: string = info.name ?? info[1];
+            const maxWallets: number = Number(info.maxWallets ?? info[2]);
+            const minDisclosureMask: number = Number(info.minDisclosureMask ?? info[3]);
+
+            let verified = false;
+            let verifiedUntil: Date | null = null;
+            if (account) {
+              verified = Boolean(decodeResult<boolean>(registryIface, "isVerified", results[base + 7], false));
+              const ts = Number(decodeResult<bigint>(registryIface, "verifiedUntil", results[base + 8], BigInt(0)));
+              verifiedUntil = ts > 0 ? new Date(ts * 1000) : null;
+            }
+
+            let metadata: RegistryMetadata | null = null;
+            try {
+              metadata = await getRegistryMetadata(addr);
+            } catch {
+              // metadata is optional
+            }
+
+            cards.push({
+              address: addr,
+              name,
+              maxWallets,
+              minDisclosureMask,
+              caCount: Number(caCount),
+              paused: Boolean(paused),
+              metadata,
+              verified,
+              verifiedUntil,
+              constraints,
+            });
           }),
         );
 
@@ -234,8 +243,7 @@ export default function DashboardPage() {
   const availableRegistries = registries.filter(
     (r) => !r.verified && !r.paused,
   );
-  const rpcUrl = getRpcUrl();
-  const serviceChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+  const serviceChainId = EXPECTED_CHAIN_ID;
   const currentChainName = getChainName(serviceChainId);
 
   /* ---------- not connected ---------- */
@@ -260,7 +268,7 @@ export default function DashboardPage() {
             Grant your wallet the trust that services require. Each service defines its own trust level
             — from basic identity verification to full regulatory compliance. Choose a service and prove your qualifications with zero privacy exposure.
           </p>
-          <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} rpcUrl={rpcUrl} walletChainId={chainId || undefined} />
+          <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} />
         </motion.header>
 
         {/* Connect prompt */}
@@ -362,7 +370,7 @@ export default function DashboardPage() {
           Grant your wallet the trust that services require. Each service defines its own trust level
           — from basic identity verification to full regulatory compliance.
         </p>
-        <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} rpcUrl={rpcUrl} walletChainId={chainId || undefined} />
+        <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} />
       </motion.header>
 
 

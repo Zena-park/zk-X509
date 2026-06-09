@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { ethers } from "ethers";
 import { IDENTITY_REGISTRY_ABI, getRegistryAddress } from "./contract";
+import { multicall, decodeResult } from "./multicall";
 
 declare global {
   interface Window {
@@ -28,27 +29,46 @@ interface WalletContext {
   account: string | null;
   chainId: string | null;
   chainName: string;
+  /** Chain the service is deployed on (NEXT_PUBLIC_CHAIN_ID). */
+  expectedChainId: string;
+  /** Wallet connected but on a different chain than the service is deployed on. */
+  isWrongNetwork: boolean;
   registryAddr: string;
   isOwner: boolean;
   contractState: ContractState | null;
+  /**
+   * The connected wallet's node (MetaMask), used for ALL reads. There is no
+   * separate operator RPC — reads and writes share this one provider, so they
+   * can never target different chains. Null until a wallet is connected.
+   */
+  browserProvider: ethers.BrowserProvider | null;
   readContract: ethers.Contract | null;
   writeContract: ethers.Contract | null;
   connect: () => Promise<void>;
   disconnect: () => void;
+  /** Prompt the wallet to switch to expectedChainId. */
+  switchNetwork: () => Promise<void>;
   refresh: () => void;
 }
+
+/** Chain the service is deployed on — reads/writes must happen here. */
+export const EXPECTED_CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
 
 const WalletCtx = createContext<WalletContext>({
   account: null,
   chainId: null,
   chainName: "",
+  expectedChainId: EXPECTED_CHAIN_ID,
+  isWrongNetwork: false,
   registryAddr: "",
   isOwner: false,
   contractState: null,
+  browserProvider: null,
   readContract: null,
   writeContract: null,
   connect: async () => {},
   disconnect: () => {},
+  switchNetwork: async () => {},
   refresh: () => {},
 });
 
@@ -70,7 +90,12 @@ export function WalletProvider({ children, registryOverride }: { children: React
   const [chainId, setChainId] = useState<string | null>(null);
   const [chainName, setChainName] = useState("");
   const [registryAddr, setRegistryAddr] = useState("");
-  const readProviderRef = useRef<ethers.JsonRpcProvider | null>(null);
+  const [browserProvider, setBrowserProvider] = useState<ethers.BrowserProvider | null>(null);
+  // Cache one BrowserProvider for the lifetime of window.ethereum and reuse it
+  // across refreshes — ethers recommends a single instance, and recreating one
+  // per refresh() churns providers needlessly. A chain change triggers a full
+  // page reload (below), which resets this ref.
+  const bpRef = useRef<ethers.BrowserProvider | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [contractState, setContractState] = useState<ContractState | null>(null);
   const [readContract, setReadContract] = useState<ethers.Contract | null>(null);
@@ -84,34 +109,48 @@ export function WalletProvider({ children, registryOverride }: { children: React
     if (!account || !window.ethereum) return;
     (async () => {
       try {
-        const browserProvider = new ethers.BrowserProvider(window.ethereum!);
-        const signer = await browserProvider.getSigner();
-        const network = await browserProvider.getNetwork();
+        // Single provider for the whole app: the connected wallet's node.
+        // All node access (read AND write) flows through MetaMask — there is
+        // no separate/operator RPC. Reads use the BrowserProvider directly,
+        // writes use its signer. Same node ⇒ reads and writes never target
+        // different chains. (Staleness after a tx is handled by refresh().)
+        if (!bpRef.current) {
+          bpRef.current = new ethers.BrowserProvider(window.ethereum!);
+        }
+        const bp = bpRef.current;
+        const signer = await bp.getSigner();
+        const network = await bp.getNetwork();
         const cid = network.chainId.toString();
         setChainId(cid);
         setChainName(getChainName(cid));
+        // Expose the provider only once chainId is known, so consumers never
+        // observe a non-null provider paired with a stale/null chainId.
+        setBrowserProvider(bp);
 
         const addr = registryOverride || getRegistryAddress(cid);
         setRegistryAddr(addr);
         if (!addr || addr === ethers.ZeroAddress) return;
 
-        // JsonRpcProvider for reads — avoids MetaMask BrowserProvider caching issues
-        const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
-        if (!readProviderRef.current) {
-          readProviderRef.current = new ethers.JsonRpcProvider(rpcUrl);
-        }
-        const readProvider = readProviderRef.current;
-        const ro = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, readProvider);
+        const ro = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, bp);
         const rw = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, signer);
         setReadContract(ro);
         setWriteContract(rw);
 
-        const [owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT, delegatedProvingRequired] =
-          await Promise.all([
-            ro.owner(), ro.paused(), ro.caMerkleRoot(), ro.crlMerkleRoot(), ro.maxProofAge(), ro.MAX_WALLETS_PER_CERT(),
-            ro.delegatedProvingRequired().catch(() => false),
-          ]);
-        setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT: Number(MAX_WALLETS_PER_CERT), delegatedProvingRequired: Boolean(delegatedProvingRequired) });
+        // Batch the contract-state reads into a single eth_call via Multicall3
+        // (one round-trip through the wallet node instead of seven).
+        const iface = new ethers.Interface(IDENTITY_REGISTRY_ABI);
+        const stateFns = ["owner", "paused", "caMerkleRoot", "crlMerkleRoot", "maxProofAge", "MAX_WALLETS_PER_CERT", "delegatedProvingRequired"];
+        const res = await multicall(bp, stateFns.map((fn) => ({ target: addr, callData: iface.encodeFunctionData(fn, []) })));
+        const owner = decodeResult<string>(iface, "owner", res[0], ethers.ZeroAddress);
+        setContractState({
+          owner,
+          paused: decodeResult<boolean>(iface, "paused", res[1], false),
+          caMerkleRoot: decodeResult<string>(iface, "caMerkleRoot", res[2], ethers.ZeroHash),
+          crlMerkleRoot: decodeResult<string>(iface, "crlMerkleRoot", res[3], ethers.ZeroHash),
+          maxProofAge: decodeResult<bigint>(iface, "maxProofAge", res[4], BigInt(0)),
+          MAX_WALLETS_PER_CERT: Number(decodeResult<bigint>(iface, "MAX_WALLETS_PER_CERT", res[5], BigInt(0))),
+          delegatedProvingRequired: decodeResult<boolean>(iface, "delegatedProvingRequired", res[6], false),
+        });
         setIsOwner(owner.toLowerCase() === account.toLowerCase());
       } catch (e) {
         console.error("Failed to load contract:", e);
@@ -171,15 +210,42 @@ export function WalletProvider({ children, registryOverride }: { children: React
     setRegistryAddr("");
     setIsOwner(false);
     setContractState(null);
+    setBrowserProvider(null);
     setReadContract(null);
     setWriteContract(null);
   }
 
+  // Prompt the wallet to switch to the chain the service is deployed on.
+  // Sepolia/mainnet are already known to MetaMask, so a plain switch works;
+  // unknown chains (e.g. a local dev chain) are left to the user to add.
+  const switchNetwork = useCallback(async () => {
+    if (!window.ethereum) return;
+    // EXPECTED_CHAIN_ID is a base-10 string; guard against a mis-set env
+    // (empty / non-numeric / hex) that would otherwise build an invalid
+    // "0xNaN" chainId and fail in a confusing way.
+    const expected = Number(EXPECTED_CHAIN_ID);
+    if (!Number.isInteger(expected) || expected <= 0) {
+      console.error(`Invalid NEXT_PUBLIC_CHAIN_ID: "${EXPECTED_CHAIN_ID}"`);
+      return;
+    }
+    const hexChainId = "0x" + expected.toString(16);
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: hexChainId }],
+      });
+    } catch (e) {
+      console.error("Failed to switch network:", e);
+    }
+  }, []);
+
+  const isWrongNetwork = account !== null && chainId !== null && chainId !== EXPECTED_CHAIN_ID;
+
   return (
     <WalletCtx.Provider value={{
-      account, chainId, chainName, registryAddr, isOwner,
-      contractState, readContract, writeContract,
-      connect, disconnect, refresh,
+      account, chainId, chainName, expectedChainId: EXPECTED_CHAIN_ID, isWrongNetwork,
+      registryAddr, isOwner, contractState, browserProvider, readContract, writeContract,
+      connect, disconnect, switchNetwork, refresh,
     }}>
       {children}
     </WalletCtx.Provider>

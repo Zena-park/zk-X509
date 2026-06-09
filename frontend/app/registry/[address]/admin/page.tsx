@@ -20,7 +20,7 @@ export default function ScopedAdminPage() {
   useEffect(() => {
     const cid = chainId || "31337";
     const factoryAddr = getFactoryAddress(cid);
-    if (!factoryAddr || !address) return;
+    if (!factoryAddr || !address || !provider) return;
 
     (async () => {
       try {

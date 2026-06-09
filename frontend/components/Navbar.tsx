@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { useWallet } from "@/lib/wallet";
+import { useWallet, getChainName } from "@/lib/wallet";
 
 const defaultNavLinks = [
   { href: "/", label: "Home" },
@@ -23,7 +23,7 @@ function extractRegistryScope(pathname: string): string | null {
 
 export function Navbar() {
   const pathname = usePathname();
-  const { account, chainName, chainId, registryAddr, connect, disconnect } = useWallet();
+  const { account, chainName, chainId, isWrongNetwork, expectedChainId, connect, disconnect, switchNetwork } = useWallet();
   const [showMenu, setShowMenu] = useState(false);
 
   const registryScope = extractRegistryScope(pathname);
@@ -69,12 +69,25 @@ export function Navbar() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Network badge */}
+        {/* Network badge — green when on the service chain, red + switch
+            action when the wallet is on the wrong network (all reads/writes
+            go through this wallet, so a wrong chain breaks the app). */}
         {account && chainName && (
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-container border border-outline-variant/20 rounded-full">
-            <div className="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_rgba(107,255,143,0.5)]" />
-            <span className="text-xs font-label text-on-surface-variant">{chainName} ({chainId})</span>
-          </div>
+          isWrongNetwork ? (
+            <button
+              onClick={switchNetwork}
+              title={`Switch to ${getChainName(expectedChainId)} (${expectedChainId})`}
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-error/10 border border-error/30 rounded-full transition-colors hover:bg-error/20"
+            >
+              <div className="w-2 h-2 rounded-full bg-error" />
+              <span className="text-xs font-label text-error">Wrong network — switch to {getChainName(expectedChainId)}</span>
+            </button>
+          ) : (
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-container border border-outline-variant/20 rounded-full">
+              <div className="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_rgba(107,255,143,0.5)]" />
+              <span className="text-xs font-label text-on-surface-variant">{chainName} ({chainId})</span>
+            </div>
+          )
         )}
 
         {/* Wallet */}
