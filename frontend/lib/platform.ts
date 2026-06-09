@@ -10,6 +10,44 @@ const CA_REGISTRY_BASE =
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
+// ── Owner-signature auth for CMS writes ──────────
+// The backend authorizes registry-CMS writes by recovering the signer of a
+// canonical message and checking it equals the registry's on-chain owner. The
+// message format here must match `backend/src/util/registryAuth.ts`.
+
+import type { Signer } from "ethers";
+
+/** Wallet auth passed by admin UIs to sign a CMS write. */
+export interface AdminAuth {
+  signer: Signer;
+  chainId: number;
+}
+
+interface SignedFields {
+  chainId: number;
+  signature: string;
+  signatureTimestamp: number;
+}
+
+async function signAdminAction(
+  auth: AdminAuth,
+  registryAddress: string,
+  operation: string,
+  target?: string,
+): Promise<SignedFields> {
+  const signatureTimestamp = Math.floor(Date.now() / 1000);
+  const lines = [
+    "zk-x509-registry-admin",
+    `Chain ID: ${auth.chainId}`,
+    `Registry: ${registryAddress.toLowerCase()}`,
+    `Operation: ${operation}`,
+  ];
+  if (target) lines.push(`Target: ${target}`);
+  lines.push(`Timestamp: ${signatureTimestamp}`);
+  const signature = await auth.signer.signMessage(lines.join("\n"));
+  return { chainId: auth.chainId, signature, signatureTimestamp };
+}
+
 // ── Types ────────────────────────────────────────
 
 export interface ServiceJson {
@@ -156,13 +194,15 @@ export async function getRegistryMetadata(address: string, opts?: { fresh?: bool
 export async function updateRegistryMetadata(
   address: string,
   data: Partial<RegistryMetadata>,
+  auth: AdminAuth,
 ): Promise<boolean> {
   try {
     validateAddress(address);
+    const signed = await signAdminAction(auth, address, "update-metadata");
     const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, ...signed }),
     });
     return res.ok;
   } catch {
@@ -187,13 +227,15 @@ export async function postAnnouncement(
   address: string,
   title: string,
   body: string,
+  auth: AdminAuth,
 ): Promise<Announcement | null> {
   try {
     validateAddress(address);
+    const signed = await signAdminAction(auth, address, "post-announcement");
     const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body }),
+      body: JSON.stringify({ title, body, ...signed }),
     });
     if (!res.ok) return null;
     return await res.json();
@@ -208,15 +250,17 @@ export async function putCaGuide(
   address: string,
   caHash: string,
   guide: { name: string; description?: string; issueUrl?: string; instructions?: string },
+  auth: AdminAuth,
 ): Promise<boolean> {
   try {
     validateAddress(address);
+    const signed = await signAdminAction(auth, address, "put-ca-guide", caHash);
     const res = await fetch(
       `${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${encodeURIComponent(caHash)}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(guide),
+        body: JSON.stringify({ ...guide, ...signed }),
       },
     );
     return res.ok;
@@ -225,22 +269,26 @@ export async function putCaGuide(
   }
 }
 
-export async function deleteCaGuide(address: string, caHash: string): Promise<void> {
+export async function deleteCaGuide(address: string, caHash: string, auth: AdminAuth): Promise<void> {
   validateAddress(address);
+  const signed = await signAdminAction(auth, address, "delete-ca-guide", caHash);
   const res = await fetch(
     `${BACKEND_URL}/api/registries/${address.toLowerCase()}/ca-guides/${encodeURIComponent(caHash)}`,
-    { method: "DELETE" },
+    { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(signed) },
   );
   if (!res.ok) {
     throw new Error("Failed to delete CA guide. Status: " + res.status);
   }
 }
 
-export async function deleteAnnouncement(address: string, id: string): Promise<boolean> {
+export async function deleteAnnouncement(address: string, id: string, auth: AdminAuth): Promise<boolean> {
   try {
     validateAddress(address);
+    const signed = await signAdminAction(auth, address, "delete-announcement", id);
     const res = await fetch(`${BACKEND_URL}/api/registries/${address.toLowerCase()}/announcements/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(signed),
     });
     return res.ok;
   } catch {

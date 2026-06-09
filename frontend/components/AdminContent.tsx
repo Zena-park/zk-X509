@@ -37,6 +37,7 @@ import {
   getCaGuides,
   putCaGuide,
   deleteCaGuide,
+  type AdminAuth,
   type RegistryMetadata,
   type Announcement,
   type CaGuide,
@@ -344,8 +345,13 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
     registryAddr,
     chainId,
     chainName,
+    signer,
     refresh,
   } = useWallet();
+
+  // Owner-signature auth for CMS writes (metadata, announcements, CA guides).
+  // Null until a wallet/chain is available; write handlers guard on it.
+  const auth: AdminAuth | null = signer && chainId ? { signer, chainId: Number(chainId) } : null;
 
   /* ---------- tab state ---------- */
   const [activeTab, setActiveTab] = useState<AdminTab>("status");
@@ -717,9 +723,9 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
         refresh();
         fetchCaLeaves();
         // Sync: remove CA guides from backend DB
-        if (registryAddr) {
+        if (registryAddr && auth) {
           for (const leaf of removedLeaves) {
-            deleteCaGuide(registryAddr, leaf).catch((e) =>
+            deleteCaGuide(registryAddr, leaf, auth).catch((e) =>
               console.error("Failed to delete CA guide for " + leaf + ":", e),
             );
           }
@@ -845,6 +851,7 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
   /* ---------- service settings handlers ---------- */
   const handleSaveMetadata = async () => {
     if (!registryAddr) return;
+    if (!auth) { setSvcMetaMsg("Connect your wallet to save."); return; }
     setSvcMetaSaving(true);
     setSvcMetaMsg(null);
     // Stamp the active wallet's network so the entry is visible to the
@@ -853,15 +860,16 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
     const ok = await updateRegistryMetadata(registryAddr, {
       ...svcMetadata,
       chainId: chainId ? Number(chainId) : undefined,
-    });
+    }, auth);
     setSvcMetaSaving(false);
-    setSvcMetaMsg(ok ? "Metadata saved" : "Failed to save. Backend unavailable?");
+    setSvcMetaMsg(ok ? "Metadata saved" : "Failed to save. Not the owner, or backend unavailable?");
   };
 
   const handlePostAnnouncement = async () => {
     if (!registryAddr || !svcAnncTitle.trim() || !svcAnncBody.trim()) return;
+    if (!auth) return;
     setSvcAnncPosting(true);
-    const result = await postAnnouncement(registryAddr, svcAnncTitle.trim(), svcAnncBody.trim());
+    const result = await postAnnouncement(registryAddr, svcAnncTitle.trim(), svcAnncBody.trim(), auth);
     if (result) {
       setSvcAnnouncements((prev) => [result, ...prev]);
       setSvcAnncTitle("");
@@ -871,8 +879,8 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-    if (!registryAddr) return;
-    const ok = await deleteAnnouncement(registryAddr, id);
+    if (!registryAddr || !auth) return;
+    const ok = await deleteAnnouncement(registryAddr, id, auth);
     if (ok) {
       setSvcAnnouncements((prev) => prev.filter((a) => a.id !== id));
     }
@@ -880,10 +888,11 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
 
   const handleSaveCaGuide = async (caHash: string) => {
     if (!registryAddr) return;
+    if (!auth) { setSvcGuideMsg((prev) => ({ ...prev, [caHash]: "Connect wallet" })); return; }
     const guide = svcGuideEdits[caHash] || EMPTY_CA_GUIDE;
     setSvcGuideSaving((prev) => ({ ...prev, [caHash]: true }));
     setSvcGuideMsg((prev) => ({ ...prev, [caHash]: "" }));
-    const ok = await putCaGuide(registryAddr, caHash, guide);
+    const ok = await putCaGuide(registryAddr, caHash, guide, auth);
     setSvcGuideSaving((prev) => ({ ...prev, [caHash]: false }));
     setSvcGuideMsg((prev) => ({ ...prev, [caHash]: ok ? "Saved" : "Failed" }));
     if (ok) {
@@ -2255,19 +2264,19 @@ export default function AdminContent({ serviceName, minDisclosureMask = 0 }: { s
         }
         if (op === "remove-ca") {
           setRemoveCaTxMap({});
-          if (txSuccess && registryAddr && certs.length > 0) {
+          if (txSuccess && registryAddr && auth && certs.length > 0) {
             for (const c of certs) {
-              deleteCaGuide(registryAddr, c.hashHex).catch((e) =>
+              deleteCaGuide(registryAddr, c.hashHex, auth).catch((e) =>
                 console.error("Failed to delete CA guide for " + c.hashHex + ":", e),
               );
             }
           }
         }
-        if (txSuccess && registryAddr && (op === "add-ca" || op === "update")) {
+        if (txSuccess && registryAddr && auth && (op === "add-ca" || op === "update")) {
           const allCerts = entry ? [{ hashHex: entry.hashHex, guide: entry.guide }] : certs;
           for (const c of allCerts) {
             if (c.guide?.name) {
-              putCaGuide(registryAddr, c.hashHex, c.guide).catch((e) =>
+              putCaGuide(registryAddr, c.hashHex, c.guide, auth).catch((e) =>
                 console.error("Failed to save CA guide for " + c.hashHex + ":", e),
               );
             }

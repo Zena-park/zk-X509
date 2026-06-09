@@ -42,6 +42,8 @@ interface WalletContext {
    * can never target different chains. Null until a wallet is connected.
    */
   browserProvider: ethers.BrowserProvider | null;
+  /** Connected wallet signer — for signing messages / off-chain auth. */
+  signer: ethers.Signer | null;
   readContract: ethers.Contract | null;
   writeContract: ethers.Contract | null;
   connect: () => Promise<void>;
@@ -64,6 +66,7 @@ const WalletCtx = createContext<WalletContext>({
   isOwner: false,
   contractState: null,
   browserProvider: null,
+  signer: null,
   readContract: null,
   writeContract: null,
   connect: async () => {},
@@ -91,6 +94,7 @@ export function WalletProvider({ children, registryOverride }: { children: React
   const [chainName, setChainName] = useState("");
   const [registryAddr, setRegistryAddr] = useState("");
   const [browserProvider, setBrowserProvider] = useState<ethers.BrowserProvider | null>(null);
+  const [signer, setSigner] = useState<ethers.Signer | null>(null);
   // Cache one BrowserProvider for the lifetime of window.ethereum and reuse it
   // across refreshes — ethers recommends a single instance, and recreating one
   // per refresh() churns providers needlessly. A chain change triggers a full
@@ -118,21 +122,22 @@ export function WalletProvider({ children, registryOverride }: { children: React
           bpRef.current = new ethers.BrowserProvider(window.ethereum!);
         }
         const bp = bpRef.current;
-        const signer = await bp.getSigner();
+        const sgnr = await bp.getSigner();
         const network = await bp.getNetwork();
         const cid = network.chainId.toString();
         setChainId(cid);
         setChainName(getChainName(cid));
-        // Expose the provider only once chainId is known, so consumers never
-        // observe a non-null provider paired with a stale/null chainId.
+        // Expose the provider/signer only once chainId is known, so consumers
+        // never observe a non-null provider paired with a stale/null chainId.
         setBrowserProvider(bp);
+        setSigner(sgnr);
 
         const addr = registryOverride || getRegistryAddress(cid);
         setRegistryAddr(addr);
         if (!addr || addr === ethers.ZeroAddress) return;
 
         const ro = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, bp);
-        const rw = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, signer);
+        const rw = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, sgnr);
         setReadContract(ro);
         setWriteContract(rw);
 
@@ -211,6 +216,7 @@ export function WalletProvider({ children, registryOverride }: { children: React
     setIsOwner(false);
     setContractState(null);
     setBrowserProvider(null);
+    setSigner(null);
     setReadContract(null);
     setWriteContract(null);
   }
@@ -244,7 +250,7 @@ export function WalletProvider({ children, registryOverride }: { children: React
   return (
     <WalletCtx.Provider value={{
       account, chainId, chainName, expectedChainId: EXPECTED_CHAIN_ID, isWrongNetwork,
-      registryAddr, isOwner, contractState, browserProvider, readContract, writeContract,
+      registryAddr, isOwner, contractState, browserProvider, signer, readContract, writeContract,
       connect, disconnect, switchNetwork, refresh,
     }}>
       {children}
