@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import { IDENTITY_REGISTRY_ABI, REGISTRY_FACTORY_ABI } from "./abi";
 import { getNetwork } from "./addresses";
-import { multicall, decodeResult, type Call3 } from "./multicall";
+import { multicall, decodeResult, decodeResultFull, type Call3 } from "./multicall";
 
 export interface ZkX509ClientOptions {
   /** Network key ("sepolia") or chainId — used to default the factory address. */
@@ -68,13 +68,13 @@ export class ZkX509Client {
 
   /** True if `wallet` is currently verified in `registry`. */
   async isVerified(registry: string, wallet: string): Promise<boolean> {
-    const c = new ethers.Contract(registry, IDENTITY_REGISTRY_ABI, this.provider);
+    const c = new ethers.Contract(registry, this.registryIface, this.provider);
     return c.isVerified(wallet);
   }
 
   /** Verification expiry for `wallet` in `registry`, or null if not verified. */
   async verifiedUntil(registry: string, wallet: string): Promise<Date | null> {
-    const c = new ethers.Contract(registry, IDENTITY_REGISTRY_ABI, this.provider);
+    const c = new ethers.Contract(registry, this.registryIface, this.provider);
     const ts = Number(await c.verifiedUntil(wallet));
     return ts > 0 ? new Date(ts * 1000) : null;
   }
@@ -93,16 +93,36 @@ export class ZkX509Client {
 
   /** All registries deployed via the factory. */
   async listRegistries(factory = this.factoryAddress): Promise<string[]> {
-    const c = new ethers.Contract(this.requireFactory(factory), REGISTRY_FACTORY_ABI, this.provider);
+    const c = new ethers.Contract(this.requireFactory(factory), this.factoryIface, this.provider);
     return c.getRegistries();
   }
 
   /** Factory-level info (name, policy params, creator) for a registry. */
   async getRegistryInfo(registry: string, factory = this.factoryAddress): Promise<RegistryInfo> {
-    const c = new ethers.Contract(this.requireFactory(factory), REGISTRY_FACTORY_ABI, this.provider);
-    const info = await c.registryInfo(registry);
+    const c = new ethers.Contract(this.requireFactory(factory), this.factoryIface, this.provider);
+    return this.toRegistryInfo(registry, await c.registryInfo(registry));
+  }
+
+  /**
+   * Factory info for many registries in ONE call (Multicall3). Returns an array
+   * aligned with `registries`; an entry is null if its info couldn't be read.
+   */
+  async getRegistryInfos(registries: string[], factory = this.factoryAddress): Promise<Array<RegistryInfo | null>> {
+    const f = this.requireFactory(factory);
+    const calls: Call3[] = registries.map((r) => ({
+      target: f,
+      callData: this.factoryIface.encodeFunctionData("registryInfo", [r]),
+    }));
+    const res = await multicall(this.provider, calls);
+    return registries.map((address, i) => {
+      const info = decodeResultFull(this.factoryIface, "registryInfo", res[i]);
+      return info ? this.toRegistryInfo(address, info) : null;
+    });
+  }
+
+  private toRegistryInfo(address: string, info: ethers.Result): RegistryInfo {
     return {
-      address: registry,
+      address,
       creator: info.creator ?? info[0],
       name: info.name ?? info[1],
       maxWallets: Number(info.maxWallets ?? info[2]),

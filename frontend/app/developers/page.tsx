@@ -1,20 +1,19 @@
 import Link from "next/link";
 import { ShieldCheck, Boxes, UserCheck, ArrowRight, Terminal, BookOpen, Bot } from "lucide-react";
 import { DevNav } from "@/components/dev/DevNav";
+import { DEV_NETWORK } from "@/lib/dev-config";
 
 export const metadata = {
   title: "Developers — zk-X509",
   description: "Integrate zk-X509 on-chain identity verification: gate your dApp on verified wallets, deploy a registry, or use the SDK & CLI.",
 };
 
-const FACTORY = "0x9e937dF6ac0E85979622519068412A518fa085d9";
-const VERIFIER = "0x261a1619cC63273de7c64872B769305732761888";
 // Reference registries operated by the zkScatter service (a consumer of
 // zk-X509). They exist to inspect / try the checker against — build your own
 // service with its own registry via the factory.
 const EXAMPLE_REGISTRIES: [string, string][] = [
-  ["Users", "0x3cF6A96f1970053ffDf957074F988aD53D13ada3"],
-  ["Relayers", "0x9fDE6182B1fd10F2eDfE15b704FE95787C170914"],
+  ["Users", DEV_NETWORK.registries.users],
+  ["Relayers", DEV_NETWORK.registries.relayers],
 ];
 
 function PathCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
@@ -78,15 +77,15 @@ export default function DevelopersPage() {
       <div className="glass-panel rounded-2xl p-5 border border-outline-variant/10 text-sm mb-8">
         <div className="flex items-center justify-between py-1.5 border-b border-outline-variant/10">
           <span className="text-on-surface-variant">Network</span>
-          <span className="font-headline text-on-surface">Sepolia (11155111)</span>
+          <span className="font-headline text-on-surface">{DEV_NETWORK.name} ({DEV_NETWORK.chainId})</span>
         </div>
         <div className="flex items-center justify-between py-1.5 border-b border-outline-variant/10">
           <span className="text-on-surface-variant">RegistryFactory</span>
-          <span className="font-mono text-xs text-on-surface">{FACTORY}</span>
+          <span className="font-mono text-xs text-on-surface">{DEV_NETWORK.factory}</span>
         </div>
         <div className="flex items-center justify-between py-1.5">
           <span className="text-on-surface-variant">SP1 verifier</span>
-          <span className="font-mono text-xs text-on-surface">{VERIFIER}</span>
+          <span className="font-mono text-xs text-on-surface">{DEV_NETWORK.verifier}</span>
         </div>
       </div>
 

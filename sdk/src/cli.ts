@@ -109,14 +109,12 @@ async function main(): Promise<void> {
       console.log("(no registries)");
       return;
     }
-    for (const addr of list) {
-      try {
-        const info = await client.getRegistryInfo(addr);
-        console.log(`${addr}  ${info.name}`);
-      } catch {
-        console.log(addr);
-      }
-    }
+    // Batched: all registryInfo reads in one multicall.
+    const infos = await client.getRegistryInfos(list);
+    list.forEach((addr, i) => {
+      const info = infos[i];
+      console.log(info ? `${addr}  ${info.name}` : addr);
+    });
   } else if (cmd === "info") {
     const registry = positionals[0] && ethers.isAddress(positionals[0]) ? positionals[0] : resolveRegistry(net, flags);
     const [info, policy] = await Promise.all([

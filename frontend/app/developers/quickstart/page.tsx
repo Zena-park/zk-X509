@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DevNav } from "@/components/dev/DevNav";
 import { CodeBlock } from "@/components/dev/CodeBlock";
 import { VerificationChecker } from "@/components/dev/VerificationChecker";
+import { DEV_NETWORK } from "@/lib/dev-config";
 
 export const metadata = {
   title: "Quickstart — zk-X509 Developers",
@@ -40,7 +41,7 @@ const zk = new ZkX509Client(provider, { network: "sepolia" });
 
 // your service's registry (deploy via the factory).
 // 0x3cF6… below is zkScatter's, shown only as a runnable example.
-const REGISTRY = "0x3cF6A96f1970053ffDf957074F988aD53D13ada3";
+const REGISTRY = "${DEV_NETWORK.registries.users}";
 if (await zk.isVerified(REGISTRY, userAddress)) {
   // ...grant access
 }`;

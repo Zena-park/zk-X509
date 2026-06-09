@@ -5,12 +5,13 @@ import { ethers } from "ethers";
 import { Loader2, ShieldCheck, ShieldX, Search } from "lucide-react";
 import { IDENTITY_REGISTRY_ABI } from "@/lib/contract";
 import { multicall, decodeResult } from "@/lib/multicall";
+import { DEV_NETWORK } from "@/lib/dev-config";
 
 // Read-only demo: a public Sepolia RPC so developers can try a check without
 // connecting a wallet. Mirrors what the SDK/CLI does by default. The main app
 // reads through the connected wallet; this is a standalone developer utility.
-const DEMO_RPC = "https://ethereum-sepolia.publicnode.com";
-const DEFAULT_REGISTRY = "0x3cF6A96f1970053ffDf957074F988aD53D13ada3"; // Sepolia "Users"
+const DEMO_RPC = DEV_NETWORK.rpcUrl;
+const DEFAULT_REGISTRY = DEV_NETWORK.registries.users; // zkScatter example
 
 interface Result {
   verified: boolean;
@@ -19,7 +20,7 @@ interface Result {
 
 export function VerificationChecker() {
   const [wallet, setWallet] = useState("");
-  const [registry, setRegistry] = useState(DEFAULT_REGISTRY);
+  const [registry, setRegistry] = useState<string>(DEFAULT_REGISTRY);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);

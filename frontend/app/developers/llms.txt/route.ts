@@ -2,6 +2,8 @@
 // /developers/llms.txt (the emerging llms.txt convention). Kept terse and
 // structured so an agent can ingest the whole zk-X509 integration in one fetch.
 
+import { DEV_NETWORK } from "@/lib/dev-config";
+
 export const dynamic = "force-static";
 
 const BODY = `# zk-X509
@@ -63,14 +65,14 @@ const ok = await zk.isVerified(REGISTRY_ADDRESS, userAddress);
 
 ## Deployments
 
-Sepolia (chainId 11155111):
-- RegistryFactory: 0x9e937dF6ac0E85979622519068412A518fa085d9
-- SP1 verifier:    0x261a1619cC63273de7c64872B769305732761888
-- Public RPC: https://ethereum-sepolia.publicnode.com
+${DEV_NETWORK.name} (chainId ${DEV_NETWORK.chainId}):
+- RegistryFactory: ${DEV_NETWORK.factory}
+- SP1 verifier:    ${DEV_NETWORK.verifier}
+- Public RPC: ${DEV_NETWORK.rpcUrl}
 
 Example registries operated by the zkScatter service (a reference consumer of zk-X509) — for inspection/testing only, NOT for integrators to gate on. Deploy your own via the RegistryFactory.
-- "Users" (zkScatter):    0x3cF6A96f1970053ffDf957074F988aD53D13ada3
-- "Relayers" (zkScatter): 0x9fDE6182B1fd10F2eDfE15b704FE95787C170914
+- "Users" (zkScatter):    ${DEV_NETWORK.registries.users}
+- "Relayers" (zkScatter): ${DEV_NETWORK.registries.relayers}
 
 ## SDK + CLI
 
