@@ -608,7 +608,7 @@ function RegistryDetailContent() {
                                 {guide.instructions}
                               </p>
                             )}
-                            {guide.issue_url && (
+                            {guide.issue_url && /^https?:\/\//i.test(guide.issue_url) && (
                               <a
                                 href={guide.issue_url}
                                 target="_blank"

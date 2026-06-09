@@ -9,11 +9,13 @@ import * as crypto from "crypto";
 import {
   getRegistryStore,
   Announcement,
+  RegistryEntry,
   VALID_DISCLOSURE_FIELDS,
   makeDefaultEntry,
 } from "../stores";
 import { coerceChainId } from "../util/chainId";
 import { authorizeRegistryOwner } from "../util/registryAuth";
+import { isAllowedUrl, isUnsafeKey, withinLen, LIMITS } from "../util/validate";
 
 const router = Router();
 const store = getRegistryStore();
@@ -41,9 +43,11 @@ function h(fn: Handler) {
 
 // Gate a write on the registry owner's signature. The signed message binds the
 // chainId, registry, operation (+ optional target), so a signature can't be
-// replayed across operations/registries. Returns false (and writes the error
-// response) when unauthorized; the handler must then return early.
-async function requireOwner(req: Request, res: Response, addr: string, operation: string, target?: string): Promise<boolean> {
+// replayed across operations/registries. On success returns the already-fetched
+// entry (so the handler needn't re-read the store); on failure writes the error
+// response and returns `{ ok: false }`.
+type OwnerGate = { ok: true; entry: RegistryEntry | null } | { ok: false };
+async function requireOwner(req: Request, res: Response, addr: string, operation: string, target?: string): Promise<OwnerGate> {
   const body = (req.body ?? {}) as { chainId?: unknown; signature?: unknown; signatureTimestamp?: unknown };
   // Pin the auth chainId to the registry's REGISTERED chain, not the
   // client-supplied one. The store is keyed by address alone, so without this
@@ -54,7 +58,7 @@ async function requireOwner(req: Request, res: Response, addr: string, operation
   if (existing?.chainId !== undefined) {
     if (body.chainId !== undefined && Number(body.chainId) !== existing.chainId) {
       res.status(400).json({ error: "chainId does not match the registered registry chainId" });
-      return false;
+      return { ok: false };
     }
     chainId = existing.chainId;
   }
@@ -67,9 +71,9 @@ async function requireOwner(req: Request, res: Response, addr: string, operation
   });
   if (!auth.ok) {
     res.status(auth.status).json({ error: auth.error });
-    return false;
+    return { ok: false };
   }
-  return true;
+  return { ok: true, entry: existing };
 }
 
 // --- Routes ---
@@ -106,11 +110,22 @@ router.get("/:address", h(async (req, res) => {
 // PUT /api/registries/:address — update metadata (auto-create if not exists)
 router.put("/:address", h(async (req, res) => {
   const addr = req.params.address as string;
-  if (!(await requireOwner(req, res, addr, "update-metadata"))) return;
-  const entry = await store.getOrCreate(addr);
+  const gate = await requireOwner(req, res, addr, "update-metadata");
+  if (!gate.ok) return;
+  const entry = gate.entry ?? makeDefaultEntry();
 
   const { chainId, description, logoUrl, category, website, tags, listed,
     explorerEnabled, explorerVisibleFields, explorerFilterableFields } = req.body;
+  // Validate stored content: URLs must be http(s) (served to visitors — no
+  // javascript:/data:), and bound field sizes to keep the document small.
+  if (!isAllowedUrl(logoUrl) || !isAllowedUrl(website)) {
+    res.status(400).json({ error: "logoUrl/website must be an http(s) URL" });
+    return;
+  }
+  if (!withinLen(description, LIMITS.longText) || !withinLen(logoUrl, LIMITS.shortText) || !withinLen(website, LIMITS.shortText)) {
+    res.status(400).json({ error: "Field too long" });
+    return;
+  }
   if (chainId !== undefined) {
     const parsed = coerceChainId(chainId);
     if (parsed === null) {
@@ -126,7 +141,9 @@ router.put("/:address", h(async (req, res) => {
   }
   if (website !== undefined) entry.website = String(website);
   if (Array.isArray(tags)) {
-    entry.tags = tags.filter((tag: unknown): tag is string => typeof tag === "string");
+    entry.tags = tags
+      .filter((tag: unknown): tag is string => typeof tag === "string" && tag.length <= LIMITS.shortText)
+      .slice(0, LIMITS.tags);
   }
   if (listed !== undefined) entry.listed = typeof listed === "string" ? listed.toLowerCase() === "true" : Boolean(listed);
   if (explorerEnabled !== undefined) {
@@ -180,8 +197,9 @@ router.get("/:address/announcements", h(async (req, res) => {
 // POST /api/registries/:address/announcements
 router.post("/:address/announcements", h(async (req, res) => {
   const addr = req.params.address as string;
-  if (!(await requireOwner(req, res, addr, "post-announcement"))) return;
-  const entry = await store.get(addr);
+  const gate = await requireOwner(req, res, addr, "post-announcement");
+  if (!gate.ok) return;
+  const entry = gate.entry;
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
     return;
@@ -190,6 +208,15 @@ router.post("/:address/announcements", h(async (req, res) => {
   const { title, body } = req.body;
   if (!title || !body) {
     res.status(400).json({ error: "title and body are required" });
+    return;
+  }
+  if (!withinLen(title, LIMITS.shortText) || !withinLen(body, LIMITS.longText)) {
+    res.status(400).json({ error: "title/body too long" });
+    return;
+  }
+  if (!entry.announcements) entry.announcements = []; // legacy entries may lack it
+  if (entry.announcements.length >= LIMITS.announcements) {
+    res.status(400).json({ error: `Too many announcements (max ${LIMITS.announcements}); delete some first` });
     return;
   }
 
@@ -209,12 +236,14 @@ router.post("/:address/announcements", h(async (req, res) => {
 router.delete("/:address/announcements/:id", h(async (req, res) => {
   const addr = req.params.address as string;
   const annId = req.params.id as string;
-  if (!(await requireOwner(req, res, addr, "delete-announcement", annId))) return;
-  const entry = await store.get(addr);
+  const gate = await requireOwner(req, res, addr, "delete-announcement", annId);
+  if (!gate.ok) return;
+  const entry = gate.entry;
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
     return;
   }
+  if (!entry.announcements) entry.announcements = []; // legacy entries may lack it
 
   const idx = entry.announcements.findIndex((a: Announcement) => a.id === annId);
   if (idx === -1) {
@@ -243,12 +272,33 @@ router.get("/:address/ca-guides", h(async (req, res) => {
 router.put("/:address/ca-guides/:caHash", h(async (req, res) => {
   const addr = req.params.address as string;
   const caHash = req.params.caHash as string;
-  if (!(await requireOwner(req, res, addr, "put-ca-guide", caHash))) return;
-  const entry = await store.getOrCreate(addr);
+  const gate = await requireOwner(req, res, addr, "put-ca-guide", caHash);
+  if (!gate.ok) return;
+  if (isUnsafeKey(caHash)) {
+    res.status(400).json({ error: "Invalid caHash" });
+    return;
+  }
+  const entry = gate.entry ?? makeDefaultEntry();
+  // A registry first created via this route needs its chainId recorded (for
+  // network-scoped queries); legacy entries may lack `caGuides`.
+  if (entry.chainId === undefined && req.body?.chainId !== undefined) {
+    const parsed = coerceChainId(req.body.chainId);
+    if (parsed !== null) entry.chainId = parsed;
+  }
+  if (!entry.caGuides) entry.caGuides = {};
 
   const { name, description, issue_url, instructions } = req.body;
   if (!name) {
     res.status(400).json({ error: "name is required" });
+    return;
+  }
+  if (!isAllowedUrl(issue_url)) {
+    res.status(400).json({ error: "issue_url must be an http(s) URL" });
+    return;
+  }
+  if (!withinLen(name, LIMITS.shortText) || !withinLen(description, LIMITS.longText)
+    || !withinLen(issue_url, LIMITS.shortText) || !withinLen(instructions, LIMITS.longText)) {
+    res.status(400).json({ error: "Field too long" });
     return;
   }
 
@@ -267,8 +317,9 @@ router.put("/:address/ca-guides/:caHash", h(async (req, res) => {
 router.delete("/:address/ca-guides/:caHash", h(async (req, res) => {
   const addr = req.params.address as string;
   const caHash = req.params.caHash as string;
-  if (!(await requireOwner(req, res, addr, "delete-ca-guide", caHash))) return;
-  const entry = await store.get(addr);
+  const gate = await requireOwner(req, res, addr, "delete-ca-guide", caHash);
+  if (!gate.ok) return;
+  const entry = gate.entry;
   if (!entry || !entry.caGuides[caHash]) {
     res.status(204).send();
     return;
