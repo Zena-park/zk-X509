@@ -252,7 +252,7 @@ export default function CreateRegistryPage() {
             chainId: chainId ? Number(chainId) : undefined,
             listed: true,
             tags: Array.from(selectedUseCases),
-          });
+          }, { signer, chainId: Number(chainId) });
         } catch {
           // metadata save is best-effort, don't fail the deploy
           console.error("Failed to save use case metadata");

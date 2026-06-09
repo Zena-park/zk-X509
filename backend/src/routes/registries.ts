@@ -1,9 +1,9 @@
-// TODO: Add owner authentication (wallet signature) before production use.
-// NOTE: write endpoints (PUT/POST/DELETE) are intentionally still unauthenticated
-// here — this migration preserves the prior behavior. The Firestore security
-// rules block *direct* client DB access (write: false), but they do NOT gate
-// these REST writes, which reach Firestore via the Admin SDK. Adding wallet-
-// signature auth is a separate follow-up.
+// Registry CMS writes (PUT/POST/DELETE) are authorized with an owner wallet
+// signature: the request must carry { chainId, signature, signatureTimestamp }
+// in its JSON body, signed by the registry's on-chain owner. See
+// `util/registryAuth.ts`. (The Firestore rules block direct client DB access
+// but these REST writes reach Firestore via the Admin SDK, so the gate lives
+// here.)
 import { Router, Request, Response, NextFunction } from "express";
 import * as crypto from "crypto";
 import {
@@ -13,6 +13,7 @@ import {
   makeDefaultEntry,
 } from "../stores";
 import { coerceChainId } from "../util/chainId";
+import { authorizeRegistryOwner } from "../util/registryAuth";
 
 const router = Router();
 const store = getRegistryStore();
@@ -36,6 +37,39 @@ function cacheable(res: Response) {
 type Handler = (req: Request, res: Response) => Promise<void>;
 function h(fn: Handler) {
   return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
+}
+
+// Gate a write on the registry owner's signature. The signed message binds the
+// chainId, registry, operation (+ optional target), so a signature can't be
+// replayed across operations/registries. Returns false (and writes the error
+// response) when unauthorized; the handler must then return early.
+async function requireOwner(req: Request, res: Response, addr: string, operation: string, target?: string): Promise<boolean> {
+  const body = (req.body ?? {}) as { chainId?: unknown; signature?: unknown; signatureTimestamp?: unknown };
+  // Pin the auth chainId to the registry's REGISTERED chain, not the
+  // client-supplied one. The store is keyed by address alone, so without this
+  // an attacker who owns the same address on another chain could sign with
+  // their key on that chain and overwrite this registry (cross-chain hijack).
+  const existing = await store.get(addr);
+  let chainId: unknown = body.chainId;
+  if (existing?.chainId !== undefined) {
+    if (body.chainId !== undefined && Number(body.chainId) !== existing.chainId) {
+      res.status(400).json({ error: "chainId does not match the registered registry chainId" });
+      return false;
+    }
+    chainId = existing.chainId;
+  }
+  const auth = await authorizeRegistryOwner(addr, {
+    chainId,
+    signature: body.signature,
+    signatureTimestamp: body.signatureTimestamp,
+    operation,
+    target,
+  });
+  if (!auth.ok) {
+    res.status(auth.status).json({ error: auth.error });
+    return false;
+  }
+  return true;
 }
 
 // --- Routes ---
@@ -72,6 +106,7 @@ router.get("/:address", h(async (req, res) => {
 // PUT /api/registries/:address — update metadata (auto-create if not exists)
 router.put("/:address", h(async (req, res) => {
   const addr = req.params.address as string;
+  if (!(await requireOwner(req, res, addr, "update-metadata"))) return;
   const entry = await store.getOrCreate(addr);
 
   const { chainId, description, logoUrl, category, website, tags, listed,
@@ -145,6 +180,7 @@ router.get("/:address/announcements", h(async (req, res) => {
 // POST /api/registries/:address/announcements
 router.post("/:address/announcements", h(async (req, res) => {
   const addr = req.params.address as string;
+  if (!(await requireOwner(req, res, addr, "post-announcement"))) return;
   const entry = await store.get(addr);
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
@@ -173,6 +209,7 @@ router.post("/:address/announcements", h(async (req, res) => {
 router.delete("/:address/announcements/:id", h(async (req, res) => {
   const addr = req.params.address as string;
   const annId = req.params.id as string;
+  if (!(await requireOwner(req, res, addr, "delete-announcement", annId))) return;
   const entry = await store.get(addr);
   if (!entry) {
     res.status(404).json({ error: "Registry not found" });
@@ -206,6 +243,7 @@ router.get("/:address/ca-guides", h(async (req, res) => {
 router.put("/:address/ca-guides/:caHash", h(async (req, res) => {
   const addr = req.params.address as string;
   const caHash = req.params.caHash as string;
+  if (!(await requireOwner(req, res, addr, "put-ca-guide", caHash))) return;
   const entry = await store.getOrCreate(addr);
 
   const { name, description, issue_url, instructions } = req.body;
@@ -229,6 +267,7 @@ router.put("/:address/ca-guides/:caHash", h(async (req, res) => {
 router.delete("/:address/ca-guides/:caHash", h(async (req, res) => {
   const addr = req.params.address as string;
   const caHash = req.params.caHash as string;
+  if (!(await requireOwner(req, res, addr, "delete-ca-guide", caHash))) return;
   const entry = await store.get(addr);
   if (!entry || !entry.caGuides[caHash]) {
     res.status(204).send();

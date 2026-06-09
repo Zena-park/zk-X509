@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { verifyMessage } from "ethers";
 import { createCaRegistryPr, type CaRegistryFiles } from "../services/github";
+import { verifyFreshOwnerSignature } from "../util/registryAuth";
 
 interface CaGuide {
   name: string;
@@ -35,9 +35,11 @@ router.post("/pr", async (req, res) => {
     return;
   }
 
-  // Validate input formats to prevent path traversal
-  if (!/^\d+$/.test(chainId)) {
-    res.status(400).json({ error: "Invalid chainId: must be numeric" });
+  // Validate input formats to prevent path traversal + ensure a usable chain
+  // id (reject "0" and unsafe-large integers up front, not as a later 503).
+  const chainIdNum = Number(chainId);
+  if (!/^\d+$/.test(chainId) || !Number.isSafeInteger(chainIdNum) || chainIdNum <= 0) {
+    res.status(400).json({ error: "Invalid chainId: must be a positive integer" });
     return;
   }
   if (!/^0x[0-9a-fA-F]{40}$/.test(registryAddress)) {
@@ -59,21 +61,10 @@ router.post("/pr", async (req, res) => {
     }
   }
 
-  // Validate signatureTimestamp is a safe integer to prevent NaN bypass
-  if (!Number.isSafeInteger(signatureTimestamp)) {
-    res.status(400).json({ error: "Invalid signatureTimestamp: must be an integer" });
-    return;
-  }
-
-  // Reject stale signatures (> 10 minutes)
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - signatureTimestamp) > 600) {
-    res.status(400).json({ error: "Signature expired (>10 min)" });
-    return;
-  }
-
-  // Reconstruct the expected message from request parameters and verify
-  // the signature directly against it — prevents parameter tampering
+  // Reconstruct the expected message from request parameters — prevents
+  // parameter tampering. The signer must be fresh AND the registry's on-chain
+  // owner (authorization, not just authentication): without the owner check
+  // anyone could pass an adminAddress they control and self-authorize.
   const expectedMessage = [
     "zk-x509-ca-registry",
     `Chain ID: ${chainId}`,
@@ -83,14 +74,21 @@ router.post("/pr", async (req, res) => {
     `Timestamp: ${signatureTimestamp}`,
   ].join("\n");
 
-  try {
-    const recovered = verifyMessage(expectedMessage, signature).toLowerCase();
-    if (recovered !== adminAddress.toLowerCase()) {
-      res.status(403).json({ error: "Signature does not match adminAddress" });
-      return;
-    }
-  } catch {
-    res.status(400).json({ error: "Invalid signature" });
+  const check = await verifyFreshOwnerSignature({
+    message: expectedMessage,
+    signature,
+    signatureTimestamp,
+    chainId: chainIdNum,
+    registryAddress,
+  });
+  if (!check.ok) {
+    res.status(check.status).json({ error: check.error });
+    return;
+  }
+  // Belt-and-suspenders: adminAddress is bound into the signed message; this
+  // yields a clearer error if a client ever sends a mismatched adminAddress.
+  if (check.recovered !== adminAddress.toLowerCase()) {
+    res.status(403).json({ error: "Signature does not match adminAddress" });
     return;
   }
 
