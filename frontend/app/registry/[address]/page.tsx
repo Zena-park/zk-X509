@@ -127,8 +127,11 @@ function RegistryDetailContent() {
       setLoading(false);
       return;
     }
-    // Reads go through the connected wallet's node — require a connection.
-    if (!browserProvider) { setLoading(false); return; }
+    // Reads go through the connected wallet's node. While it's still
+    // initializing (account set, provider pending) keep the loading state —
+    // the effect re-runs once `browserProvider` is ready. Disconnected users
+    // hit the `!account` ConnectWalletScreen, not this branch.
+    if (!browserProvider) return;
 
     (async () => {
       try {

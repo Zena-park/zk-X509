@@ -23,6 +23,7 @@ import {
 import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
 import { truncateHex } from "@/lib/utils";
 import { useReadProvider } from "@/lib/useReadProvider";
+import { multicall, decodeResult, decodeResultFull, type Call3 } from "@/lib/multicall";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -67,10 +68,13 @@ export default function AdminPage() {
 
   /* ---------- load registries owned by connected wallet ---------- */
   useEffect(() => {
-    if (!account || !chainId || !provider) {
+    if (!account) {
       setLoading(false);
       return;
     }
+    // chainId/provider arrive together once the wallet load effect runs; keep
+    // the loading state until then instead of flashing an empty result.
+    if (!chainId || !provider) return;
 
     let cancelled = false;
 
@@ -94,52 +98,48 @@ export default function AdminPage() {
 
         const allAddresses: string[] = await factory.getRegistries();
 
-        // For each registry, fetch info from factory + on-chain state
+        // For each registry, fetch info from factory + on-chain state.
+        // Batch registryInfo + getCaCount + paused for every registry into ONE
+        // eth_call via Multicall3 (one round-trip instead of ~3 per registry).
         const cards: RegistryCard[] = [];
+        const factoryIface = new ethers.Interface(REGISTRY_FACTORY_ABI);
+        const registryIface = new ethers.Interface(IDENTITY_REGISTRY_ABI);
+        const calls: Call3[] = [];
+        for (const addr of allAddresses) {
+          calls.push({ target: factoryAddr, callData: factoryIface.encodeFunctionData("registryInfo", [addr]) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("getCaCount", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("paused", []) });
+        }
+        const mres = await multicall(provider, calls);
 
         await Promise.all(
-          allAddresses.map(async (addr) => {
-            try {
-              const info = await factory.registryInfo(addr);
-              const creator: string = info.creator ?? info[0];
-              if (creator.toLowerCase() !== account.toLowerCase()) return;
-
-              const registry = new ethers.Contract(
-                addr,
-                IDENTITY_REGISTRY_ABI,
-                provider,
-              );
-
-              const [caCount, paused] = await Promise.all([
-                registry.getCaCount(),
-                registry.paused(),
-              ]);
-
-              const name: string = info.name ?? info[1];
-              const maxWallets: number = Number(info.maxWallets ?? info[2]);
-              const minDisclosureMask: number = Number(
-                info.minDisclosureMask ?? info[3],
-              );
-
-              let metadata: RegistryMetadata | null = null;
-              try {
-                metadata = await getRegistryMetadata(addr);
-              } catch {
-                // metadata is optional
-              }
-
-              cards.push({
-                address: addr,
-                name,
-                maxWallets,
-                minDisclosureMask,
-                caCount: Number(caCount),
-                paused: Boolean(paused),
-                metadata,
-              });
-            } catch (e) {
-              console.error(`Failed to load service ${addr}:`, e);
+          allAddresses.map(async (addr, idx) => {
+            const base = idx * 3;
+            const info = decodeResultFull(factoryIface, "registryInfo", mres[base]);
+            if (!info) {
+              console.error(`Failed to load service ${addr}`);
+              return;
             }
+
+            const creator: string = info.creator ?? info[0];
+            if (creator.toLowerCase() !== account.toLowerCase()) return;
+
+            let metadata: RegistryMetadata | null = null;
+            try {
+              metadata = await getRegistryMetadata(addr);
+            } catch {
+              // metadata is optional
+            }
+
+            cards.push({
+              address: addr,
+              name: info.name ?? info[1],
+              maxWallets: Number(info.maxWallets ?? info[2]),
+              minDisclosureMask: Number(info.minDisclosureMask ?? info[3]),
+              caCount: Number(decodeResult<bigint>(registryIface, "getCaCount", mres[base + 1], BigInt(0))),
+              paused: Boolean(decodeResult<boolean>(registryIface, "paused", mres[base + 2], false)),
+              metadata,
+            });
           }),
         );
 

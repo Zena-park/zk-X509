@@ -20,6 +20,7 @@ import {
 } from "@/lib/contract";
 import { getRegistryMetadata, getListedRegistries, type RegistryMetadata } from "@/lib/platform";
 import { useReadProvider } from "@/lib/useReadProvider";
+import { multicall, decodeResult, decodeResultFull, type Call3 } from "@/lib/multicall";
 import { bytes32ToString, formatFieldConstraints } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -96,8 +97,11 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
-      // Reads go through the connected wallet's node — require a connection.
-      if (!provider) { setLoading(false); return; }
+      // Reads go through the connected wallet's node. When `provider` is not
+      // ready yet (account set, BrowserProvider still initializing) keep the
+      // loading state — the effect re-runs once it's available. Disconnected
+      // users hit the `!account` connect screen, not this branch.
+      if (!provider) return;
 
       try {
         const cid = chainId || "31337";
@@ -133,73 +137,81 @@ export default function DashboardPage() {
 
         const cards: RegistryCard[] = [];
 
+        // Batch every registry's reads into ONE eth_call via Multicall3.
+        // Per registry: registryInfo (factory) + 6 state/constraint reads
+        // (+ 2 verification reads when connected). Flattened so N registries
+        // cost a single round-trip through the wallet node instead of ~9N.
+        const factoryIface = new ethers.Interface(REGISTRY_FACTORY_ABI);
+        const registryIface = new ethers.Interface(IDENTITY_REGISTRY_ABI);
+        const perReg = account ? 9 : 7;
+
+        const calls: Call3[] = [];
+        for (const addr of visibleAddresses) {
+          calls.push({ target: factoryAddr, callData: factoryIface.encodeFunctionData("registryInfo", [addr]) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("getCaCount", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("paused", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("requiredCountry", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("requiredOrg", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("requiredOrgUnit", []) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("requiredCommonName", []) });
+          if (account) {
+            calls.push({ target: addr, callData: registryIface.encodeFunctionData("isVerified", [account]) });
+            calls.push({ target: addr, callData: registryIface.encodeFunctionData("verifiedUntil", [account]) });
+          }
+        }
+
+        const results = await multicall(provider, calls);
+
         await Promise.all(
-          visibleAddresses.map(async (addr) => {
-            try {
-              const info = await factory.registryInfo(addr);
+          visibleAddresses.map(async (addr, idx) => {
+            const base = idx * perReg;
 
-              const registry = new ethers.Contract(
-                addr,
-                IDENTITY_REGISTRY_ABI,
-                provider,
-              );
-
-              const [caCount, paused, reqC, reqO, reqOU, reqCN] = await Promise.all([
-                registry.getCaCount(),
-                registry.paused(),
-                registry.requiredCountry().catch(() => ethers.ZeroHash),
-                registry.requiredOrg().catch(() => ethers.ZeroHash),
-                registry.requiredOrgUnit().catch(() => ethers.ZeroHash),
-                registry.requiredCommonName().catch(() => ethers.ZeroHash),
-              ]);
-
-              const constraints = formatFieldConstraints([reqC, reqO, reqOU, reqCN]);
-
-              const name: string = info.name ?? info[1];
-              const maxWallets: number = Number(info.maxWallets ?? info[2]);
-              const minDisclosureMask: number = Number(
-                info.minDisclosureMask ?? info[3],
-              );
-
-              // Check verification status if wallet is connected
-              let verified = false;
-              let verifiedUntil: Date | null = null;
-              if (account) {
-                try {
-                  const [isV, until] = await Promise.all([
-                    registry.isVerified(account),
-                    registry.verifiedUntil(account),
-                  ]);
-                  verified = Boolean(isV);
-                  const ts = Number(until);
-                  verifiedUntil = ts > 0 ? new Date(ts * 1000) : null;
-                } catch {
-                  // verification check failed, treat as not verified
-                }
-              }
-
-              let metadata: RegistryMetadata | null = null;
-              try {
-                metadata = await getRegistryMetadata(addr);
-              } catch {
-                // metadata is optional
-              }
-
-              cards.push({
-                address: addr,
-                name,
-                maxWallets,
-                minDisclosureMask,
-                caCount: Number(caCount),
-                paused: Boolean(paused),
-                metadata,
-                verified,
-                verifiedUntil,
-                constraints,
-              });
-            } catch (e) {
-              console.error(`Failed to load service ${addr}:`, e);
+            // registryInfo returns multiple named values — decode the whole Result.
+            const info = decodeResultFull(factoryIface, "registryInfo", results[base]);
+            if (!info) {
+              console.error(`Failed to load service ${addr}`);
+              return;
             }
+
+            const caCount = decodeResult<bigint>(registryIface, "getCaCount", results[base + 1], BigInt(0));
+            const paused = decodeResult<boolean>(registryIface, "paused", results[base + 2], false);
+            const reqC = decodeResult<string>(registryIface, "requiredCountry", results[base + 3], ethers.ZeroHash);
+            const reqO = decodeResult<string>(registryIface, "requiredOrg", results[base + 4], ethers.ZeroHash);
+            const reqOU = decodeResult<string>(registryIface, "requiredOrgUnit", results[base + 5], ethers.ZeroHash);
+            const reqCN = decodeResult<string>(registryIface, "requiredCommonName", results[base + 6], ethers.ZeroHash);
+            const constraints = formatFieldConstraints([reqC, reqO, reqOU, reqCN]);
+
+            const name: string = info.name ?? info[1];
+            const maxWallets: number = Number(info.maxWallets ?? info[2]);
+            const minDisclosureMask: number = Number(info.minDisclosureMask ?? info[3]);
+
+            let verified = false;
+            let verifiedUntil: Date | null = null;
+            if (account) {
+              verified = Boolean(decodeResult<boolean>(registryIface, "isVerified", results[base + 7], false));
+              const ts = Number(decodeResult<bigint>(registryIface, "verifiedUntil", results[base + 8], BigInt(0)));
+              verifiedUntil = ts > 0 ? new Date(ts * 1000) : null;
+            }
+
+            let metadata: RegistryMetadata | null = null;
+            try {
+              metadata = await getRegistryMetadata(addr);
+            } catch {
+              // metadata is optional
+            }
+
+            cards.push({
+              address: addr,
+              name,
+              maxWallets,
+              minDisclosureMask,
+              caCount: Number(caCount),
+              paused: Boolean(paused),
+              metadata,
+              verified,
+              verifiedUntil,
+              constraints,
+            });
           }),
         );
 

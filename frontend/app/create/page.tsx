@@ -80,8 +80,9 @@ export default function CreateRegistryPage() {
     (async () => {
       setFeeLoading(true);
       setFeeError(null);
-      // Reads go through the connected wallet's node — require a connection.
-      if (!provider) { setFeeLoading(false); return; }
+      // Reads go through the connected wallet's node; keep the loading state
+      // while it initializes (disconnected users hit the !account screen).
+      if (!provider) return;
       try {
         const cid = chainId || "31337";
         const factoryAddr = getFactoryAddress(cid);

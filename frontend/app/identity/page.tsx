@@ -21,6 +21,7 @@ import {
 import { getRegistryMetadata, type RegistryMetadata } from "@/lib/platform";
 import { truncateHex } from "@/lib/utils";
 import { useReadProvider } from "@/lib/useReadProvider";
+import { multicall, decodeResult, decodeResultFull, type Call3 } from "@/lib/multicall";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -83,10 +84,13 @@ export default function IdentityPage() {
 
   /* ---------- load all registries, filter to verified ---------- */
   useEffect(() => {
-    if (!account || !chainId || !provider) {
+    if (!account) {
       setLoading(false);
       return;
     }
+    // chainId/provider arrive together once the wallet load effect runs; keep
+    // the loading state until then instead of flashing an empty result.
+    if (!chainId || !provider) return;
 
     let cancelled = false;
 
@@ -112,50 +116,47 @@ export default function IdentityPage() {
 
         const results: VerifiedRegistry[] = [];
 
+        // Batch each registry's isVerified + verifiedUntil + registryInfo into
+        // ONE eth_call via Multicall3 (one round-trip for all registries
+        // instead of ~3 per registry through the wallet node).
+        const factoryIface = new ethers.Interface(REGISTRY_FACTORY_ABI);
+        const registryIface = new ethers.Interface(IDENTITY_REGISTRY_ABI);
+        const calls: Call3[] = [];
+        for (const addr of allAddresses) {
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("isVerified", [account]) });
+          calls.push({ target: addr, callData: registryIface.encodeFunctionData("verifiedUntil", [account]) });
+          calls.push({ target: factoryAddr, callData: factoryIface.encodeFunctionData("registryInfo", [addr]) });
+        }
+        const mres = await multicall(provider, calls);
+
         await Promise.all(
-          allAddresses.map(async (addr) => {
-            try {
-              const registry = new ethers.Contract(
-                addr,
-                IDENTITY_REGISTRY_ABI,
-                provider,
-              );
+          allAddresses.map(async (addr, idx) => {
+            const base = idx * 3;
+            if (!decodeResult<boolean>(registryIface, "isVerified", mres[base], false)) return;
+            const until = decodeResult<bigint>(registryIface, "verifiedUntil", mres[base + 1], BigInt(0));
 
-              const [isV, until] = await Promise.all([
-                registry.isVerified(account),
-                registry.verifiedUntil(account),
-              ]);
-
-              if (!Boolean(isV)) return;
-
-              const info = await factory.registryInfo(addr);
-              const name: string = info.name ?? info[1];
-              const maxWallets: number = Number(info.maxWallets ?? info[2]);
-              const minDisclosureMask: number = Number(
-                info.minDisclosureMask ?? info[3],
-              );
-
-              const ts = Number(until);
-              const verifiedUntil = ts > 0 ? new Date(ts * 1000) : null;
-
-              let metadata: RegistryMetadata | null = null;
-              try {
-                metadata = await getRegistryMetadata(addr);
-              } catch {
-                // metadata is optional
-              }
-
-              results.push({
-                address: addr,
-                name,
-                maxWallets,
-                minDisclosureMask,
-                metadata,
-                verifiedUntil,
-              });
-            } catch (e) {
-              console.error(`Failed to check registry ${addr}:`, e);
+            const info = decodeResultFull(factoryIface, "registryInfo", mres[base + 2]);
+            if (!info) {
+              console.error(`Failed to check registry ${addr}`);
+              return;
             }
+
+            const ts = Number(until);
+            let metadata: RegistryMetadata | null = null;
+            try {
+              metadata = await getRegistryMetadata(addr);
+            } catch {
+              // metadata is optional
+            }
+
+            results.push({
+              address: addr,
+              name: info.name ?? info[1],
+              maxWallets: Number(info.maxWallets ?? info[2]),
+              minDisclosureMask: Number(info.minDisclosureMask ?? info[3]),
+              metadata,
+              verifiedUntil: ts > 0 ? new Date(ts * 1000) : null,
+            });
           }),
         );
 

@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { ethers } from "ethers";
 import { IDENTITY_REGISTRY_ABI, getRegistryAddress } from "./contract";
+import { multicall, decodeResult } from "./multicall";
 
 declare global {
   interface Window {
@@ -109,12 +110,14 @@ export function WalletProvider({ children, registryOverride }: { children: React
         // writes use its signer. Same node ⇒ reads and writes never target
         // different chains. (Staleness after a tx is handled by refresh().)
         const bp = new ethers.BrowserProvider(window.ethereum!);
-        setBrowserProvider(bp);
         const signer = await bp.getSigner();
         const network = await bp.getNetwork();
         const cid = network.chainId.toString();
         setChainId(cid);
         setChainName(getChainName(cid));
+        // Expose the provider only once chainId is known, so consumers never
+        // observe a non-null provider paired with a stale/null chainId.
+        setBrowserProvider(bp);
 
         const addr = registryOverride || getRegistryAddress(cid);
         setRegistryAddr(addr);
@@ -125,12 +128,21 @@ export function WalletProvider({ children, registryOverride }: { children: React
         setReadContract(ro);
         setWriteContract(rw);
 
-        const [owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT, delegatedProvingRequired] =
-          await Promise.all([
-            ro.owner(), ro.paused(), ro.caMerkleRoot(), ro.crlMerkleRoot(), ro.maxProofAge(), ro.MAX_WALLETS_PER_CERT(),
-            ro.delegatedProvingRequired().catch(() => false),
-          ]);
-        setContractState({ owner, paused, caMerkleRoot, crlMerkleRoot, maxProofAge, MAX_WALLETS_PER_CERT: Number(MAX_WALLETS_PER_CERT), delegatedProvingRequired: Boolean(delegatedProvingRequired) });
+        // Batch the contract-state reads into a single eth_call via Multicall3
+        // (one round-trip through the wallet node instead of seven).
+        const iface = new ethers.Interface(IDENTITY_REGISTRY_ABI);
+        const stateFns = ["owner", "paused", "caMerkleRoot", "crlMerkleRoot", "maxProofAge", "MAX_WALLETS_PER_CERT", "delegatedProvingRequired"];
+        const res = await multicall(bp, stateFns.map((fn) => ({ target: addr, callData: iface.encodeFunctionData(fn, []) })));
+        const owner = decodeResult<string>(iface, "owner", res[0], ethers.ZeroAddress);
+        setContractState({
+          owner,
+          paused: decodeResult<boolean>(iface, "paused", res[1], false),
+          caMerkleRoot: decodeResult<string>(iface, "caMerkleRoot", res[2], ethers.ZeroHash),
+          crlMerkleRoot: decodeResult<string>(iface, "crlMerkleRoot", res[3], ethers.ZeroHash),
+          maxProofAge: decodeResult<bigint>(iface, "maxProofAge", res[4], BigInt(0)),
+          MAX_WALLETS_PER_CERT: Number(decodeResult<bigint>(iface, "MAX_WALLETS_PER_CERT", res[5], BigInt(0))),
+          delegatedProvingRequired: decodeResult<boolean>(iface, "delegatedProvingRequired", res[6], false),
+        });
         setIsOwner(owner.toLowerCase() === account.toLowerCase());
       } catch (e) {
         console.error("Failed to load contract:", e);
@@ -200,7 +212,15 @@ export function WalletProvider({ children, registryOverride }: { children: React
   // unknown chains (e.g. a local dev chain) are left to the user to add.
   const switchNetwork = useCallback(async () => {
     if (!window.ethereum) return;
-    const hexChainId = "0x" + Number(EXPECTED_CHAIN_ID).toString(16);
+    // EXPECTED_CHAIN_ID is a base-10 string; guard against a mis-set env
+    // (empty / non-numeric / hex) that would otherwise build an invalid
+    // "0xNaN" chainId and fail in a confusing way.
+    const expected = Number(EXPECTED_CHAIN_ID);
+    if (!Number.isInteger(expected) || expected <= 0) {
+      console.error(`Invalid NEXT_PUBLIC_CHAIN_ID: "${EXPECTED_CHAIN_ID}"`);
+      return;
+    }
+    const hexChainId = "0x" + expected.toString(16);
     try {
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
