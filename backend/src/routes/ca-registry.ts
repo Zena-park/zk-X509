@@ -35,9 +35,11 @@ router.post("/pr", async (req, res) => {
     return;
   }
 
-  // Validate input formats to prevent path traversal
-  if (!/^\d+$/.test(chainId)) {
-    res.status(400).json({ error: "Invalid chainId: must be numeric" });
+  // Validate input formats to prevent path traversal + ensure a usable chain
+  // id (reject "0" and unsafe-large integers up front, not as a later 503).
+  const chainIdNum = Number(chainId);
+  if (!/^\d+$/.test(chainId) || !Number.isSafeInteger(chainIdNum) || chainIdNum <= 0) {
+    res.status(400).json({ error: "Invalid chainId: must be a positive integer" });
     return;
   }
   if (!/^0x[0-9a-fA-F]{40}$/.test(registryAddress)) {
@@ -76,7 +78,7 @@ router.post("/pr", async (req, res) => {
     message: expectedMessage,
     signature,
     signatureTimestamp,
-    chainId: Number(chainId),
+    chainId: chainIdNum,
     registryAddress,
   });
   if (!check.ok) {

@@ -45,8 +45,21 @@ function h(fn: Handler) {
 // response) when unauthorized; the handler must then return early.
 async function requireOwner(req: Request, res: Response, addr: string, operation: string, target?: string): Promise<boolean> {
   const body = (req.body ?? {}) as { chainId?: unknown; signature?: unknown; signatureTimestamp?: unknown };
+  // Pin the auth chainId to the registry's REGISTERED chain, not the
+  // client-supplied one. The store is keyed by address alone, so without this
+  // an attacker who owns the same address on another chain could sign with
+  // their key on that chain and overwrite this registry (cross-chain hijack).
+  const existing = await store.get(addr);
+  let chainId: unknown = body.chainId;
+  if (existing?.chainId !== undefined) {
+    if (body.chainId !== undefined && Number(body.chainId) !== existing.chainId) {
+      res.status(400).json({ error: "chainId does not match the registered registry chainId" });
+      return false;
+    }
+    chainId = existing.chainId;
+  }
   const auth = await authorizeRegistryOwner(addr, {
-    chainId: body.chainId,
+    chainId,
     signature: body.signature,
     signatureTimestamp: body.signatureTimestamp,
     operation,

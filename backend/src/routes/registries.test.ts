@@ -169,4 +169,15 @@ describe("registries route — owner-signature auth", () => {
     const res = await request(app).post(`/api/registries/${addrMainnet}/announcements`).send({ title: "t", body: "b" });
     expect(res.status).toBe(401);
   });
+
+  it("rejects a cross-chain write (body chainId != the registered chainId)", async () => {
+    // addrMainnet is registered on MAINNET. An attacker who owns the same
+    // address on SEPOLIA signs for SEPOLIA — must be rejected against the
+    // REGISTERED chain, not the client-supplied one.
+    await putAsOwner(addrMainnet, MAINNET, { listed: true });
+    mockOwner.mockResolvedValue(stranger.address.toLowerCase());
+    const auth = await authFields({ chainId: SEPOLIA, registry: addrMainnet, operation: "update-metadata", wallet: stranger });
+    const res = await request(app).put(`/api/registries/${addrMainnet}`).send({ listed: true, ...auth });
+    expect(res.status).toBe(400);
+  });
 });

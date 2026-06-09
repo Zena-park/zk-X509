@@ -26,7 +26,13 @@ function providerFor(chainId: number): JsonRpcProvider | null {
   if (!url) return null;
   let p = providers.get(chainId);
   if (!p) {
-    p = new JsonRpcProvider(url);
+    // A malformed RPC_URL_<chainId> makes the constructor throw; fail closed
+    // (return null → 503) rather than crashing the server.
+    try {
+      p = new JsonRpcProvider(url);
+    } catch {
+      return null;
+    }
     providers.set(chainId, p);
   }
   return p;

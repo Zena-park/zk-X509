@@ -249,7 +249,7 @@ export async function postAnnouncement(
 export async function putCaGuide(
   address: string,
   caHash: string,
-  guide: { name: string; description?: string; issueUrl?: string; instructions?: string },
+  guide: CaGuide,
   auth: AdminAuth,
 ): Promise<boolean> {
   try {
