@@ -116,7 +116,13 @@ async function main(): Promise<void> {
       console.log(info ? `${addr}  ${info.name}` : addr);
     });
   } else if (cmd === "info") {
-    const registry = positionals[0] && ethers.isAddress(positionals[0]) ? positionals[0] : resolveRegistry(net, flags);
+    let registry: string;
+    if (positionals[0]) {
+      if (!ethers.isAddress(positionals[0])) fail(`Invalid registry address "${positionals[0]}".`);
+      registry = positionals[0];
+    } else {
+      registry = resolveRegistry(net, flags);
+    }
     const [info, policy] = await Promise.all([
       client.getRegistryInfo(registry).catch(() => null),
       client.getRegistryPolicy(registry),

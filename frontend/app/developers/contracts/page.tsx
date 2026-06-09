@@ -9,7 +9,7 @@ export const metadata = {
 const INTERFACE = `interface IIdentityRegistry {
     // --- gating ---
     function isVerified(address wallet) external view returns (bool);
-    function verifiedUntil(address wallet) external view returns (uint256);
+    function verifiedUntil(address wallet) external view returns (uint64);
 
     // --- policy / metadata ---
     function owner() external view returns (address);

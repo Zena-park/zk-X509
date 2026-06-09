@@ -99,8 +99,15 @@ export class ZkX509Client {
 
   /** Factory-level info (name, policy params, creator) for a registry. */
   async getRegistryInfo(registry: string, factory = this.factoryAddress): Promise<RegistryInfo> {
-    const c = new ethers.Contract(this.requireFactory(factory), this.factoryIface, this.provider);
-    return this.toRegistryInfo(registry, await c.registryInfo(registry));
+    const f = this.requireFactory(factory);
+    const c = new ethers.Contract(f, this.factoryIface, this.provider);
+    const info = this.toRegistryInfo(registry, await c.registryInfo(registry));
+    // A registry not registered in the factory reads back as zeros — surface
+    // a clear error instead of a dummy record.
+    if (info.creator === ethers.ZeroAddress) {
+      throw new Error(`Registry ${registry} is not registered in factory ${f}.`);
+    }
+    return info;
   }
 
   /**
@@ -115,8 +122,11 @@ export class ZkX509Client {
     }));
     const res = await multicall(this.provider, calls);
     return registries.map((address, i) => {
-      const info = decodeResultFull(this.factoryIface, "registryInfo", res[i]);
-      return info ? this.toRegistryInfo(address, info) : null;
+      const decoded = decodeResultFull(this.factoryIface, "registryInfo", res[i]);
+      if (!decoded) return null;
+      const info = this.toRegistryInfo(address, decoded);
+      // Not registered in the factory → zeros; report as null (aligned).
+      return info.creator === ethers.ZeroAddress ? null : info;
     });
   }
 

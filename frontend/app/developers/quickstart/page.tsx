@@ -2,11 +2,12 @@ import Link from "next/link";
 import { DevNav } from "@/components/dev/DevNav";
 import { CodeBlock } from "@/components/dev/CodeBlock";
 import { VerificationChecker } from "@/components/dev/VerificationChecker";
+import type { ReactNode } from "react";
 import { DEV_NETWORK } from "@/lib/dev-config";
 
 export const metadata = {
   title: "Quickstart — zk-X509 Developers",
-  description: "Gate your dApp on zk-X509 identity verification in three steps.",
+  description: "Gate your dApp on zk-X509 identity verification in four steps.",
 };
 
 const SOLIDITY = `// SPDX-License-Identifier: MIT
@@ -52,7 +53,7 @@ const ABI = ["function isVerified(address) view returns (bool)"];
 const registry = new ethers.Contract(REGISTRY_ADDRESS, ABI, provider);
 const ok = await registry.isVerified(userAddress);`;
 
-function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
   return (
     <section className="mb-10">
       <div className="flex items-center gap-3 mb-2">
@@ -69,7 +70,7 @@ export default function QuickstartPage() {
     <main className="max-w-4xl mx-auto pt-24 px-8 pb-16">
       <DevNav />
 
-      <h1 className="text-3xl font-headline font-bold text-on-surface mb-3">Gate your dApp in 3 steps</h1>
+      <h1 className="text-3xl font-headline font-bold text-on-surface mb-3">Gate your dApp in 4 steps</h1>
       <p className="text-on-surface-variant leading-relaxed mb-10 max-w-2xl">
         The core integration is a single view call — <code className="font-mono text-tertiary">isVerified(wallet)</code>.
         Pick a registry, read it on-chain or off-chain, and point users to verification.

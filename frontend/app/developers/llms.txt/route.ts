@@ -44,7 +44,7 @@ const ok = await zk.isVerified(REGISTRY_ADDRESS, userAddress);
 ## IdentityRegistry read interface
 
 - isVerified(address wallet) view returns (bool)            // current, non-expired verification
-- verifiedUntil(address wallet) view returns (uint256)      // expiry, unix seconds; 0 if never
+- verifiedUntil(address wallet) view returns (uint64)       // expiry, unix seconds; 0 if never
 - owner() view returns (address)
 - paused() view returns (bool)
 - MAX_WALLETS_PER_CERT() view returns (uint32)

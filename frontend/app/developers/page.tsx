@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ShieldCheck, Boxes, UserCheck, ArrowRight, Terminal, BookOpen, Bot } from "lucide-react";
 import { DevNav } from "@/components/dev/DevNav";
+import type { ReactNode } from "react";
 import { DEV_NETWORK } from "@/lib/dev-config";
 
 export const metadata = {
@@ -16,7 +17,7 @@ const EXAMPLE_REGISTRIES: [string, string][] = [
   ["Relayers", DEV_NETWORK.registries.relayers],
 ];
 
-function PathCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function PathCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
     <div className="glass-panel rounded-2xl p-5 border border-outline-variant/10">
       <div className="flex items-center gap-2 mb-2 text-tertiary">{icon}<h3 className="font-headline font-bold text-on-surface">{title}</h3></div>

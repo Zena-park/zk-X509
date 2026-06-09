@@ -8,7 +8,7 @@
 export const IDENTITY_REGISTRY_ABI = [
   // --- verification status (the gating surface) ---
   "function isVerified(address wallet) view returns (bool)",
-  "function verifiedUntil(address wallet) view returns (uint256)",
+  "function verifiedUntil(address wallet) view returns (uint64)",
   // --- service policy / metadata ---
   "function owner() view returns (address)",
   "function paused() view returns (bool)",

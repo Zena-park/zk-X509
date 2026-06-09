@@ -37,6 +37,7 @@ export function Navbar() {
       { href: "/identity", label: "Verified" },
       { href: `/registry/${registryScope}/admin`, label: "Manage" },
       { href: "/developers", label: "Developers" },
+      { href: "/download", label: "Download" },
       { href: "/faq", label: "FAQ" },
     ];
   }, [registryScope]);
