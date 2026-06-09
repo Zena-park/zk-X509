@@ -181,3 +181,40 @@ describe("registries route — owner-signature auth", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("registries route — content validation (owner-signed)", () => {
+  beforeAll(async () => {
+    await putAsOwner(addrMainnet, MAINNET, { listed: true });
+  });
+
+  it("rejects a ca-guide issue_url that isn't http(s) with 400", async () => {
+    mockOwner.mockResolvedValue(owner.address.toLowerCase());
+    const caHash = "0x" + "ab".repeat(32);
+    const auth = await authFields({ chainId: MAINNET, registry: addrMainnet, operation: "put-ca-guide", target: caHash });
+    const res = await request(app).put(`/api/registries/${addrMainnet}/ca-guides/${caHash}`).send({ name: "X", issue_url: "javascript:alert(1)", ...auth });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a ca-guide with an https issue_url", async () => {
+    mockOwner.mockResolvedValue(owner.address.toLowerCase());
+    const caHash = "0x" + "cd".repeat(32);
+    const auth = await authFields({ chainId: MAINNET, registry: addrMainnet, operation: "put-ca-guide", target: caHash });
+    const res = await request(app).put(`/api/registries/${addrMainnet}/ca-guides/${caHash}`).send({ name: "X", issue_url: "https://ca.example.com", ...auth });
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects an over-long announcement body with 400", async () => {
+    mockOwner.mockResolvedValue(owner.address.toLowerCase());
+    const auth = await authFields({ chainId: MAINNET, registry: addrMainnet, operation: "post-announcement" });
+    const res = await request(app).post(`/api/registries/${addrMainnet}/announcements`).send({ title: "t", body: "x".repeat(9000), ...auth });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an unsafe caHash key (prototype pollution) with 400", async () => {
+    mockOwner.mockResolvedValue(owner.address.toLowerCase());
+    const caHash = "__proto__";
+    const auth = await authFields({ chainId: MAINNET, registry: addrMainnet, operation: "put-ca-guide", target: caHash });
+    const res = await request(app).put(`/api/registries/${addrMainnet}/ca-guides/${caHash}`).send({ name: "X", ...auth });
+    expect(res.status).toBe(400);
+  });
+});

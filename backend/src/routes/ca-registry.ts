@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { createCaRegistryPr, type CaRegistryFiles } from "../services/github";
 import { verifyFreshOwnerSignature } from "../util/registryAuth";
+import { isUnsafeKey } from "../util/validate";
+
+// Neutralize markdown-significant chars so request-supplied names can't inject
+// @mentions / #refs or break out of inline-code spans in the generated PR.
+const mdSafe = (s: string): string => s.replace(/[`\r\n]/g, " ");
 
 interface CaGuide {
   name: string;
@@ -100,11 +105,13 @@ router.post("/pr", async (req, res) => {
   try {
     // Build merged CAs — keys must be lowercase hex, name + description only
     const allCas: Record<string, { name: string; description?: string }> = {};
-    for (const [k, v] of Object.entries(existingCas)) {
-      allCas[k.toLowerCase()] = { name: v.name, ...(v.description ? { description: v.description } : {}) };
+    for (const [k, v] of Object.entries(existingCas ?? {})) {
+      const key = k.toLowerCase();
+      if (isUnsafeKey(key)) continue; // prototype-pollution guard
+      allCas[key] = { name: v.name, ...(v.description ? { description: v.description } : {}) };
     }
     if (operation === "add-ca" || operation === "update") {
-      for (const cert of certs) {
+      for (const cert of (certs ?? [])) {
         allCas[cert.hashHex.toLowerCase()] = {
           name: cert.guide?.name || "Unknown CA",
           ...(cert.guide?.description ? { description: cert.guide.description } : {}),
@@ -165,7 +172,7 @@ router.post("/pr", async (req, res) => {
       : "Update";
 
     const buildTitle = (isNew: boolean) =>
-      `[${buildOpTag(isNew)}] ${chainId} ${registryAddress.toLowerCase()} - ${serviceName || "Unnamed Service"}`;
+      `[${buildOpTag(isNew)}] ${chainId} ${registryAddress.toLowerCase()} - ${mdSafe(serviceName || "Unnamed Service")}`;
 
     const buildBody = (isNew: boolean) => {
       const opTag = buildOpTag(isNew);
@@ -177,7 +184,7 @@ router.post("/pr", async (req, res) => {
         `- **Admin**: \`${adminAddress.toLowerCase()}\``,
         "",
         "### CA Certificates",
-        ...certs.map((c) => `- \`${c.hashHex.toLowerCase().slice(0, 20)}...\` — ${c.guide?.name || "Unknown"}`),
+        ...(certs ?? []).map((c) => `- \`${c.hashHex.toLowerCase().slice(0, 20)}...\` — \`${mdSafe(c.guide?.name || "Unknown")}\``),
         "",
         `Signed by admin at ${signedAt}.`,
       ].join("\n");
@@ -186,9 +193,10 @@ router.post("/pr", async (req, res) => {
     const result = await createCaRegistryPr(files, buildTitle, buildBody);
     res.json(result);
   } catch (e: unknown) {
+    // Log internally; return a generic error so raw GitHub API responses /
+    // internal paths / the fork username aren't echoed to the caller.
     console.error("Failed to create CA registry PR:", e);
-    const message = e instanceof Error ? e.message : "Unknown error";
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: "Failed to create CA registry PR" });
   }
 });
 
