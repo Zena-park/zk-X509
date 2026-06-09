@@ -77,8 +77,14 @@ export function VerificationChecker() {
         disabled={loading}
         className="w-full px-5 py-2.5 bg-primary text-surface font-headline font-bold text-sm rounded-full active:scale-95 transition-transform disabled:opacity-60 flex items-center justify-center gap-2"
       >
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-        {loading ? "Checking…" : "Check verification"}
+        {loading ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Checking…
+          </>
+        ) : (
+          "Check verification"
+        )}
       </button>
 
       {error && <p className="mt-3 text-sm text-error">{error}</p>}
