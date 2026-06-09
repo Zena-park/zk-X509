@@ -11,14 +11,12 @@ import {
   Shield,
   ShieldCheck,
   LayoutGrid,
-  AlertTriangle,
 } from "lucide-react";
-import { useWallet, getChainName } from "@/lib/wallet";
+import { useWallet, getChainName, EXPECTED_CHAIN_ID } from "@/lib/wallet";
 import {
   REGISTRY_FACTORY_ABI,
   IDENTITY_REGISTRY_ABI,
   getFactoryAddress,
-  getRpcUrl,
 } from "@/lib/contract";
 import { getRegistryMetadata, getListedRegistries, type RegistryMetadata } from "@/lib/platform";
 import { useReadProvider } from "@/lib/useReadProvider";
@@ -60,24 +58,20 @@ function maskToLabels(mask: number): string {
 }
 
 
-function DeployedOnInfo({ chainName, chainId, rpcUrl, walletChainId }: { chainName: string; chainId: string; rpcUrl: string; walletChainId?: string }) {
-  const mismatch = walletChainId && walletChainId !== chainId;
+// Wrong-network warning + one-click switch lives globally in the Navbar
+// badge, so this just states where the service is deployed and that reads
+// flow through the connected wallet.
+function DeployedOnInfo({ chainName, chainId }: { chainName: string; chainId: string }) {
   return (
     <div className="mt-3 space-y-2">
       <div className="flex items-center gap-3 text-xs text-on-surface-variant">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10">
           Deployed on <span className="font-bold text-on-surface">{chainName} ({chainId})</span>
         </span>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10 font-mono truncate max-w-xs">
-          {rpcUrl}
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container-low/50 rounded-full border border-outline-variant/10">
+          Reads via connected wallet
         </span>
       </div>
-      {mismatch && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-error/20 bg-error/5 text-sm text-error">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          Your wallet is on Chain {walletChainId}. Please switch to <span className="font-bold">{chainName} ({chainId})</span>.
-        </div>
-      )}
     </div>
   );
 }
@@ -101,6 +95,9 @@ export default function DashboardPage() {
     (async () => {
       setLoading(true);
       setError(null);
+
+      // Reads go through the connected wallet's node — require a connection.
+      if (!provider) { setLoading(false); return; }
 
       try {
         const cid = chainId || "31337";
@@ -234,8 +231,7 @@ export default function DashboardPage() {
   const availableRegistries = registries.filter(
     (r) => !r.verified && !r.paused,
   );
-  const rpcUrl = getRpcUrl();
-  const serviceChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+  const serviceChainId = EXPECTED_CHAIN_ID;
   const currentChainName = getChainName(serviceChainId);
 
   /* ---------- not connected ---------- */
@@ -260,7 +256,7 @@ export default function DashboardPage() {
             Grant your wallet the trust that services require. Each service defines its own trust level
             — from basic identity verification to full regulatory compliance. Choose a service and prove your qualifications with zero privacy exposure.
           </p>
-          <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} rpcUrl={rpcUrl} walletChainId={chainId || undefined} />
+          <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} />
         </motion.header>
 
         {/* Connect prompt */}
@@ -362,7 +358,7 @@ export default function DashboardPage() {
           Grant your wallet the trust that services require. Each service defines its own trust level
           — from basic identity verification to full regulatory compliance.
         </p>
-        <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} rpcUrl={rpcUrl} walletChainId={chainId || undefined} />
+        <DeployedOnInfo chainName={currentChainName} chainId={serviceChainId} />
       </motion.header>
 
 

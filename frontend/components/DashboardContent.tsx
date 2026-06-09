@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { ShieldCheck, Wallet, Send, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { useWallet } from "@/lib/wallet";
+import { useWallet, EXPECTED_CHAIN_ID } from "@/lib/wallet";
 import { truncateHex, isValidHex, parseContractError, formatFieldConstraints } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -320,7 +320,7 @@ export default function DashboardContent() {
                   </div>
                   <div className="bg-surface-container rounded-lg p-2.5">
                     <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-0.5">Chain ID</p>
-                    <p className="font-mono text-xs text-tertiary">{process.env.NEXT_PUBLIC_CHAIN_ID || "31337"}</p>
+                    <p className="font-mono text-xs text-tertiary">{EXPECTED_CHAIN_ID}</p>
                   </div>
                   <div className="bg-surface-container rounded-lg p-2.5">
                     <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-0.5">Your Wallet</p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { ethers } from "ethers";
 import { IDENTITY_REGISTRY_ABI, getRegistryAddress } from "./contract";
 
@@ -28,27 +28,46 @@ interface WalletContext {
   account: string | null;
   chainId: string | null;
   chainName: string;
+  /** Chain the service is deployed on (NEXT_PUBLIC_CHAIN_ID). */
+  expectedChainId: string;
+  /** Wallet connected but on a different chain than the service is deployed on. */
+  isWrongNetwork: boolean;
   registryAddr: string;
   isOwner: boolean;
   contractState: ContractState | null;
+  /**
+   * The connected wallet's node (MetaMask), used for ALL reads. There is no
+   * separate operator RPC — reads and writes share this one provider, so they
+   * can never target different chains. Null until a wallet is connected.
+   */
+  browserProvider: ethers.BrowserProvider | null;
   readContract: ethers.Contract | null;
   writeContract: ethers.Contract | null;
   connect: () => Promise<void>;
   disconnect: () => void;
+  /** Prompt the wallet to switch to expectedChainId. */
+  switchNetwork: () => Promise<void>;
   refresh: () => void;
 }
+
+/** Chain the service is deployed on — reads/writes must happen here. */
+export const EXPECTED_CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
 
 const WalletCtx = createContext<WalletContext>({
   account: null,
   chainId: null,
   chainName: "",
+  expectedChainId: EXPECTED_CHAIN_ID,
+  isWrongNetwork: false,
   registryAddr: "",
   isOwner: false,
   contractState: null,
+  browserProvider: null,
   readContract: null,
   writeContract: null,
   connect: async () => {},
   disconnect: () => {},
+  switchNetwork: async () => {},
   refresh: () => {},
 });
 
@@ -70,7 +89,7 @@ export function WalletProvider({ children, registryOverride }: { children: React
   const [chainId, setChainId] = useState<string | null>(null);
   const [chainName, setChainName] = useState("");
   const [registryAddr, setRegistryAddr] = useState("");
-  const readProviderRef = useRef<ethers.JsonRpcProvider | null>(null);
+  const [browserProvider, setBrowserProvider] = useState<ethers.BrowserProvider | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [contractState, setContractState] = useState<ContractState | null>(null);
   const [readContract, setReadContract] = useState<ethers.Contract | null>(null);
@@ -84,9 +103,15 @@ export function WalletProvider({ children, registryOverride }: { children: React
     if (!account || !window.ethereum) return;
     (async () => {
       try {
-        const browserProvider = new ethers.BrowserProvider(window.ethereum!);
-        const signer = await browserProvider.getSigner();
-        const network = await browserProvider.getNetwork();
+        // Single provider for the whole app: the connected wallet's node.
+        // All node access (read AND write) flows through MetaMask — there is
+        // no separate/operator RPC. Reads use the BrowserProvider directly,
+        // writes use its signer. Same node ⇒ reads and writes never target
+        // different chains. (Staleness after a tx is handled by refresh().)
+        const bp = new ethers.BrowserProvider(window.ethereum!);
+        setBrowserProvider(bp);
+        const signer = await bp.getSigner();
+        const network = await bp.getNetwork();
         const cid = network.chainId.toString();
         setChainId(cid);
         setChainName(getChainName(cid));
@@ -95,13 +120,7 @@ export function WalletProvider({ children, registryOverride }: { children: React
         setRegistryAddr(addr);
         if (!addr || addr === ethers.ZeroAddress) return;
 
-        // JsonRpcProvider for reads — avoids MetaMask BrowserProvider caching issues
-        const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
-        if (!readProviderRef.current) {
-          readProviderRef.current = new ethers.JsonRpcProvider(rpcUrl);
-        }
-        const readProvider = readProviderRef.current;
-        const ro = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, readProvider);
+        const ro = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, bp);
         const rw = new ethers.Contract(addr, IDENTITY_REGISTRY_ABI, signer);
         setReadContract(ro);
         setWriteContract(rw);
@@ -171,15 +190,34 @@ export function WalletProvider({ children, registryOverride }: { children: React
     setRegistryAddr("");
     setIsOwner(false);
     setContractState(null);
+    setBrowserProvider(null);
     setReadContract(null);
     setWriteContract(null);
   }
 
+  // Prompt the wallet to switch to the chain the service is deployed on.
+  // Sepolia/mainnet are already known to MetaMask, so a plain switch works;
+  // unknown chains (e.g. a local dev chain) are left to the user to add.
+  const switchNetwork = useCallback(async () => {
+    if (!window.ethereum) return;
+    const hexChainId = "0x" + Number(EXPECTED_CHAIN_ID).toString(16);
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: hexChainId }],
+      });
+    } catch (e) {
+      console.error("Failed to switch network:", e);
+    }
+  }, []);
+
+  const isWrongNetwork = account !== null && chainId !== null && chainId !== EXPECTED_CHAIN_ID;
+
   return (
     <WalletCtx.Provider value={{
-      account, chainId, chainName, registryAddr, isOwner,
-      contractState, readContract, writeContract,
-      connect, disconnect, refresh,
+      account, chainId, chainName, expectedChainId: EXPECTED_CHAIN_ID, isWrongNetwork,
+      registryAddr, isOwner, contractState, browserProvider, readContract, writeContract,
+      connect, disconnect, switchNetwork, refresh,
     }}>
       {children}
     </WalletCtx.Provider>

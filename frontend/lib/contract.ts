@@ -589,8 +589,3 @@ export const REGISTRY_FACTORY_ABI = [
 export function getFactoryAddress(_chainId: string): string {
   return process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "";
 }
-
-/// RPC URL from environment variable, or fallback.
-export function getRpcUrl(): string {
-  return process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
-}

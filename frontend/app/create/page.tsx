@@ -80,6 +80,8 @@ export default function CreateRegistryPage() {
     (async () => {
       setFeeLoading(true);
       setFeeError(null);
+      // Reads go through the connected wallet's node — require a connection.
+      if (!provider) { setFeeLoading(false); return; }
       try {
         const cid = chainId || "31337";
         const factoryAddr = getFactoryAddress(cid);
@@ -107,7 +109,7 @@ export default function CreateRegistryPage() {
 
   /* ---------- token metadata ---------- */
   useEffect(() => {
-    if (isNativeFee) return;
+    if (isNativeFee || !provider) return;
     (async () => {
       try {
         const token = new ethers.Contract(feeToken, ERC20_ABI, provider);

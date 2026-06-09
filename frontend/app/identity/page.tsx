@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import { ethers } from "ethers";
 import Link from "next/link";
 import {
-  Wallet,
   Loader2,
   ArrowRight,
   Shield,
@@ -13,6 +12,7 @@ import {
 } from "lucide-react";
 import { useWallet } from "@/lib/wallet";
 import CopyButton from "@/components/CopyButton";
+import { ConnectWalletScreen } from "@/components/ConnectWalletScreen";
 import {
   REGISTRY_FACTORY_ABI,
   IDENTITY_REGISTRY_ABI,
@@ -74,7 +74,7 @@ function CopyableAddress({
 /* ================================================================== */
 
 export default function IdentityPage() {
-  const { account, chainId, connect } = useWallet();
+  const { account, chainId } = useWallet();
 
   const [verified, setVerified] = useState<VerifiedRegistry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +83,7 @@ export default function IdentityPage() {
 
   /* ---------- load all registries, filter to verified ---------- */
   useEffect(() => {
-    if (!account || !chainId) {
+    if (!account || !chainId || !provider) {
       setLoading(false);
       return;
     }
@@ -179,29 +179,7 @@ export default function IdentityPage() {
 
   /* ---------- not connected ---------- */
   if (!account) {
-    return (
-      <main className="max-w-6xl mx-auto pt-24 px-8 pb-12 flex items-center justify-center min-h-[60vh]">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-panel rounded-3xl p-12 text-center max-w-md"
-        >
-          <Wallet className="w-12 h-12 text-on-surface-variant mx-auto mb-4" />
-          <h2 className="text-2xl font-headline font-bold text-on-surface mb-2">
-            Connect Wallet
-          </h2>
-          <p className="text-on-surface-variant mb-6">
-            Connect your wallet to view your verification status.
-          </p>
-          <button
-            onClick={connect}
-            className="px-8 py-3 bg-primary text-surface font-headline font-bold rounded-full hover:scale-105 active:scale-95 transition-all"
-          >
-            Connect
-          </button>
-        </motion.div>
-      </main>
-    );
+    return <ConnectWalletScreen message="Connect your wallet to view your verification status." />;
   }
 
   /* ================================================================ */
