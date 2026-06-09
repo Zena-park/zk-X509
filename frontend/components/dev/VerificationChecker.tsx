@@ -68,8 +68,9 @@ export function VerificationChecker() {
         value={registry}
         onChange={(e) => setRegistry(e.target.value.trim())}
         placeholder="0x…"
-        className="w-full mb-4 px-3 py-2 rounded-lg bg-surface-container-low/60 border border-outline-variant/20 text-sm font-mono text-on-surface focus:outline-none focus:border-tertiary/50"
+        className="w-full mb-1 px-3 py-2 rounded-lg bg-surface-container-low/60 border border-outline-variant/20 text-sm font-mono text-on-surface focus:outline-none focus:border-tertiary/50"
       />
+      <p className="text-[11px] text-on-surface-variant/60 mb-4">Default is zkScatter&apos;s example registry — swap in your own.</p>
 
       <button
         type="button"

@@ -24,7 +24,8 @@ import { ZkX509Client } from "@tokamak-network/zk-x509-sdk";
 const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia.publicnode.com");
 const zk = new ZkX509Client(provider, { network: "sepolia" });
 
-const REGISTRY = "0x3cF6A96f1970053ffDf957074F988aD53D13ada3"; // your service's registry
+// example: zkScatter's "Users" registry on Sepolia. Deploy your own via the factory for your service.
+const REGISTRY = "0x3cF6A96f1970053ffDf957074F988aD53D13ada3";
 const user = "0xc1eba383D94c6021160042491A5dfaF1d82694E6";
 
 if (await zk.isVerified(REGISTRY, user)) {

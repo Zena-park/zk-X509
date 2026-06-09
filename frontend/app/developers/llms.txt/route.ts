@@ -66,9 +66,11 @@ const ok = await zk.isVerified(REGISTRY_ADDRESS, userAddress);
 Sepolia (chainId 11155111):
 - RegistryFactory: 0x9e937dF6ac0E85979622519068412A518fa085d9
 - SP1 verifier:    0x261a1619cC63273de7c64872B769305732761888
-- Registry "Users":    0x3cF6A96f1970053ffDf957074F988aD53D13ada3
-- Registry "Relayers": 0x9fDE6182B1fd10F2eDfE15b704FE95787C170914
 - Public RPC: https://ethereum-sepolia.publicnode.com
+
+Example registries operated by the zkScatter service (a reference consumer of zk-X509) — for inspection/testing only, NOT for integrators to gate on. Deploy your own via the RegistryFactory.
+- "Users" (zkScatter):    0x3cF6A96f1970053ffDf957074F988aD53D13ada3
+- "Relayers" (zkScatter): 0x9fDE6182B1fd10F2eDfE15b704FE95787C170914
 
 ## SDK + CLI
 

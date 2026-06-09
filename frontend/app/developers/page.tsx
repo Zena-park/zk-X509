@@ -8,7 +8,11 @@ export const metadata = {
 };
 
 const FACTORY = "0x9e937dF6ac0E85979622519068412A518fa085d9";
-const REGISTRIES: [string, string][] = [
+const VERIFIER = "0x261a1619cC63273de7c64872B769305732761888";
+// Reference registries operated by the zkScatter service (a consumer of
+// zk-X509). They exist to inspect / try the checker against — build your own
+// service with its own registry via the factory.
+const EXAMPLE_REGISTRIES: [string, string][] = [
   ["Users", "0x3cF6A96f1970053ffDf957074F988aD53D13ada3"],
   ["Relayers", "0x9fDE6182B1fd10F2eDfE15b704FE95787C170914"],
 ];
@@ -66,8 +70,12 @@ export default function DevelopersPage() {
         </a>
       </div>
 
-      <h2 className="text-lg font-headline font-bold text-on-surface mb-3">Deployments</h2>
-      <div className="glass-panel rounded-2xl p-5 border border-outline-variant/10 text-sm">
+      <h2 className="text-lg font-headline font-bold text-on-surface mb-3">Protocol contracts</h2>
+      <p className="text-sm text-on-surface-variant mb-3 max-w-2xl">
+        The shared infrastructure every integrator uses. Deploy your own registry through the{" "}
+        <Link href="/create" className="text-tertiary hover:underline">factory</Link> — one registry per service.
+      </p>
+      <div className="glass-panel rounded-2xl p-5 border border-outline-variant/10 text-sm mb-8">
         <div className="flex items-center justify-between py-1.5 border-b border-outline-variant/10">
           <span className="text-on-surface-variant">Network</span>
           <span className="font-headline text-on-surface">Sepolia (11155111)</span>
@@ -76,9 +84,22 @@ export default function DevelopersPage() {
           <span className="text-on-surface-variant">RegistryFactory</span>
           <span className="font-mono text-xs text-on-surface">{FACTORY}</span>
         </div>
-        {REGISTRIES.map(([name, addr]) => (
+        <div className="flex items-center justify-between py-1.5">
+          <span className="text-on-surface-variant">SP1 verifier</span>
+          <span className="font-mono text-xs text-on-surface">{VERIFIER}</span>
+        </div>
+      </div>
+
+      <h2 className="text-lg font-headline font-bold text-on-surface mb-2">Example registries</h2>
+      <p className="text-sm text-on-surface-variant mb-3 max-w-2xl">
+        Operated by the <span className="text-on-surface font-semibold">zkScatter</span> service (a reference consumer of
+        zk-X509) — handy to inspect or to try the live checker against. They are <span className="text-on-surface">not</span> yours
+        to gate on; deploy your own registry for your service.
+      </p>
+      <div className="glass-panel rounded-2xl p-5 border border-outline-variant/10 text-sm">
+        {EXAMPLE_REGISTRIES.map(([name, addr]) => (
           <div key={addr} className="flex items-center justify-between py-1.5">
-            <span className="text-on-surface-variant">{name} registry</span>
+            <span className="text-on-surface-variant">{name} <span className="text-on-surface-variant/50">(zkScatter)</span></span>
             <span className="font-mono text-xs text-on-surface">{addr}</span>
           </div>
         ))}

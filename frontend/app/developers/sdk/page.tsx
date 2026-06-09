@@ -14,6 +14,7 @@ import { ZkX509Client } from "@tokamak-network/zk-x509-sdk";
 const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia.publicnode.com");
 const zk = new ZkX509Client(provider, { network: "sepolia" });
 
+// your registry (deploy via the factory); 0x3cF6… is zkScatter's example
 const REGISTRY = "0x3cF6A96f1970053ffDf957074F988aD53D13ada3";
 
 // gating

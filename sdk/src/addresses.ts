@@ -6,7 +6,11 @@ export interface NetworkConfig {
   registryFactory: string;
   /** SP1 verifier the registries verify proofs against. */
   sp1Verifier: string;
-  /** Well-known example registries run by the zk-X509 team (name → address). */
+  /**
+   * Example registries operated by the zkScatter service (a reference consumer
+   * of zk-X509), name → address. For trying things out — deploy your own
+   * registry via `registryFactory` for your service.
+   */
   registries: Record<string, string>;
   /** A public RPC usable when the caller doesn't pass their own. */
   defaultRpcUrl: string;

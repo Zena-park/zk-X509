@@ -38,6 +38,8 @@ import { ZkX509Client } from "@tokamak-network/zk-x509-sdk";
 const provider = new ethers.JsonRpcProvider(rpcUrl); // or a wallet BrowserProvider
 const zk = new ZkX509Client(provider, { network: "sepolia" });
 
+// your service's registry (deploy via the factory).
+// 0x3cF6… below is zkScatter's, shown only as a runnable example.
 const REGISTRY = "0x3cF6A96f1970053ffDf957074F988aD53D13ada3";
 if (await zk.isVerified(REGISTRY, userAddress)) {
   // ...grant access
@@ -72,11 +74,12 @@ export default function QuickstartPage() {
         Pick a registry, read it on-chain or off-chain, and point users to verification.
       </p>
 
-      <Step n={1} title="Pick or deploy a registry">
-        Use a shared registry (e.g. the Sepolia <span className="text-on-surface font-mono text-xs">Users</span> registry{" "}
-        <span className="font-mono text-xs">0x3cF6…ada3</span>), or{" "}
-        <Link href="/create" className="text-tertiary hover:underline">deploy your own</Link> with custom CA trust anchors
-        and certificate-field constraints.
+      <Step n={1} title="Deploy your registry">
+        Each service gets its own registry.{" "}
+        <Link href="/create" className="text-tertiary hover:underline">Deploy one via the factory</Link> with your CA trust
+        anchors and certificate-field constraints. (The Sepolia{" "}
+        <span className="font-mono text-xs">Users</span> registry <span className="font-mono text-xs">0x3cF6…ada3</span> belongs
+        to the zkScatter service — use it only to try the checker below, not to gate your app.)
       </Step>
 
       <Step n={2} title="Read verification — on-chain">
