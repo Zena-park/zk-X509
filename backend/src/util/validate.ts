@@ -33,7 +33,12 @@ export const LIMITS = {
   tags: 32,
 } as const;
 
-/** True when `s` is absent/non-string, or a string within `max` chars. */
+/**
+ * True when `s` is absent, or a string within `max` chars. A present non-string
+ * (array/object) is REJECTED — otherwise `["x".repeat(1e6)]` would pass the
+ * length check (array.length === 1) and bypass the cap once stringified.
+ */
 export function withinLen(s: unknown, max: number): boolean {
-  return typeof s !== "string" || s.length <= max;
+  if (s === undefined || s === null) return true;
+  return typeof s === "string" && s.length <= max;
 }

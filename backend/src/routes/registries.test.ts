@@ -210,6 +210,15 @@ describe("registries route — content validation (owner-signed)", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects a non-string announcement body (array bypasses the length cap) with 400", async () => {
+    // An array's `.length` is its element count, so a non-string body must be
+    // rejected outright — else `["x".repeat(1e6)]` would slip past the cap.
+    mockOwner.mockResolvedValue(owner.address.toLowerCase());
+    const auth = await authFields({ chainId: MAINNET, registry: addrMainnet, operation: "post-announcement" });
+    const res = await request(app).post(`/api/registries/${addrMainnet}/announcements`).send({ title: "t", body: ["x".repeat(100)], ...auth });
+    expect(res.status).toBe(400);
+  });
+
   it("rejects an unsafe caHash key (prototype pollution) with 400", async () => {
     mockOwner.mockResolvedValue(owner.address.toLowerCase());
     const caHash = "__proto__";

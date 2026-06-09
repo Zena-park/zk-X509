@@ -5,7 +5,9 @@ import { isUnsafeKey } from "../util/validate";
 
 // Neutralize markdown-significant chars so request-supplied names can't inject
 // @mentions / #refs or break out of inline-code spans in the generated PR.
-const mdSafe = (s: string): string => s.replace(/[`\r\n]/g, " ");
+// Strips backticks/newlines and inserts a zero-width space after @ / # so they
+// don't autolink (titles aren't code spans, so this matters there too).
+const mdSafe = (s: string): string => s.replace(/[`\r\n]/g, " ").replace(/([@#])/g, "$1\u200B");
 
 interface CaGuide {
   name: string;
@@ -118,7 +120,7 @@ router.post("/pr", async (req, res) => {
         };
       }
     } else if (operation === "remove-ca") {
-      for (const cert of certs) {
+      for (const cert of (certs ?? [])) {
         delete allCas[cert.hashHex.toLowerCase()];
       }
     }

@@ -214,6 +214,7 @@ router.post("/:address/announcements", h(async (req, res) => {
     res.status(400).json({ error: "title/body too long" });
     return;
   }
+  if (!entry.announcements) entry.announcements = []; // legacy entries may lack it
   if (entry.announcements.length >= LIMITS.announcements) {
     res.status(400).json({ error: `Too many announcements (max ${LIMITS.announcements}); delete some first` });
     return;
@@ -242,6 +243,7 @@ router.delete("/:address/announcements/:id", h(async (req, res) => {
     res.status(404).json({ error: "Registry not found" });
     return;
   }
+  if (!entry.announcements) entry.announcements = []; // legacy entries may lack it
 
   const idx = entry.announcements.findIndex((a: Announcement) => a.id === annId);
   if (idx === -1) {
@@ -277,6 +279,13 @@ router.put("/:address/ca-guides/:caHash", h(async (req, res) => {
     return;
   }
   const entry = gate.entry ?? makeDefaultEntry();
+  // A registry first created via this route needs its chainId recorded (for
+  // network-scoped queries); legacy entries may lack `caGuides`.
+  if (entry.chainId === undefined && req.body?.chainId !== undefined) {
+    const parsed = coerceChainId(req.body.chainId);
+    if (parsed !== null) entry.chainId = parsed;
+  }
+  if (!entry.caGuides) entry.caGuides = {};
 
   const { name, description, issue_url, instructions } = req.body;
   if (!name) {
