@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { ethers } from "ethers";
 import { IDENTITY_REGISTRY_ABI, getRegistryAddress } from "./contract";
 import { multicall, decodeResult } from "./multicall";
@@ -91,6 +91,11 @@ export function WalletProvider({ children, registryOverride }: { children: React
   const [chainName, setChainName] = useState("");
   const [registryAddr, setRegistryAddr] = useState("");
   const [browserProvider, setBrowserProvider] = useState<ethers.BrowserProvider | null>(null);
+  // Cache one BrowserProvider for the lifetime of window.ethereum and reuse it
+  // across refreshes — ethers recommends a single instance, and recreating one
+  // per refresh() churns providers needlessly. A chain change triggers a full
+  // page reload (below), which resets this ref.
+  const bpRef = useRef<ethers.BrowserProvider | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [contractState, setContractState] = useState<ContractState | null>(null);
   const [readContract, setReadContract] = useState<ethers.Contract | null>(null);
@@ -109,7 +114,10 @@ export function WalletProvider({ children, registryOverride }: { children: React
         // no separate/operator RPC. Reads use the BrowserProvider directly,
         // writes use its signer. Same node ⇒ reads and writes never target
         // different chains. (Staleness after a tx is handled by refresh().)
-        const bp = new ethers.BrowserProvider(window.ethereum!);
+        if (!bpRef.current) {
+          bpRef.current = new ethers.BrowserProvider(window.ethereum!);
+        }
+        const bp = bpRef.current;
         const signer = await bp.getSigner();
         const network = await bp.getNetwork();
         const cid = network.chainId.toString();
