@@ -103,7 +103,9 @@ router.post("/pr", async (req, res) => {
   // Single-use: this signature is published in the generated PR, so it must not
   // be replayable (with attacker-substituted, unsigned cert content) within its
   // freshness window. Consume it now, before doing any work.
-  if (!(await getReplayGuard().consume(`ca:${signature}`, 600))) {
+  // Lowercase the signature: hex casing varies for the same bytes, so a
+  // re-cased replay must map to the same single-use key.
+  if (!(await getReplayGuard().consume(`ca:${String(signature).toLowerCase()}`, 600))) {
     res.status(409).json({ error: "Signature already used" });
     return;
   }
