@@ -11,6 +11,7 @@ const defaultNavLinks = [
   { href: "/dashboard", label: "Explore" },
   { href: "/identity", label: "Verified" },
   { href: "/admin", label: "My Console" },
+  { href: "/developers", label: "Developers" },
   { href: "/download", label: "Download" },
   { href: "/faq", label: "FAQ" },
 ];
@@ -35,7 +36,7 @@ export function Navbar() {
       { href: "/dashboard", label: "Explore" },
       { href: "/identity", label: "Verified" },
       { href: `/registry/${registryScope}/admin`, label: "Manage" },
-      { href: "/download", label: "Download" },
+      { href: "/developers", label: "Developers" },
       { href: "/faq", label: "FAQ" },
     ];
   }, [registryScope]);

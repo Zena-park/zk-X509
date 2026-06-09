@@ -1,0 +1,88 @@
+import Link from "next/link";
+import { ShieldCheck, Boxes, UserCheck, ArrowRight, Terminal, BookOpen, Bot } from "lucide-react";
+import { DevNav } from "@/components/dev/DevNav";
+
+export const metadata = {
+  title: "Developers — zk-X509",
+  description: "Integrate zk-X509 on-chain identity verification: gate your dApp on verified wallets, deploy a registry, or use the SDK & CLI.",
+};
+
+const FACTORY = "0x9e937dF6ac0E85979622519068412A518fa085d9";
+const REGISTRIES: [string, string][] = [
+  ["Users", "0x3cF6A96f1970053ffDf957074F988aD53D13ada3"],
+  ["Relayers", "0x9fDE6182B1fd10F2eDfE15b704FE95787C170914"],
+];
+
+function PathCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="glass-panel rounded-2xl p-5 border border-outline-variant/10">
+      <div className="flex items-center gap-2 mb-2 text-tertiary">{icon}<h3 className="font-headline font-bold text-on-surface">{title}</h3></div>
+      <p className="text-sm text-on-surface-variant leading-relaxed">{children}</p>
+    </div>
+  );
+}
+
+export default function DevelopersPage() {
+  return (
+    <main className="max-w-4xl mx-auto pt-24 px-8 pb-16">
+      <DevNav />
+
+      <h1 className="text-3xl font-headline font-bold text-on-surface mb-3">Build with zk-X509</h1>
+      <p className="text-on-surface-variant leading-relaxed mb-8 max-w-2xl">
+        zk-X509 lets a wallet prove it holds a valid X.509 certificate identity with a zero-knowledge proof.
+        The proof is verified on-chain and the wallet is marked <span className="text-on-surface font-semibold">verified</span> in a
+        registry — no personal data ever touches the chain. Your contract or dApp then gates access on a single
+        view call: <code className="font-mono text-tertiary">isVerified(wallet)</code>.
+      </p>
+
+      <div className="grid sm:grid-cols-3 gap-4 mb-10">
+        <PathCard icon={<ShieldCheck className="w-4 h-4" />} title="Gate access">
+          Require a verified identity in your Solidity contract or frontend — the killer use case.
+        </PathCard>
+        <PathCard icon={<Boxes className="w-4 h-4" />} title="Deploy a registry">
+          Spin up your own registry with custom CA trust anchors and field constraints (country, org…).
+        </PathCard>
+        <PathCard icon={<UserCheck className="w-4 h-4" />} title="Onboard users">
+          Send users to get verified, then read their status on-chain.
+        </PathCard>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4 mb-10">
+        <Link href="/developers/quickstart" className="glass-panel rounded-2xl p-5 border border-outline-variant/10 hover:border-tertiary/30 transition-colors group">
+          <div className="flex items-center gap-2 mb-1"><BookOpen className="w-4 h-4 text-tertiary" /><span className="font-headline font-bold text-on-surface">Quickstart</span><ArrowRight className="w-4 h-4 ml-auto text-on-surface-variant group-hover:text-tertiary transition-colors" /></div>
+          <p className="text-sm text-on-surface-variant">Gate your dApp in three steps — Solidity + TypeScript, with a live checker.</p>
+        </Link>
+        <Link href="/developers/sdk" className="glass-panel rounded-2xl p-5 border border-outline-variant/10 hover:border-tertiary/30 transition-colors group">
+          <div className="flex items-center gap-2 mb-1"><Terminal className="w-4 h-4 text-tertiary" /><span className="font-headline font-bold text-on-surface">SDK &amp; CLI</span><ArrowRight className="w-4 h-4 ml-auto text-on-surface-variant group-hover:text-tertiary transition-colors" /></div>
+          <p className="text-sm text-on-surface-variant"><code className="font-mono">@tokamak-network/zk-x509-sdk</code> — read helpers + a terminal CLI.</p>
+        </Link>
+        <Link href="/developers/contracts" className="glass-panel rounded-2xl p-5 border border-outline-variant/10 hover:border-tertiary/30 transition-colors group">
+          <div className="flex items-center gap-2 mb-1"><ShieldCheck className="w-4 h-4 text-tertiary" /><span className="font-headline font-bold text-on-surface">Contract reference</span><ArrowRight className="w-4 h-4 ml-auto text-on-surface-variant group-hover:text-tertiary transition-colors" /></div>
+          <p className="text-sm text-on-surface-variant">The <code className="font-mono">IIdentityRegistry</code> interface, events, and ABIs.</p>
+        </Link>
+        <a href="/developers/llms.txt" target="_blank" rel="noreferrer" className="glass-panel rounded-2xl p-5 border border-outline-variant/10 hover:border-tertiary/30 transition-colors group">
+          <div className="flex items-center gap-2 mb-1"><Bot className="w-4 h-4 text-tertiary" /><span className="font-headline font-bold text-on-surface">For AI agents</span><ArrowRight className="w-4 h-4 ml-auto text-on-surface-variant group-hover:text-tertiary transition-colors" /></div>
+          <p className="text-sm text-on-surface-variant">A machine-readable <code className="font-mono">llms.txt</code> describing the whole integration.</p>
+        </a>
+      </div>
+
+      <h2 className="text-lg font-headline font-bold text-on-surface mb-3">Deployments</h2>
+      <div className="glass-panel rounded-2xl p-5 border border-outline-variant/10 text-sm">
+        <div className="flex items-center justify-between py-1.5 border-b border-outline-variant/10">
+          <span className="text-on-surface-variant">Network</span>
+          <span className="font-headline text-on-surface">Sepolia (11155111)</span>
+        </div>
+        <div className="flex items-center justify-between py-1.5 border-b border-outline-variant/10">
+          <span className="text-on-surface-variant">RegistryFactory</span>
+          <span className="font-mono text-xs text-on-surface">{FACTORY}</span>
+        </div>
+        {REGISTRIES.map(([name, addr]) => (
+          <div key={addr} className="flex items-center justify-between py-1.5">
+            <span className="text-on-surface-variant">{name} registry</span>
+            <span className="font-mono text-xs text-on-surface">{addr}</span>
+          </div>
+        ))}
+      </div>
+    </main>
+  );
+}
