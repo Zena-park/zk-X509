@@ -2,6 +2,7 @@ import { Router } from "express";
 import { createCaRegistryPr, type CaRegistryFiles } from "../services/github";
 import { verifyFreshOwnerSignature } from "../util/registryAuth";
 import { isUnsafeKey } from "../util/validate";
+import { getReplayGuard } from "../util/replayGuard";
 
 // Neutralize markdown-significant chars so request-supplied names can't inject
 // @mentions / #refs or break out of inline-code spans in the generated PR.
@@ -96,6 +97,14 @@ router.post("/pr", async (req, res) => {
   // yields a clearer error if a client ever sends a mismatched adminAddress.
   if (check.recovered !== adminAddress.toLowerCase()) {
     res.status(403).json({ error: "Signature does not match adminAddress" });
+    return;
+  }
+
+  // Single-use: this signature is published in the generated PR, so it must not
+  // be replayable (with attacker-substituted, unsigned cert content) within its
+  // freshness window. Consume it now, before doing any work.
+  if (!(await getReplayGuard().consume(`ca:${signature}`, 600))) {
+    res.status(409).json({ error: "Signature already used" });
     return;
   }
 
