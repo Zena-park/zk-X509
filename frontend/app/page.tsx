@@ -8,7 +8,6 @@ import {
   Building,
   Lock,
   Zap,
-  Eye,
   EyeOff,
   ArrowRight,
   ShieldCheck,
@@ -18,6 +17,7 @@ import {
   Server,
   Globe,
   FileText,
+  Boxes,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -37,6 +37,15 @@ const stagger = (delay: number) => ({
   viewport: { once: true },
   transition: { duration: 0.5, delay },
 });
+
+/* Static accent classes — written out in full so Tailwind's JIT keeps them in
+   the production build (it can't see classes built from `bg-${var}` at runtime). */
+const ACCENT = {
+  tertiary: { soft: "bg-tertiary/10", text: "text-tertiary" },
+  secondary: { soft: "bg-secondary/10", text: "text-secondary" },
+} as const;
+
+type AccentColor = keyof typeof ACCENT;
 
 /* ------------------------------------------------------------------ */
 /*  Trust Animation Section – Step Cards                                */
@@ -259,15 +268,13 @@ export default function LandingPage() {
                 arXiv Paper
               </a>
               <span className="text-outline-variant/30">|</span>
-              <a
-                href="https://gist.science/paper/2603.25190"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/built-with"
                 className="inline-flex items-center gap-2 text-sm text-on-surface-variant hover:text-tertiary transition-colors"
               >
-                <FileText className="w-4 h-4" />
-                Read Summary
-              </a>
+                <Boxes className="w-4 h-4" />
+                Built with zk-X509
+              </Link>
             </div>
           </motion.div>
         </div>
@@ -317,18 +324,18 @@ export default function LandingPage() {
               requirement: "Only employees or partners can access",
               solution:
                 "Proves ownership of private CA certificate on-chain",
-              color: "tertiary",
+              color: "tertiary" as AccentColor,
             },
-          ].map((card, i) => (
+          ].map((card, i) => {
+            const accent = ACCENT[card.color as AccentColor];
+            return (
             <motion.div
               key={i}
               {...stagger(i * 0.15)}
               className="glass-panel rounded-3xl p-8 relative group"
             >
-              <div
-                className={`p-3 bg-${card.color}/10 rounded-xl w-fit mb-6`}
-              >
-                <card.icon className={`w-6 h-6 text-${card.color}`} />
+              <div className={`p-3 ${accent.soft} rounded-xl w-fit mb-6`}>
+                <card.icon className={`w-6 h-6 ${accent.text}`} />
               </div>
               <h3 className="text-xl font-headline font-bold text-primary mb-1">
                 {card.title}
@@ -351,7 +358,8 @@ export default function LandingPage() {
                 </div>
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -447,7 +455,7 @@ export default function LandingPage() {
             ].map((stat, i) => (
               <motion.div key={i} {...stagger(i * 0.15)}>
                 <div
-                  className={`text-4xl md:text-5xl font-headline font-bold text-${stat.color} mb-2`}
+                  className={`text-4xl md:text-5xl font-headline font-bold ${ACCENT[stat.color as AccentColor].text} mb-2`}
                 >
                   {stat.value}
                 </div>
@@ -509,6 +517,12 @@ export default function LandingPage() {
             className="hover:text-primary transition-colors"
           >
             FAQ
+          </Link>
+          <Link
+            href="/built-with"
+            className="hover:text-primary transition-colors"
+          >
+            Built with
           </Link>
           <Link
             href="/admin"

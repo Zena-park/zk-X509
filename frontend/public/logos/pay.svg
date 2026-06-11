@@ -1,0 +1,6 @@
+<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Payouts: a send / scatter paper-plane -->
+  <path d="M43 5 3 21l15.5 5.2L24 43l5.6-13.7L43 5Z" fill="#6bff8f"/>
+  <path d="M43 5 18.5 26.2" stroke="#062a13" stroke-width="1.6" stroke-opacity="0.35" stroke-linecap="round"/>
+  <circle cx="35" cy="13" r="2.4" fill="#062a13" fill-opacity="0.25"/>
+</svg>

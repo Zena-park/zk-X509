@@ -1,0 +1,11 @@
+<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Trading: candlestick chart -->
+  <g fill="#6b8bff">
+    <rect x="9" y="18" width="6" height="16" rx="1.5"/>
+    <rect x="11" y="11" width="2" height="30" rx="1"/>
+    <rect x="21" y="23" width="6" height="13" rx="1.5"/>
+    <rect x="23" y="17" width="2" height="26" rx="1"/>
+    <rect x="33" y="13" width="6" height="19" rx="1.5"/>
+    <rect x="35" y="8" width="2" height="29" rx="1"/>
+  </g>
+</svg>
