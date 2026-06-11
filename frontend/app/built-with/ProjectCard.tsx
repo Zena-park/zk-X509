@@ -5,11 +5,19 @@ import { motion, type TargetAndTransition } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getChainName } from "@/lib/wallet";
-import { isSafeListingUrl, normalizeAccent, type CardAnimation, type CardStyle, type Project, type ProjectStatus } from "./projects";
+import { isSafeListingUrl, normalizeAccent, type CardAnimation, type CardFont, type CardStyle, type Project, type ProjectStatus } from "./projects";
 
 const STATUS_STYLES: Record<ProjectStatus, { dot: string; label: string; text: string }> = {
   live: { dot: "bg-secondary", label: "Live", text: "text-secondary" },
   building: { dot: "bg-amber-400", label: "Building", text: "text-amber-400" },
+};
+
+// Card text font → an app font class. Fixed set (no arbitrary font-family), so
+// a listing can never inject CSS via the font field.
+const FONT_CLASS: Record<CardFont, string> = {
+  grotesk: "font-headline",
+  sans: "font-body",
+  mono: "font-mono",
 };
 
 /** Append a 2-hex-digit alpha to a normalized #rrggbb color. */
@@ -105,12 +113,17 @@ function LogoTile({
 }
 
 export function ProjectCard({ project, index }: { project: Project; index: number }) {
+  const [bgBroken, setBgBroken] = useState(false);
   const accent = normalizeAccent(project.accent);
   const style: CardStyle = project.cardStyle ?? "classic";
   const status = STATUS_STYLES[project.status];
   const isBold = style === "bold";
   // Only link out to a safe URL — never render an unsafe scheme into href.
   const url = isSafeListingUrl(project.url) ? project.url : undefined;
+  // Background image only from a safe URL; rendered as an <img> (no CSS
+  // injection) behind a readability overlay.
+  const background = isSafeListingUrl(project.background) ? project.background : undefined;
+  const fontClass = FONT_CLASS[project.font ?? "grotesk"];
 
   // Per-template container treatment. The background/border come from
   // cardBackground() (accent-tinted inline style); the base class handles the
@@ -118,6 +131,7 @@ export function ProjectCard({ project, index }: { project: Project; index: numbe
   const isMinimal = style === "minimal";
   const containerClass = cn(
     "relative h-full rounded-2xl border overflow-hidden transition-colors",
+    fontClass,
     isMinimal ? "p-5" : "p-6",
     isMinimal ? "bg-surface-container border-outline-variant/15" : "glass-panel border-outline-variant/10"
   );
@@ -133,12 +147,27 @@ export function ProjectCard({ project, index }: { project: Project; index: numbe
       <motion.div whileHover={hoverEffect(project.animation ?? "none", accent)} className="h-full rounded-2xl">
         <CardWrapper url={url}>
           <div className={containerClass} style={cardBackground(style, accent)}>
+            {background && !bgBroken && (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={background}
+                  alt=""
+                  aria-hidden="true"
+                  loading="lazy"
+                  onError={() => setBgBroken(true)}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+                {/* Readability overlay so text stays legible over any image */}
+                <div className="absolute inset-0 bg-surface/82" />
+              </>
+            )}
             <div className="relative">
               <div className="flex items-start gap-3 mb-3">
                 <LogoTile project={project} accent={accent} size={isBold ? "lg" : "sm"} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-headline font-bold text-lg text-on-surface truncate">{project.name}</h3>
+                    <h3 className="font-bold text-lg text-on-surface truncate">{project.name}</h3>
                     {url && (
                       <ArrowUpRight className="w-4 h-4 shrink-0 text-on-surface-variant group-hover:text-tertiary transition-colors" />
                     )}

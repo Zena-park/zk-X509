@@ -23,10 +23,11 @@ describe("built-with listings", () => {
     }
   });
 
-  it("only uses safe http(s) / root-relative url and logo", () => {
+  it("only uses safe http(s) / root-relative url, logo, and background", () => {
     for (const p of PROJECTS) {
       expect(isSafeListingUrl(p.url), `${p.name} has an unsafe url: ${p.url}`).toBe(true);
       expect(isSafeListingUrl(p.logo), `${p.name} has an unsafe logo: ${p.logo}`).toBe(true);
+      expect(isSafeListingUrl(p.background), `${p.name} has an unsafe background: ${p.background}`).toBe(true);
     }
   });
 

@@ -3,6 +3,7 @@ import { Space_Grotesk, Manrope, Inter, JetBrains_Mono } from "next/font/google"
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { AssistantWidget } from "@/components/AssistantWidget";
+import { Footer } from "@/components/Footer";
 import { WalletProvider } from "@/lib/wallet";
 
 const spaceGrotesk = Space_Grotesk({
@@ -45,10 +46,13 @@ export default function RootLayout({
       lang="en"
       className={`${spaceGrotesk.variable} ${manrope.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="min-h-screen bg-surface text-on-surface font-body">
+      <body className="min-h-screen flex flex-col bg-surface text-on-surface font-body">
         <WalletProvider>
           <Navbar />
-          {children}
+          {/* Grows to fill the viewport so the footer sticks to the bottom on
+              short pages instead of floating up under the content. */}
+          <div className="flex-1">{children}</div>
+          <Footer />
           <AssistantWidget />
         </WalletProvider>
       </body>

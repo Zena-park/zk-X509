@@ -61,6 +61,16 @@ export type CardStyle = (typeof CARD_STYLES)[number];
 export const CARD_ANIMATIONS = ["none", "float", "pulse", "glow"] as const;
 export type CardAnimation = (typeof CARD_ANIMATIONS)[number];
 
+/**
+ * Card text font, chosen from a fixed set (mapped to the app's font classes in
+ * ProjectCard) — never an arbitrary font-family, so a listing can't inject CSS.
+ *  - grotesk: the default display font.
+ *  - sans:    a softer sans.
+ *  - mono:    monospace.
+ */
+export const CARD_FONTS = ["grotesk", "sans", "mono"] as const;
+export type CardFont = (typeof CARD_FONTS)[number];
+
 export interface Project {
   name: string;
   /** One or two sentences: what it is and how it uses zk-X509. */
@@ -73,10 +83,14 @@ export interface Project {
   url?: string;
   /** Logo image URL (https or /public path); falls back to the initial if absent. */
   logo?: string;
+  /** Card background image URL (https or /public path); shown behind a readability overlay. */
+  background?: string;
   /** Brand color as a hex string (#RGB / #RRGGBB); tints the card. */
   accent?: string;
   /** Card layout template; defaults to "classic". */
   cardStyle?: CardStyle;
+  /** Card text font; defaults to "grotesk". */
+  font?: CardFont;
   /** Idle animation; defaults to "none". */
   animation?: CardAnimation;
   /** Contact for the listing — not rendered on the card. */
@@ -175,8 +189,10 @@ export const PROJECTS: Project[] = [
   //   chains: ["11155111"], // chain IDs as strings
   //   url: "https://your-project.xyz", // service URL
   //   logo: "https://your-project.xyz/logo.png", // optional logo image
+  //   background: "https://your-project.xyz/card-bg.jpg", // optional card background image
   //   accent: "#6b5bff", // optional brand color (#RGB / #RRGGBB)
   //   cardStyle: "gradient", // classic | gradient | bold | minimal
+  //   font: "grotesk", // grotesk | sans | mono
   //   animation: "float", // none | float | pulse | glow
   //   contactEmail: "you@your-project.xyz", // listing contact (not shown on the card)
   //   owner: "0xYourWalletAddress", // the account that controls this listing
