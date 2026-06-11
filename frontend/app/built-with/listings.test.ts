@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { verifyMessage } from "ethers";
-import { PROJECTS, normalizeAccent } from "./projects";
+import { PROJECTS, normalizeAccent, isSafeListingUrl } from "./projects";
 import { canonicalListingMessage } from "./listingSignature";
 
 /**
@@ -20,6 +20,22 @@ describe("built-with listings", () => {
     for (const p of PROJECTS) {
       if (p.accent === undefined) continue;
       expect(normalizeAccent(p.accent), `${p.name} has an invalid accent: ${p.accent}`).toBeDefined();
+    }
+  });
+
+  it("only uses safe http(s) / root-relative url and logo", () => {
+    for (const p of PROJECTS) {
+      expect(isSafeListingUrl(p.url), `${p.name} has an unsafe url: ${p.url}`).toBe(true);
+      expect(isSafeListingUrl(p.logo), `${p.name} has an unsafe logo: ${p.logo}`).toBe(true);
+    }
+  });
+
+  it("uses non-empty numeric chain IDs", () => {
+    for (const p of PROJECTS) {
+      expect(p.chains.length, `${p.name} has no chains`).toBeGreaterThan(0);
+      for (const id of p.chains) {
+        expect(/^[0-9]+$/.test(id), `${p.name} has a non-numeric chain ID: ${id}`).toBe(true);
+      }
     }
   });
 

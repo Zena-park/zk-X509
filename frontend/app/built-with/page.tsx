@@ -12,7 +12,7 @@ import { ProjectCard } from "./ProjectCard";
 const CATEGORY_FILTERS = ["All", ...CATEGORIES] as const;
 const AVAILABLE_CHAINS = Array.from(
   new Set(PROJECTS.flatMap((p) => p.chains))
-).sort();
+).sort((a, b) => Number(a) - Number(b));
 
 /** A pill button used by both the network and category filter rows. */
 function FilterPill({

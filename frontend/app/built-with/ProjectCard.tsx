@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { motion, type TargetAndTransition } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getChainName } from "@/lib/wallet";
-import { normalizeAccent, type CardAnimation, type CardStyle, type Project, type ProjectStatus } from "./projects";
+import { isSafeListingUrl, normalizeAccent, type CardAnimation, type CardStyle, type Project, type ProjectStatus } from "./projects";
 
 const STATUS_STYLES: Record<ProjectStatus, { dot: string; label: string; text: string }> = {
   live: { dot: "bg-secondary", label: "Live", text: "text-secondary" },
@@ -77,6 +78,10 @@ function LogoTile({
   size: "sm" | "lg";
 }) {
   const dim = size === "lg" ? "w-14 h-14 text-2xl rounded-2xl" : "w-11 h-11 text-lg rounded-xl";
+  const [broken, setBroken] = useState(false);
+  // Only render the logo if it's a safe URL and hasn't failed to load; otherwise
+  // fall back to the project's initial.
+  const showLogo = project.logo && isSafeListingUrl(project.logo) && !broken;
   return (
     <div
       className={cn(
@@ -86,9 +91,14 @@ function LogoTile({
       )}
       style={accent ? { backgroundColor: alpha(accent, "22"), color: accent } : undefined}
     >
-      {project.logo ? (
+      {showLogo ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={project.logo} alt={`${project.name} logo`} className="w-full h-full object-contain" />
+        <img
+          src={project.logo}
+          alt={`${project.name} logo`}
+          className="w-full h-full object-contain"
+          onError={() => setBroken(true)}
+        />
       ) : (
         project.name.charAt(0).toUpperCase()
       )}
@@ -101,6 +111,8 @@ export function ProjectCard({ project, index }: { project: Project; index: numbe
   const style: CardStyle = project.cardStyle ?? "classic";
   const status = STATUS_STYLES[project.status];
   const isBold = style === "bold";
+  // Only link out to a safe URL — never render an unsafe scheme into href.
+  const url = isSafeListingUrl(project.url) ? project.url : undefined;
 
   // Per-template container treatment. The background/border come from
   // cardBackground() (accent-tinted inline style); the base class handles the
@@ -121,7 +133,7 @@ export function ProjectCard({ project, index }: { project: Project; index: numbe
       className="h-full"
     >
       <motion.div animate={idleAnimation(project.animation ?? "none", accent)} className="h-full rounded-2xl">
-        <CardWrapper url={project.url}>
+        <CardWrapper url={url}>
           <div className={containerClass} style={cardBackground(style, accent)}>
             <div className="relative">
               <div className="flex items-start gap-3 mb-3">
@@ -129,7 +141,7 @@ export function ProjectCard({ project, index }: { project: Project; index: numbe
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="font-headline font-bold text-lg text-on-surface truncate">{project.name}</h3>
-                    {project.url && (
+                    {url && (
                       <ArrowUpRight className="w-4 h-4 shrink-0 text-on-surface-variant group-hover:text-tertiary transition-colors" />
                     )}
                   </div>

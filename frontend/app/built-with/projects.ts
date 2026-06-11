@@ -105,6 +105,24 @@ export function normalizeAccent(input?: string): string | undefined {
   return `#${hex.toLowerCase()}`;
 }
 
+/**
+ * A listing's `url` and `logo` are rendered into `<a href>` / `<img src>`, so
+ * only safe schemes are allowed: absolute http(s), or a root-relative `/path`
+ * (but not protocol-relative `//`). Rejects `javascript:` / `data:` etc. so an
+ * owner-signed entry can't smuggle in an XSS/phishing link past the signature
+ * check. `undefined` is allowed (the field is optional). Enforced in CI.
+ */
+export function isSafeListingUrl(value?: string): boolean {
+  if (value === undefined) return true;
+  if (value.startsWith("/")) return !value.startsWith("//");
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export const PROJECTS: Project[] = [
   {
     name: "zk-scatter Pay",

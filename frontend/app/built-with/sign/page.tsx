@@ -69,6 +69,9 @@ export default function SignListingPage() {
   const [audience, setAudience] = useState("");
 
   const [signature, setSignature] = useState<string | null>(null);
+  // The exact message that `signature` was produced for — used to detect edits
+  // made after signing, so a stale signature is never paired with a new draft.
+  const [signedMessage, setSignedMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [signing, setSigning] = useState(false);
 
@@ -93,10 +96,15 @@ export default function SignListingPage() {
     };
   }, [name, description, category, status, chains, url, logo, accent, cardStyle, animation, contactEmail, audience, account]);
 
-  // Changing any field invalidates a prior signature.
   const message = useMemo(() => canonicalListingMessage(draft), [draft]);
+
+  // The signature is only valid while the draft still matches the message it was
+  // signed for. Changing any field re-derives `message`, so it stops matching.
+  const isSignatureCurrent = signature !== null && signedMessage === message;
   const signedEntry: Project | null =
-    signature && account ? { ...draft, owner: account, signature } : null;
+    isSignatureCurrent && account ? { ...draft, owner: account, signature: signature! } : null;
+  // Re-signing is required whenever the draft changed after a signature.
+  const draftChangedSinceSign = signature !== null && !isSignatureCurrent;
 
   async function handleSign() {
     setError(null);
@@ -109,15 +117,13 @@ export default function SignListingPage() {
       }
       const sig = await signer.signMessage(message);
       setSignature(sig);
+      setSignedMessage(message);
     } catch (e) {
       setError((e as { message?: string })?.message ?? "Signing failed.");
     } finally {
       setSigning(false);
     }
   }
-
-  // Re-signing is required whenever the draft changes after a signature.
-  const draftChangedSinceSign = signature !== null && (!signedEntry || signedEntry.owner !== account);
 
   return (
     <main className="max-w-6xl mx-auto pt-24 px-8 pb-16">
