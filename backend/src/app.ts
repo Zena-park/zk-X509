@@ -3,6 +3,7 @@ import express, { Express } from "express";
 import cors from "cors";
 import registriesRouter from "./routes/registries";
 import caRegistryRouter from "./routes/ca-registry";
+import chatRouter from "./routes/chat";
 
 /// Build the Express app WITHOUT binding a port. `server.ts` calls `.listen()`
 /// for local dev; the Firebase Functions entry (`firebase.ts`) hands this app
@@ -24,6 +25,7 @@ export function createApp(): Express {
   // Routes
   app.use("/api/registries", registriesRouter);
   app.use("/api/ca-registry", caRegistryRouter);
+  app.use("/api/chat", chatRouter);
 
   // Health check
   app.get("/health", (_req, res) => {

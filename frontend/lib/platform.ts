@@ -8,7 +8,7 @@ const CA_REGISTRY_BASE =
   process.env.NEXT_PUBLIC_CA_REGISTRY_URL ||
   "https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
 // ── Owner-signature auth for CMS writes ──────────
 // The backend authorizes registry-CMS writes by recovering the signer of a

@@ -6,8 +6,6 @@ import {
   ChevronUp,
   ChevronDown,
   Mail,
-  ArrowRight,
-  MessageSquare,
   Shield,
   Zap,
 } from "lucide-react";
@@ -279,11 +277,6 @@ export default function FAQPage() {
           </aside>
         </div>
       </main>
-
-      {/* Floating Action Button */}
-      <button className="fixed bottom-10 right-10 w-16 h-16 rounded-full bg-secondary text-black shadow-2xl shadow-secondary/20 flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-50">
-        <MessageSquare className="w-8 h-8" />
-      </button>
     </>
   );
 }
