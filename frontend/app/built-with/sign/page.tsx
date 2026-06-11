@@ -9,9 +9,11 @@ import CopyButton from "@/components/CopyButton";
 import {
   ADD_PROJECT_PR_URL,
   CARD_ANIMATIONS,
+  CARD_FONTS,
   CARD_STYLES,
   CATEGORIES,
   type CardAnimation,
+  type CardFont,
   type CardStyle,
   type Project,
 } from "../projects";
@@ -40,8 +42,10 @@ function toEntryLiteral(p: Project): string {
     field("chains", p.chains),
     field("url", p.url),
     field("logo", p.logo),
+    field("background", p.background),
     field("accent", p.accent),
     field("cardStyle", p.cardStyle),
+    field("font", p.font),
     field("animation", p.animation),
     field("contactEmail", p.contactEmail),
     field("audience", p.audience),
@@ -62,8 +66,10 @@ export default function SignListingPage() {
   const [chains, setChains] = useState("11155111");
   const [url, setUrl] = useState("");
   const [logo, setLogo] = useState("");
+  const [background, setBackground] = useState("");
   const [accent, setAccent] = useState("#6b5bff");
   const [cardStyle, setCardStyle] = useState<CardStyle>("classic");
+  const [font, setFont] = useState<CardFont>("grotesk");
   const [animation, setAnimation] = useState<CardAnimation>("none");
   const [contactEmail, setContactEmail] = useState("");
   const [audience, setAudience] = useState("");
@@ -87,14 +93,16 @@ export default function SignListingPage() {
       chains: chains.split(",").map(trim).filter(Boolean),
       url: opt(url),
       logo: opt(logo),
+      background: opt(background),
       accent: opt(accent),
       cardStyle,
+      font,
       animation,
       contactEmail: opt(contactEmail),
       audience: opt(audience),
       owner: account ?? undefined,
     };
-  }, [name, description, category, status, chains, url, logo, accent, cardStyle, animation, contactEmail, audience, account]);
+  }, [name, description, category, status, chains, url, logo, background, accent, cardStyle, font, animation, contactEmail, audience, account]);
 
   const message = useMemo(() => canonicalListingMessage(draft), [draft]);
 
@@ -152,8 +160,10 @@ export default function SignListingPage() {
           <Text label="Networks (chain IDs, comma-separated)" value={chains} onChange={setChains} placeholder="11155111, 1" />
           <Text label="Service URL" value={url} onChange={setUrl} placeholder="https://your-project.xyz" />
           <Text label="Logo URL (optional)" value={logo} onChange={setLogo} placeholder="https://your-project.xyz/logo.png" />
-          <div className="grid grid-cols-2 gap-4">
+          <Text label="Background image URL (optional)" value={background} onChange={setBackground} placeholder="https://your-project.xyz/card-bg.jpg" />
+          <div className="grid grid-cols-3 gap-4">
             <Select label="Card template" value={cardStyle} onChange={(v) => setCardStyle(v as CardStyle)} options={[...CARD_STYLES]} />
+            <Select label="Font" value={font} onChange={(v) => setFont(v as CardFont)} options={[...CARD_FONTS]} />
             <Select label="Animation" value={animation} onChange={(v) => setAnimation(v as CardAnimation)} options={[...CARD_ANIMATIONS]} />
           </div>
           <div className="grid grid-cols-2 gap-4 items-end">
