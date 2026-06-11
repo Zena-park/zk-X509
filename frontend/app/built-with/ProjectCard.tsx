@@ -15,23 +15,21 @@ const STATUS_STYLES: Record<ProjectStatus, { dot: string; label: string; text: s
 /** Append a 2-hex-digit alpha to a normalized #rrggbb color. */
 const alpha = (hex: string, aa: string) => `${hex}${aa}`;
 
-/** Idle animation loops, keyed by the project's `animation` choice. */
-function idleAnimation(animation: CardAnimation, accent?: string): TargetAndTransition | undefined {
+/**
+ * Hover effect keyed by the project's `animation` choice. Applied via
+ * `whileHover` (a single settle on hover, reverting on leave) — NOT an infinite
+ * loop, so idle cards don't repaint every frame.
+ */
+function hoverEffect(animation: CardAnimation, accent?: string): TargetAndTransition | undefined {
+  const transition = { duration: 0.3, ease: "easeOut" } as const;
   switch (animation) {
     case "float":
-      return { y: [0, -9, 0], transition: { duration: 3.2, repeat: Infinity, ease: "easeInOut" } };
+      return { y: -8, transition };
     case "pulse":
-      return { scale: [1, 1.035, 1], transition: { duration: 2.6, repeat: Infinity, ease: "easeInOut" } };
+      return { scale: 1.03, transition };
     case "glow": {
       const c = accent ?? "#6b5bff";
-      return {
-        boxShadow: [
-          `0 0 0px ${alpha(c, "00")}`,
-          `0 0 30px ${alpha(c, "73")}`,
-          `0 0 0px ${alpha(c, "00")}`,
-        ],
-        transition: { duration: 2.8, repeat: Infinity, ease: "easeInOut" },
-      };
+      return { boxShadow: `0 0 30px ${alpha(c, "73")}`, transition };
     }
     default:
       return undefined;
@@ -132,7 +130,7 @@ export function ProjectCard({ project, index }: { project: Project; index: numbe
       transition={{ duration: 0.25, delay: index * 0.04 }}
       className="h-full"
     >
-      <motion.div animate={idleAnimation(project.animation ?? "none", accent)} className="h-full rounded-2xl">
+      <motion.div whileHover={hoverEffect(project.animation ?? "none", accent)} className="h-full rounded-2xl">
         <CardWrapper url={url}>
           <div className={containerClass} style={cardBackground(style, accent)}>
             <div className="relative">

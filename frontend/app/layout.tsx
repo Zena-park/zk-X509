@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Manrope, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
+import { AssistantWidget } from "@/components/AssistantWidget";
 import { WalletProvider } from "@/lib/wallet";
 
 const spaceGrotesk = Space_Grotesk({
@@ -48,6 +49,7 @@ export default function RootLayout({
         <WalletProvider>
           <Navbar />
           {children}
+          <AssistantWidget />
         </WalletProvider>
       </body>
     </html>

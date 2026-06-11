@@ -12,6 +12,13 @@ import { createApp } from "./app";
 // unchanged.
 const CA_REGISTRY_GITHUB_TOKEN = defineSecret("CA_REGISTRY_GITHUB_TOKEN");
 
+// Tokamak AI (LiteLLM, OpenAI-compatible) credentials for the /api/chat
+// assistant. Both the key and the internal gateway URL are secrets; the model
+// name is non-sensitive and read from plain env (LITELLM_MODEL, default in
+// services/assistant.ts). Injected into process.env at runtime.
+const LITELLM_API_KEY = defineSecret("LITELLM_API_KEY");
+const LITELLM_BASE_URL = defineSecret("LITELLM_BASE_URL");
+
 // Store selection is centralized in getRegistryStore(): on Cloud Functions
 // (`K_SERVICE` set by the runtime) it defaults to Firestore, since the file
 // store has no durable disk here. No env mutation needed at this entry point.
@@ -19,6 +26,6 @@ const CA_REGISTRY_GITHUB_TOKEN = defineSecret("CA_REGISTRY_GITHUB_TOKEN");
 // (single source of truth) — do NOT also set onRequest's `cors`, which would
 // layer a second, broader policy and produce inconsistent headers.
 export const api = onRequest(
-  { secrets: [CA_REGISTRY_GITHUB_TOKEN], region: "us-central1" },
+  { secrets: [CA_REGISTRY_GITHUB_TOKEN, LITELLM_API_KEY, LITELLM_BASE_URL], region: "us-central1" },
   createApp()
 );
