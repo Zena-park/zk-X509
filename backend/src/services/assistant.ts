@@ -11,7 +11,7 @@ import OpenAI from "openai";
 const DEFAULT_MODEL = "qwen-3.6";
 
 /** System prompt: a self-contained zk-X509 expert briefing. Keep the key facts
- *  aligned with the user-facing FAQ (frontend/app/faq/faqData.ts). */
+ *  aligned with the user-facing FAQ (frontend/app/faq/page.tsx). */
 const SYSTEM_PROMPT = `You are the zk-X509 Assistant — the chatbot on the zk-X509 website. You are an expert guide for zk-X509, a system that proves identity on a blockchain using existing X.509 certificates (government eID, banking certificates, corporate PKI) via Zero-Knowledge Proofs, without revealing any personal information.
 
 SCOPE — this is a hard rule:

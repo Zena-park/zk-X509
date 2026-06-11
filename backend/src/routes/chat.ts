@@ -11,6 +11,26 @@ const router = Router();
 const MAX_MESSAGES = 20;
 const MAX_CHARS = 4000;
 
+// Best-effort per-IP rate limit. This endpoint is unauthenticated and forwards
+// to a paid LLM, so cap how often one client can call it. Note: the counter is
+// in-memory and therefore per Cloud Functions instance — it blunts trivial
+// abuse but isn't a hard global limit (a shared store would be needed for that).
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 15; // requests per IP per window
+const hits = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimited(ip: string): boolean {
+  const now = Date.now();
+  const e = hits.get(ip);
+  if (!e || now > e.resetAt) {
+    hits.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    if (hits.size > 5000) for (const [k, v] of hits) if (now > v.resetAt) hits.delete(k);
+    return false;
+  }
+  e.count += 1;
+  return e.count > RATE_MAX;
+}
+
 function parseMessages(body: unknown): ChatMessage[] | null {
   if (!body || typeof body !== "object") return null;
   const raw = (body as { messages?: unknown }).messages;
@@ -29,24 +49,40 @@ function parseMessages(body: unknown): ChatMessage[] | null {
 }
 
 router.post("/", async (req: Request, res: Response) => {
+  // Behind the Cloud Functions proxy the real client IP is in X-Forwarded-For.
+  const ip = req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() || req.ip || "unknown";
+  if (rateLimited(ip)) {
+    res.status(429).json({ error: "Too many requests. Please slow down." });
+    return;
+  }
+
   const messages = parseMessages(req.body);
   if (!messages) {
     res.status(400).json({ error: "Body must be { messages: [{role, content}, ...] } ending in a user turn." });
     return;
   }
 
-  // Stream as plain text so the widget can render tokens as they arrive.
-  res.set("Content-Type", "text/plain; charset=utf-8");
-  res.set("Cache-Control", "no-store");
+  // Headers committed only at the first chunk, so the catch below can still send
+  // a JSON error if the upstream fails before any byte is written.
+  let started = false;
+  const startStream = () => {
+    if (started) return;
+    started = true;
+    res.set("Content-Type", "text/plain; charset=utf-8");
+    res.set("Cache-Control", "no-store");
+    res.set("X-Accel-Buffering", "no"); // ask reverse proxies not to buffer the stream
+  };
+
   try {
     for await (const delta of streamReply(messages)) {
+      startStream();
       res.write(delta);
     }
+    startStream(); // ensure a 200 even on an empty reply
     res.end();
   } catch (err) {
     console.error("chat error:", err);
-    // If nothing was streamed yet, return a clean JSON error; otherwise the
-    // headers/body are already committed, so just close the stream.
+    // If nothing was streamed yet, headers aren't committed → clean JSON error.
     if (!res.headersSent) {
       res.status(502).json({ error: "Assistant is unavailable right now." });
     } else {

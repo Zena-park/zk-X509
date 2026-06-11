@@ -95,11 +95,19 @@ export function AssistantWidget() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Keep the latest message in view as content streams in.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, open]);
+
+  // Abort any in-flight stream when the widget is closed or unmounts, so we
+  // stop consuming bandwidth and LLM tokens the user can no longer see.
+  useEffect(() => {
+    if (!open) abortRef.current?.abort();
+  }, [open]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // Only the canned greeting present → it's a fresh conversation.
   const isFresh = messages.length === 1;
@@ -132,6 +140,8 @@ export function AssistantWidget() {
     setMessages([...history, { role: "assistant", content: "" }]);
     setSending(true);
 
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
       // Send only real turns (drop the canned greeting).
       const payload = history.filter((m, i) => !(i === 0 && m.role === "assistant"));
@@ -139,6 +149,7 @@ export function AssistantWidget() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: payload }),
+        signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
@@ -151,10 +162,15 @@ export function AssistantWidget() {
         acc += decoder.decode(value, { stream: true });
         replaceLastAssistant(acc);
       }
-      if (!acc) replaceLastAssistant("(no response)");
-    } catch {
-      replaceLastAssistant("Sorry — I couldn't reach the assistant. Please try again.");
+      acc += decoder.decode(); // flush any trailing multi-byte char (e.g. Korean/emoji)
+      replaceLastAssistant(acc || "(no response)");
+    } catch (e) {
+      // A user-initiated abort (closing the widget) isn't an error to surface.
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        replaceLastAssistant("Sorry — I couldn't reach the assistant. Please try again.");
+      }
     } finally {
+      if (abortRef.current === ctrl) abortRef.current = null;
       setSending(false);
     }
   }
