@@ -113,6 +113,7 @@ function LogoTile({
 }
 
 export function ProjectCard({ project, index }: { project: Project; index: number }) {
+  const [bgBroken, setBgBroken] = useState(false);
   const accent = normalizeAccent(project.accent);
   const style: CardStyle = project.cardStyle ?? "classic";
   const status = STATUS_STYLES[project.status];
@@ -146,10 +147,17 @@ export function ProjectCard({ project, index }: { project: Project; index: numbe
       <motion.div whileHover={hoverEffect(project.animation ?? "none", accent)} className="h-full rounded-2xl">
         <CardWrapper url={url}>
           <div className={containerClass} style={cardBackground(style, accent)}>
-            {background && (
+            {background && !bgBroken && (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={background} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" />
+                <img
+                  src={background}
+                  alt=""
+                  aria-hidden="true"
+                  loading="lazy"
+                  onError={() => setBgBroken(true)}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
                 {/* Readability overlay so text stays legible over any image */}
                 <div className="absolute inset-0 bg-surface/82" />
               </>

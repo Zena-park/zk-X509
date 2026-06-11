@@ -9,7 +9,7 @@ export function Footer() {
         <ShieldCheck className="w-4 h-4 text-tertiary" />
         <span className="text-sm font-label">Developed by Tokamak Network</span>
       </div>
-      <div className="flex gap-8 text-[10px] font-label uppercase tracking-widest">
+      <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-[10px] font-label uppercase tracking-widest">
         <a href="https://arxiv.org/abs/2603.25190" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">
           Paper
         </a>

@@ -161,7 +161,7 @@ export default function SignListingPage() {
           <Text label="Service URL" value={url} onChange={setUrl} placeholder="https://your-project.xyz" />
           <Text label="Logo URL (optional)" value={logo} onChange={setLogo} placeholder="https://your-project.xyz/logo.png" />
           <Text label="Background image URL (optional)" value={background} onChange={setBackground} placeholder="https://your-project.xyz/card-bg.jpg" />
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Select label="Card template" value={cardStyle} onChange={(v) => setCardStyle(v as CardStyle)} options={[...CARD_STYLES]} />
             <Select label="Font" value={font} onChange={(v) => setFont(v as CardFont)} options={[...CARD_FONTS]} />
             <Select label="Animation" value={animation} onChange={(v) => setAnimation(v as CardAnimation)} options={[...CARD_ANIMATIONS]} />
