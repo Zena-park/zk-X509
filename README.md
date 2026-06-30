@@ -4,6 +4,8 @@
 
 Users prove ownership of a valid X.509 certificate (Korean NPKI, government eID, corporate CA, etc.) without revealing personal data. The proof is verified on-chain, enabling Sybil-resistant identity for DAOs, DeFi, and compliance — with no hardware requirements and no new credential infrastructure.
 
+📖 **Read the story:** [Stop Building New Identity Systems: Bridging 4 Billion Existing IDs to Web3](https://medium.com/@zena_tokamak/68712efaa09e) (English) · [한국어](https://medium.com/@zena_tokamak/727143a942f1)
+
 ## Key Features
 
 - **Any X.509 CA** — Korean NPKI (yessign, KICA), Estonian eID, corporate CAs, TLS CAs
