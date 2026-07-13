@@ -15,7 +15,7 @@ use std::time::Duration;
 
 /// Default CA registry repository URL.
 const DEFAULT_REPO_URL: &str =
-    "https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main";
+    "https://raw.githubusercontent.com/Zena-park/zk-x509-ca-registry/main";
 
 /// Fetch and verify CA certificates for a specific registry.
 ///

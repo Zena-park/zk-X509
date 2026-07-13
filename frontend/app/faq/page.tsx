@@ -5,10 +5,11 @@ import {
   HelpCircle,
   ChevronUp,
   ChevronDown,
-  Mail,
+  ExternalLink,
   Shield,
   Zap,
 } from "lucide-react";
+import { REPO_URL } from "@/lib/platform";
 import { motion, AnimatePresence } from "framer-motion";
 
 function FAQItem({
@@ -204,16 +205,18 @@ export default function FAQPage() {
                 Still have questions?
               </h2>
               <p className="text-on-surface-variant text-sm font-body mb-8 leading-relaxed">
-                Can&apos;t find the answer you&apos;re looking for? Reach out
-                for technical assistance with certificate verification or proof
+                Can&apos;t find the answer you&apos;re looking for? Open an issue
+                for technical help with certificate verification or proof
                 generation.
               </p>
               <a
-                href="mailto:zena@tokamak.network"
+                href={`${REPO_URL}/issues`}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full py-4 bg-white text-black font-headline font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-slate-200 active:scale-95 transition-all"
               >
-                <Mail className="w-5 h-5" />
-                Contact Support
+                <ExternalLink className="w-5 h-5" />
+                Open an Issue
               </a>
             </div>
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
+import { REPO_URL } from "@/lib/platform";
 
 /** Site footer, shown on every page via the root layout. */
 export function Footer() {
@@ -16,7 +17,7 @@ export function Footer() {
         <Link href="/faq" className="hover:text-primary transition-colors">FAQ</Link>
         <Link href="/built-with" className="hover:text-primary transition-colors">Built with</Link>
         <Link href="/admin" className="hover:text-primary transition-colors">Admin</Link>
-        <a href="https://github.com/tokamak-network/zk-X509" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">
+        <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">
           GitHub
         </a>
       </div>

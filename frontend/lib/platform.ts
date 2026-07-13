@@ -4,9 +4,16 @@
 ///            Write operations require a Git PR — frontend provides links.
 /// Announcements & registry metadata: still backend server (Firebase/local).
 
+/// Where this deployment's source, issues, and listing PRs go. Single source of
+/// truth: the footer, the download page, the FAQ's support link, and the
+/// built-with "Open PR" deep link all derive from these, so a fork only has to
+/// change them here.
+export const REPO_URL = "https://github.com/Zena-park/zk-X509";
+export const CA_REGISTRY_REPO_URL = "https://github.com/Zena-park/zk-x509-ca-registry";
+
 const CA_REGISTRY_BASE =
   process.env.NEXT_PUBLIC_CA_REGISTRY_URL ||
-  "https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main";
+  "https://raw.githubusercontent.com/Zena-park/zk-x509-ca-registry/main";
 
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
@@ -165,7 +172,7 @@ export async function getCaGuides(
 
 /// Get the ca-registry repo URL for admins to submit PRs.
 export function getCaRegistryRepoUrl(): string {
-  return "https://github.com/tokamak-network/zk-x509-ca-registry/pulls";
+  return `${CA_REGISTRY_REPO_URL}/pulls`;
 }
 
 // ── Registry Listing ──────────────────────────────

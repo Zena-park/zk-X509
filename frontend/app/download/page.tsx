@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Monitor, Apple, ArrowDownToLine, Clock, ExternalLink, Terminal } from "lucide-react";
+import { REPO_URL } from "@/lib/platform";
 
 const fadeUp = {
   initial: { opacity: 0, y: 30 },
@@ -176,7 +177,7 @@ export default function DownloadPage() {
           </p>
 
           <pre className="px-4 py-3 bg-surface-container-low rounded-lg text-xs text-on-surface font-mono overflow-x-auto whitespace-pre">{`# clone
-git clone https://github.com/tokamak-network/zk-X509.git
+git clone https://github.com/Zena-park/zk-X509.git
 cd zk-X509
 
 # 1) extract the pinned ELF from Docker — guarantees the prover's
@@ -241,7 +242,7 @@ open target/release/bundle/macos/zk-X509.app`}</pre>
         {/* GitHub link */}
         <motion.div {...stagger(0.3)} className="text-center mt-8">
           <a
-            href="https://github.com/tokamak-network/zk-X509"
+            href={REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors"
