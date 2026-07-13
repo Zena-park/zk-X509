@@ -10,6 +10,13 @@ const CA_REGISTRY_BASE =
 
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
+/// The assistant widget calls `/api/chat`, which the backend forwards to a paid
+/// LLM. Off unless explicitly enabled, so a deployment never bills for the
+/// assistant by default. Read as a literal (not `process.env[name]`): Next
+/// inlines `NEXT_PUBLIC_*` at build time, so the value is frozen into the bundle
+/// by whatever was set when `next build` ran.
+export const ASSISTANT_ENABLED = process.env.NEXT_PUBLIC_ASSISTANT_ENABLED === "true";
+
 // ── Owner-signature auth for CMS writes ──────────
 // The backend authorizes registry-CMS writes by recovering the signer of a
 // canonical message and checking it equals the registry's on-chain owner. The

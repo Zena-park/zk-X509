@@ -12,6 +12,7 @@ import chatRouter from "./routes/chat";
 export function createApp(): Express {
   const app = express();
   const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
+  const ASSISTANT_ENABLED = process.env.ASSISTANT_ENABLED === "true";
 
   app.use(cors({ origin: CORS_ORIGIN }));
   app.use(express.json({ limit: "2mb" }));
@@ -25,7 +26,18 @@ export function createApp(): Express {
   // Routes
   app.use("/api/registries", registriesRouter);
   app.use("/api/ca-registry", caRegistryRouter);
-  app.use("/api/chat", chatRouter);
+
+  // The assistant forwards to a paid LLM and is unauthenticated, so the route is
+  // only mounted when explicitly enabled — hiding the widget in the frontend does
+  // not close the endpoint, which anyone can call directly. Off by default, so a
+  // deployment cannot bill for the assistant unless someone opts in.
+  if (ASSISTANT_ENABLED) {
+    app.use("/api/chat", chatRouter);
+  } else {
+    app.all("/api/chat", (_req, res) => {
+      res.status(404).json({ error: "Assistant is disabled" });
+    });
+  }
 
   // Health check
   app.get("/health", (_req, res) => {

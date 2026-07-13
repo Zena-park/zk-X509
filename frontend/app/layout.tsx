@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { AssistantWidget } from "@/components/AssistantWidget";
 import { Footer } from "@/components/Footer";
 import { WalletProvider } from "@/lib/wallet";
+import { ASSISTANT_ENABLED } from "@/lib/platform";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -53,7 +54,7 @@ export default function RootLayout({
               short pages instead of floating up under the content. */}
           <div className="flex-1">{children}</div>
           <Footer />
-          <AssistantWidget />
+          {ASSISTANT_ENABLED && <AssistantWidget />}
         </WalletProvider>
       </body>
     </html>
