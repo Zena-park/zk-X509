@@ -121,6 +121,9 @@ NEXT_PUBLIC_SP1_VERIFIER_ADDRESS="0x261a1619cC63273de7c64872B769305732761888"
 NEXT_PUBLIC_REGISTRY_ADDRESS="0x3cF6A96f1970053ffDf957074F988aD53D13ada3"
 # deployed backend (announcements + registry metadata)
 NEXT_PUBLIC_BACKEND_URL="https://zk-x509.web.app"
+# Optional — LLM assistant widget. It calls /api/chat, which the backend forwards
+# to a paid LLM, so it is off unless set to "true".
+# NEXT_PUBLIC_ASSISTANT_ENABLED="true"
 # Optional — CA guides source; defaults to the public zk-x509-ca-registry repo:
 # NEXT_PUBLIC_CA_REGISTRY_URL="https://raw.githubusercontent.com/tokamak-network/zk-x509-ca-registry/main"
 ```

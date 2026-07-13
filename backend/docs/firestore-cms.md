@@ -116,6 +116,13 @@ set as function env/config; `CA_REGISTRY_GITHUB_TOKEN` comes from Secret Manager
 (`defineSecret`, injected into `process.env` at runtime — `ca-registry.ts` reads
 it unchanged).
 
+`ASSISTANT_ENABLED` gates `/api/chat`, which is unauthenticated and forwards to a
+paid LLM. It is **off** unless set to `"true"`: with it unset the route is not
+mounted and returns 404, so a deployment cannot run up an LLM bill. Setting it
+also requires `LITELLM_API_KEY` / `LITELLM_BASE_URL` in Secret Manager. Hiding the
+widget in the frontend (`NEXT_PUBLIC_ASSISTANT_ENABLED`) does *not* close the
+endpoint — both sides default to off, and both must be turned on to use it.
+
 ## Security rules
 
 `firestore.rules`: `registries` is **read: public, write: false**. The CMS is
