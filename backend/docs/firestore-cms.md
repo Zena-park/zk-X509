@@ -58,23 +58,24 @@ GOOGLE_CLOUD_PROJECT=<project-id> npm run seed
 These steps require Firebase **account/billing permissions**, so they are done
 **by the account owner**, not in CI/automation:
 
-1. **Select the Firebase project.** The committed default id is `zkscatter`
-   (`.firebaserc` → `projects.default`) — the shared project that also hosts the
-   scatter-dex frontends (`zkscatter-hub` / `-docs` / `-pro` / `-pay` /
-   `-relayer` hosting targets). This backend deploys to the same project's
-   **default hosting site** (`zkscatter.web.app`) plus Functions + Firestore, so
-   it does not collide with those targeted sites. To use a different project,
-   update `.firebaserc` (`projects.default`) or run `firebase use <project-id>`.
+1. **Select the Firebase project.** `.firebaserc` names the project this
+   checkout deploys to. It is **not committed** (`.gitignore`) — it is
+   per-deployer, not per-repo, so committing it would point a clone's or a
+   fork's `firebase deploy` at someone else's project. Create it from the
+   template and select the project:
    ```bash
    # Run these from the repo root (where firebase.json / .firebaserc live).
+   cp .firebaserc.example .firebaserc
    firebase login
-   # Use the shared project (already created):
-   firebase use zkscatter
-   # Or, to create a brand-new project instead — then select it so the
-   # subsequent commands target it (otherwise they stay on the active project):
+   # Select an existing project (this also rewrites .firebaserc):
+   firebase use <project-id>
+   # Or create a brand-new project — then select it, or the subsequent
+   # commands stay on the currently active project:
    firebase projects:create <project-id>
    firebase use <project-id>
    ```
+   The backend deploys to that project's **default hosting site**
+   (`<project-id>.web.app`) plus Functions + Firestore.
 2. **Enable Cloud Firestore** in **Native mode** (Firebase console → Firestore
    → Create database).
 3. **Upgrade to the Blaze plan.** Blaze is required to *deploy* 2nd-gen Cloud

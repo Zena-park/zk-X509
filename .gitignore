@@ -25,6 +25,13 @@ pgo-data.profdata
 .env.*
 !.env.example
 
+# Firebase project selection. Names whoever's Firebase project this checkout
+# deploys to, so it is per-deployer, not per-repo: committing it means a clone
+# (or a fork) points `firebase deploy` at someone else's project by default.
+# Copy .firebaserc.example and run `firebase use <project-id>` instead.
+.firebaserc
+!.firebaserc.example
+
 # Node
 node_modules/
 .next/
