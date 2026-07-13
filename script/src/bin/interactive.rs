@@ -537,8 +537,7 @@ fn auto_match_ca(
         println!("  • Groth16 (production): WILL FAIL");
         println!();
         println!("  Request CA registration:");
-        println!("    → Email: zena@tokamak.network");
-        println!("    → GitHub: github.com/tokamak-network/zk-X509/issues");
+        println!("    → GitHub: github.com/Zena-park/zk-X509/issues");
         println!();
         return Some(ca.spki_der.clone());
     }

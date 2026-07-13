@@ -4,7 +4,7 @@
  * Uses Git Tree API to commit all files in a single commit.
  */
 
-const UPSTREAM_OWNER = "tokamak-network";
+const UPSTREAM_OWNER = "Zena-park";
 const UPSTREAM_REPO = "zk-x509-ca-registry";
 const API_BASE = "https://api.github.com";
 

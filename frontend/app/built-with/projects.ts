@@ -35,7 +35,7 @@
  * both the page CTA and the signer page.
  */
 export const ADD_PROJECT_PR_URL =
-  "https://github.com/tokamak-network/zk-X509/edit/main/frontend/app/built-with/projects.ts";
+  "https://github.com/Zena-park/zk-X509/edit/main/frontend/app/built-with/projects.ts";
 
 export type ProjectStatus = "live" | "building";
 
