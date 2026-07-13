@@ -52,3 +52,18 @@ elf/
 
 # Dev anvil deploy output (per-session, not part of repo)
 .env.shared-anvil
+
+# Delegated-prover ECIES private key. prover-server generates this on first run
+# next to its log dir; it decrypts the certificate data clients send, so it must
+# never be committed. Matched anywhere, since the log dir is configurable.
+**/.ecies_key
+
+# Runtime logs (prover-server compliance log, dev server logs, emulator debug)
+logs/
+script/logs/
+.dev-logs/
+firestore-debug.log
+firebase-debug.log
+
+# Firebase CLI deploy cache
+.firebase/
