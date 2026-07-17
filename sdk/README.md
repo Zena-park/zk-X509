@@ -1,4 +1,4 @@
-# @tokamak-network/zk-x509-sdk
+# zk-x509-sdk
 
 TypeScript SDK + CLI for integrating **zk-X509** — on-chain identity verification backed by X.509 certificates and zero-knowledge proofs.
 
@@ -9,7 +9,7 @@ This package is the **read side**: check verification, and discover registries +
 ## Install
 
 ```bash
-npm install @tokamak-network/zk-x509-sdk ethers
+npm install zk-x509-sdk ethers
 ```
 
 `ethers` v6 is a peer dependency.
@@ -18,7 +18,7 @@ npm install @tokamak-network/zk-x509-sdk ethers
 
 ```ts
 import { ethers } from "ethers";
-import { ZkX509Client } from "@tokamak-network/zk-x509-sdk";
+import { ZkX509Client } from "zk-x509-sdk";
 
 // Any ethers Provider — a JsonRpcProvider, or a wallet BrowserProvider.
 const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia.publicnode.com");
@@ -61,7 +61,7 @@ contract Gated {
 
 ```bash
 # one-off, no install:
-npx @tokamak-network/zk-x509-sdk check 0xabc...def
+npx zk-x509-sdk check 0xabc...def
 
 # check against a named registry / network:
 zk-x509 check 0xabc...def --service relayers --network sepolia
@@ -103,7 +103,7 @@ Batched reads use [Multicall3](https://www.multicall3.com/) (one `eth_call`), wi
 | --- | --- | --- |
 | Sepolia | 11155111 | `0x9e937dF6ac0E85979622519068412A518fa085d9` |
 
-Addresses mirror `deployments/<chainId>.json` in the [zk-X509 repo](https://github.com/tokamak-network/zk-X509).
+Addresses mirror `deployments/<chainId>.json` in the [zk-X509 repo](https://github.com/Zena-park/zk-X509).
 
 ## License
 

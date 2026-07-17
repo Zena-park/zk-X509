@@ -1,8 +1,15 @@
 {
-  "name": "@tokamak-network/zk-x509-sdk",
+  "name": "zk-x509-sdk",
   "version": "0.1.0",
   "description": "TypeScript SDK + CLI for integrating zk-X509 on-chain identity verification (prove an X.509 certificate identity with a ZK proof, then gate your dApp on it).",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zena-park/zk-X509.git",
+    "directory": "sdk"
+  },
+  "homepage": "https://github.com/Zena-park/zk-X509/tree/main/sdk#readme",
+  "bugs": "https://github.com/Zena-park/zk-X509/issues",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
