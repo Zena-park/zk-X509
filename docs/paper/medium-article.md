@@ -1,6 +1,6 @@
 # Stop Building New Identity Systems: How zk-X509 Bridges 4 Billion Existing IDs to Web3
 
-*Privacy-preserving, legally binding, and zero-hardware. Why the future of on-chain identity is already in your pocket.*
+*Privacy-preserving, built on legally recognized credentials, and zero-hardware. Why the future of on-chain identity is already in your pocket.*
 
 ![zk-X509 Overview](../images/zk-X509-overview.png)
 
@@ -34,9 +34,11 @@ Your Certificate → Local ZK Prover → On-Chain Proof → Verified Wallet
 
 **No personal data on-chain. No central server. No hardware. No new credentials needed.**
 
-### Your Private Key Never Leaves the Hardware
+### Your Private Key Never Enters the Prover
 
-Unlike other ZK protocols where secrets must be fed into the circuit, zk-X509 treats the private key as a **black box**. By leveraging OS-level Secure Enclaves (macOS) and TPMs (Windows), the key never exists in general process memory. The ZK proof only verifies the *result* of a hardware-secured signature — the key itself never enters the prover.
+Unlike other ZK protocols where secrets must be fed into the circuit, zk-X509 treats the private key as a **black box**. The key stays where the OS put it — the **macOS Keychain** or the **Windows certificate store** — and signing is delegated to the OS (Security.framework / CNG). The prover never reads the key; it receives only the *signature* the OS produced, and the ZK circuit verifies that signature against the certificate's public key.
+
+This removes an entire class of attack: there is no moment at which the private key sits in the prover's process memory, so a compromised prover has nothing to exfiltrate.
 
 ### What the ZK Circuit Verifies
 
@@ -59,9 +61,9 @@ Unlike other ZK protocols where secrets must be fed into the circuit, zk-X509 tr
 |---|---|---|
 | **Infrastructure** | Must build new issuers and registries | Leverages 4B+ existing certs |
 | **Trust model** | "Who trusts the issuer?" — unclear | Government CAs — established |
-| **Revocation** | Issuer-maintained (centralized) | Trustless CRL in ZK |
-| **Regulatory standing** | Unresolved | Legally binding |
-| **Time to deploy** | 3–5 years | 3–6 months |
+| **Revocation** | Issuer-maintained (centralized) | Trustless CRL, verified in ZK |
+| **Regulatory standing** | Unresolved | Built on legally recognized credentials |
+| **Time to deploy** | Years — new issuers, registries, and regulatory recognition | Months — the credentials already exist |
 
 > **DID builds *new* trust. zk-X509 bridges *existing* trust. They're complementary.**
 
@@ -109,7 +111,7 @@ Security is formalized under the **Dolev-Yao adversary model** with game-based d
 - **Double-registration resistance** — ensured by SHA-256 collision resistance in deterministic nullifier generation
 - **Front-running immunity** — proofs are bound to your wallet address
 
-Breaking our system means breaking RSA or SHA-256.
+These reductions hold under stated assumptions: the hardness of RSA/ECDSA, collision resistance of SHA-256, soundness of the SP1 zkVM, and an honest Groth16 trusted setup. Forging an identity means breaking one of them — not finding a flaw in the protocol's logic.
 
 ## It Actually Works
 
