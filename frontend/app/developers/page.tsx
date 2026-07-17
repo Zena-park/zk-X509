@@ -54,7 +54,7 @@ export default function DevelopersPage() {
       <div className="grid sm:grid-cols-2 gap-4 mb-10">
         <Link href="/developers/quickstart" className="glass-panel rounded-2xl p-5 border border-outline-variant/10 hover:border-tertiary/30 transition-colors group">
           <div className="flex items-center gap-2 mb-1"><BookOpen className="w-4 h-4 text-tertiary" /><span className="font-headline font-bold text-on-surface">Quickstart</span><ArrowRight className="w-4 h-4 ml-auto text-on-surface-variant group-hover:text-tertiary transition-colors" /></div>
-          <p className="text-sm text-on-surface-variant">Gate your dApp in three steps — Solidity + TypeScript, with a live checker.</p>
+          <p className="text-sm text-on-surface-variant">Gate your dApp in four steps — Solidity + TypeScript, with a live checker.</p>
         </Link>
         <Link href="/developers/sdk" className="glass-panel rounded-2xl p-5 border border-outline-variant/10 hover:border-tertiary/30 transition-colors group">
           <div className="flex items-center gap-2 mb-1"><Terminal className="w-4 h-4 text-tertiary" /><span className="font-headline font-bold text-on-surface">SDK &amp; CLI</span><ArrowRight className="w-4 h-4 ml-auto text-on-surface-variant group-hover:text-tertiary transition-colors" /></div>

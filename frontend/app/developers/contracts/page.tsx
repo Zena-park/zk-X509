@@ -52,7 +52,7 @@ const FACTORY = `interface IRegistryFactory {
 
 const FNS: [string, string][] = [
   ["isVerified(address) → bool", "True if the wallet holds a current (non-expired) verification. The one call you need for gating."],
-  ["verifiedUntil(address) → uint256", "Verification expiry (unix seconds); 0 if never verified."],
+  ["verifiedUntil(address) → uint64", "Verification expiry (unix seconds); 0 if never verified."],
   ["paused() → bool", "When true the registry rejects new registrations."],
   ["MAX_WALLETS_PER_CERT() → uint32", "How many wallets one certificate may bind."],
   ["MIN_DISCLOSURE_MASK() → uint8", "Bitmask of certificate fields a proof must disclose."],
