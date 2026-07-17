@@ -4,7 +4,7 @@ import { ZkX509Client } from "./client";
 import { getNetwork, NETWORKS, type NetworkConfig } from "./addresses";
 
 // Keep in sync with package.json "version".
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 
 function fail(msg: string): never {
   console.error(`error: ${msg}`);

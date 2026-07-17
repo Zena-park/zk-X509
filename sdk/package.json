@@ -1,6 +1,6 @@
 {
   "name": "zk-x509-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript SDK + CLI for integrating zk-X509 on-chain identity verification (prove an X.509 certificate identity with a ZK proof, then gate your dApp on it).",
   "license": "MIT",
   "repository": {
