@@ -58,7 +58,7 @@ export default function DevelopersPage() {
         </Link>
         <Link href="/developers/sdk" className="glass-panel rounded-2xl p-5 border border-outline-variant/10 hover:border-tertiary/30 transition-colors group">
           <div className="flex items-center gap-2 mb-1"><Terminal className="w-4 h-4 text-tertiary" /><span className="font-headline font-bold text-on-surface">SDK &amp; CLI</span><ArrowRight className="w-4 h-4 ml-auto text-on-surface-variant group-hover:text-tertiary transition-colors" /></div>
-          <p className="text-sm text-on-surface-variant"><code className="font-mono">@tokamak-network/zk-x509-sdk</code> — read helpers + a terminal CLI.</p>
+          <p className="text-sm text-on-surface-variant"><code className="font-mono">zk-x509-sdk</code> — read helpers + a terminal CLI.</p>
         </Link>
         <Link href="/developers/contracts" className="glass-panel rounded-2xl p-5 border border-outline-variant/10 hover:border-tertiary/30 transition-colors group">
           <div className="flex items-center gap-2 mb-1"><ShieldCheck className="w-4 h-4 text-tertiary" /><span className="font-headline font-bold text-on-surface">Contract reference</span><ArrowRight className="w-4 h-4 ml-auto text-on-surface-variant group-hover:text-tertiary transition-colors" /></div>

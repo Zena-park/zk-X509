@@ -92,7 +92,7 @@ export default function ContractsPage() {
       <h2 className="text-lg font-headline font-bold text-on-surface mt-8 mb-2">ABIs</h2>
       <p className="text-sm text-on-surface-variant leading-relaxed">
         Human-readable ABIs are exported from{" "}
-        <code className="font-mono text-tertiary">@tokamak-network/zk-x509-sdk</code> as{" "}
+        <code className="font-mono text-tertiary">zk-x509-sdk</code> as{" "}
         <code className="font-mono">IDENTITY_REGISTRY_ABI</code> and <code className="font-mono">REGISTRY_FACTORY_ABI</code>, ready to drop into{" "}
         <code className="font-mono">new ethers.Contract(addr, ABI, provider)</code>.
       </p>

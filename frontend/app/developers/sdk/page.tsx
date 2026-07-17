@@ -4,13 +4,13 @@ import { DEV_NETWORK } from "@/lib/dev-config";
 
 export const metadata = {
   title: "SDK & CLI — zk-X509 Developers",
-  description: "@tokamak-network/zk-x509-sdk — TypeScript read helpers and a terminal CLI for zk-X509.",
+  description: "zk-x509-sdk — TypeScript read helpers and a terminal CLI for zk-X509.",
 };
 
-const INSTALL = `npm install @tokamak-network/zk-x509-sdk ethers`;
+const INSTALL = `npm install zk-x509-sdk ethers`;
 
 const LIB = `import { ethers } from "ethers";
-import { ZkX509Client } from "@tokamak-network/zk-x509-sdk";
+import { ZkX509Client } from "zk-x509-sdk";
 
 const provider = new ethers.JsonRpcProvider("${DEV_NETWORK.rpcUrl}");
 const zk = new ZkX509Client(provider, { network: "sepolia" });
@@ -28,7 +28,7 @@ await zk.getRegistryInfo(REGISTRY);     // name, creator, policy params
 await zk.getRegistryPolicy(REGISTRY);   // paused, constraints, CA root`;
 
 const CLI = `# one-off, no install
-npx @tokamak-network/zk-x509-sdk check 0xabc...def
+npx zk-x509-sdk check 0xabc...def
 
 # check against a named registry / network
 zk-x509 check 0xabc...def --service relayers --network sepolia
@@ -53,7 +53,7 @@ export default function SdkPage() {
 
       <h1 className="text-3xl font-headline font-bold text-on-surface mb-3">SDK &amp; CLI</h1>
       <p className="text-on-surface-variant leading-relaxed mb-6 max-w-2xl">
-        <code className="font-mono text-tertiary">@tokamak-network/zk-x509-sdk</code> is the read side of zk-X509 — check
+        <code className="font-mono text-tertiary">zk-x509-sdk</code> is the read side of zk-X509 — check
         verification and discover registries from Node, the browser, scripts, or the terminal. <code className="font-mono">ethers</code> v6
         is a peer dependency.
       </p>

@@ -37,7 +37,7 @@ const ok = await registry.isVerified(userAddress);
 
 TypeScript (SDK):
 
-import { ZkX509Client } from "@tokamak-network/zk-x509-sdk";
+import { ZkX509Client } from "zk-x509-sdk";
 const zk = new ZkX509Client(provider, { network: "sepolia" });
 const ok = await zk.isVerified(REGISTRY_ADDRESS, userAddress);
 
@@ -76,7 +76,7 @@ Example registries operated by the zkScatter service (a reference consumer of zk
 
 ## SDK + CLI
 
-npm install @tokamak-network/zk-x509-sdk ethers
+npm install zk-x509-sdk ethers
 
 CLI:
 - zk-x509 check <address> [--service users|relayers] [--registry <addr>] [--network sepolia] [--rpc <url>]   // exit 0 = verified, 2 = not

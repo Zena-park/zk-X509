@@ -47,7 +47,7 @@ export interface RegistryPolicy {
  *
  * ```ts
  * import { ethers } from "ethers";
- * import { ZkX509Client } from "@tokamak-network/zk-x509-sdk";
+ * import { ZkX509Client } from "zk-x509-sdk";
  *
  * const provider = new ethers.JsonRpcProvider(rpcUrl); // or a wallet BrowserProvider
  * const zk = new ZkX509Client(provider, { network: "sepolia" });
