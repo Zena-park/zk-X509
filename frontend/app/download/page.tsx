@@ -18,8 +18,7 @@ const stagger = (delay: number) => ({
   transition: { duration: 0.5, delay },
 });
 
-// Point at the GitHub release rather than a DMG copied into
-// frontend/public/downloads/.
+// Point at the GitHub release rather than a hand-copied local DMG.
 //
 // The hand-copied artifact drifted badly: the DMG served here was built
 // locally on 2026-05-15, missed every desktop change that landed after

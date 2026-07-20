@@ -40,16 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Tauri release binaries served by /download. Each rebuild produces a
-# ~24 MB DMG; tracking those in git would balloon history fast. The
-# /download page HEAD-probes for the file at runtime and shows a
-# "Build Required" card with these exact instructions when missing —
-# operator workflow from the repo root:
-#
-#   (cd desktop && npx tauri build)
-#   mkdir -p frontend/public/downloads
-#   cp target/release/bundle/dmg/zk-X509_*.dmg frontend/public/downloads/
-#
-# Production should serve these from GitHub Releases / S3 instead.
-public/downloads/*.dmg
-public/downloads/*.app.tar.gz
+# Installers are NOT served from here anymore — /download links to the
+# GitHub release, which is the only build that is signed and notarized.
+# Hand-copying a local `tauri build` into public/downloads/ is what let a
+# stale, adhoc-signed DMG sit on the site for two months; a local build
+# has no signing identity, so Gatekeeper refuses whatever lands here.
+# Kept only so a stray copy can't be committed by accident.
+public/downloads/
