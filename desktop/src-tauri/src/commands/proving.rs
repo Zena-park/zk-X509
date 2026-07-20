@@ -8,6 +8,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 
 use super::certificates::IdentityStore;
+use super::settings::check_docker;
 
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
@@ -265,9 +266,26 @@ pub async fn generate_proof(
                 Err(_) => Err(map_proof_error("Overrun")),
             }
         } else {
+            // Re-check Docker here, not just in the Connect step. That
+            // check runs once, and two paths get past it into local
+            // Groth16 anyway: a registry with a delegated prover
+            // configured never blocks Next (the user can still pick
+            // Local in Configure), and Docker can stop between Connect
+            // and Prove. Failing here costs a socket probe; failing
+            // inside SP1 costs the user a minute and an error naming
+            // neither Docker nor a remedy.
+            if !check_docker() {
+                return Err(
+                    "Docker is not running. Local Groth16 proving runs the recursion \
+                     wrap inside Docker — start Docker Desktop and retry, or switch \
+                     to Delegated proving in the Configure step."
+                        .to_string(),
+                );
+            }
+
             let pk = client
                 .setup(ZK_X509_ELF)
-                .map_err(|e| format!("Proving setup failed (Docker may be required for Groth16): {}", e))?;
+                .map_err(|e| map_proof_error(&format!("{:?}", e)))?;
 
             // Was previously missing on the Groth16 path — the execute
             // branch above emits "proving" but Groth16 jumped straight
@@ -278,11 +296,18 @@ pub async fn generate_proof(
             emit_progress(&app, "proving",
                 "Generating Groth16 ZK proof (~12M cycles + recursion wrap). Typically 1-3 minutes.");
 
+            // Route through map_proof_error like the execute branch. This
+            // used to be a bare `format!("Proving failed: {}", e)`, which
+            // surfaced SP1's own wording verbatim — with Docker stopped
+            // the user got "Proving failed: An unexpected error occurred:
+            // artifact not found", naming neither Docker nor anything
+            // they could act on. Groth16 is the branch that actually
+            // needs Docker, so it is the one that most needs the hint.
             let proof: SP1ProofWithPublicValues = client
                 .prove(&pk, stdin)
                 .groth16()
                 .run()
-                .map_err(|e| format!("Proving failed: {}", e))?;
+                .map_err(|e| map_proof_error(&format!("{:?}", e)))?;
 
             let pv_bytes = proof.public_values.as_slice().to_vec();
             let proof_bytes = proof.bytes();
@@ -471,4 +496,50 @@ pub async fn delegated_prove(
     .map_err(|e| format!("Task join error: {}", e))??;
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression: this exact string reached a user as
+    // "Proving failed: An unexpected error occurred: artifact not found".
+    // That was SP1's own Display text, surfaced because the Groth16 path
+    // formatted the error directly instead of going through the mapper —
+    // so the branch below existed but nothing on that path called it.
+    #[test]
+    fn artifact_error_names_docker() {
+        let mapped = map_proof_error("artifact not found");
+        assert!(
+            mapped.contains("Docker"),
+            "artifact errors must point at Docker, got: {mapped}"
+        );
+        assert!(
+            !mapped.contains("unexpected error"),
+            "artifact errors must not fall through to the generic message, got: {mapped}"
+        );
+    }
+
+    // SP1 wraps the same failure with its own prefix depending on where
+    // it surfaces; the mapper keys off a substring so both must land on
+    // the same advice.
+    #[test]
+    fn artifact_error_maps_through_sp1_wrapping() {
+        let mapped = map_proof_error("An unexpected error occurred: artifact not found");
+        assert!(mapped.contains("Docker"), "got: {mapped}");
+    }
+
+    #[test]
+    fn circuit_constraint_errors_stay_specific() {
+        assert!(map_proof_error("Country constraint failed").contains("country"));
+        assert!(map_proof_error("Overrun").contains("ZK circuit rejected"));
+    }
+
+    // Anything unrecognized must still reach the user verbatim rather
+    // than being swallowed into a generic string.
+    #[test]
+    fn unknown_errors_keep_their_detail() {
+        let mapped = map_proof_error("disk quota exceeded");
+        assert!(mapped.contains("disk quota exceeded"), "got: {mapped}");
+    }
 }
