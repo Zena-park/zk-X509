@@ -115,7 +115,6 @@ To deploy your own instance instead, see
 | [Deployment Guide](docs/development/deployment-guide.md) | Local, testnet, mainnet, L2 |
 | [Prover-Server Guide](docs/development/prover-server-guide.md) | Delegated proving operator setup |
 | [Benchmarks](BENCHMARKS.md) | Cycle counts and gas costs |
-| [Paper](docs/paper/paper.md) | Research paper |
 
 ## Performance
 
