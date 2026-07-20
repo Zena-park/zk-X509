@@ -1,8 +1,17 @@
+# Builds the terminal prover (`interactive`) wrapped in a hand-rolled
+# .app and ships it as a zip.
+#
+# NOT triggered by tags. desktop.yml supersedes this for releases: it
+# builds the Tauri GUI app that the download page points at. Both used to
+# fire on `v*` and both publish with action-gh-release, so a single tag
+# attached four assets to one release — two DMGs (GUI) and two zips
+# (terminal) — with nothing on the release explaining which to pick.
+#
+# Kept on manual dispatch because the terminal build is still useful for
+# headless/CI proving, where a GUI app is the wrong shape.
 name: Release Desktop App
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

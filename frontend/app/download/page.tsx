@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Monitor, Apple, ArrowDownToLine, Clock, ExternalLink, Terminal } from "lucide-react";
 import { REPO_URL } from "@/lib/platform";
@@ -19,61 +18,24 @@ const stagger = (delay: number) => ({
   transition: { duration: 0.5, delay },
 });
 
-// Served as a static asset from frontend/public/downloads/.
-// Bumped when the bundled DMG version changes — keeps the URL explicit
-// about what the user is actually getting (no silent rev'ing).
-const MACOS_DOWNLOAD_URL = "/downloads/zk-X509_0.2.0_aarch64.dmg";
-const MACOS_DOWNLOAD_FILENAME = "zk-X509_0.2.0_aarch64.dmg";
-
-// Whether the DMG above is Developer ID-signed AND notarized.
+// Point at the GitHub release rather than a DMG copied into
+// frontend/public/downloads/.
 //
-// `tauri build` with no signing identity emits an adhoc/linker-signed
-// bundle with no Team ID, which Gatekeeper refuses outright — a user who
-// downloads it gets "zk-X509 is damaged and can't be opened", which reads
-// as a broken app rather than a missing signature. File presence alone is
-// therefore NOT enough to offer the download: keep this false until
-// `codesign -dv` reports a Developer ID and `spctl -a` accepts the bundle,
-// so the card falls through to the build-from-source path instead.
-const MACOS_BUILD_SIGNED = false;
-
-// HEAD-probe the DMG on mount so an operator who hasn't run
-// `tauri build && cp …/public/downloads/` yet sees a clear
-// "not built" message instead of clicking a button that 404s.
-// The DMG itself is gitignored (each rebuild is ~24 MB and the repo
-// stays private until release), so a fresh clone always starts in
-// the "missing" state until the operator follows the build steps.
-function useDmgAvailability(url: string, enabled: boolean) {
-  // States: "checking" until the probe resolves, then "available" if
-  // HEAD returns 2xx and the file is non-empty, else "missing".
-  // When `enabled` is false the probe is skipped entirely and the state
-  // pins to "missing" — an unsigned build must never be offered.
-  const [state, setState] = useState<"checking" | "available" | "missing">(
-    enabled ? "checking" : "missing",
-  );
-  useEffect(() => {
-    // Nothing to probe for an unsigned build — the initial state is
-    // already "missing", so just skip the request.
-    if (!enabled) return;
-    let cancelled = false;
-    fetch(url, { method: "HEAD" })
-      .then((res) => {
-        if (cancelled) return;
-        const lenHeader = res.headers.get("content-length");
-        const sizeOk = !lenHeader || parseInt(lenHeader, 10) > 0;
-        setState(res.ok && sizeOk ? "available" : "missing");
-      })
-      .catch(() => {
-        if (!cancelled) setState("missing");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [url, enabled]);
-  return state;
-}
+// The hand-copied artifact drifted badly: the DMG served here was built
+// locally on 2026-05-15, missed every desktop change that landed after
+// it, and — because a local `tauri build` has no signing identity — was
+// adhoc-signed, so Gatekeeper rejected it with "zk-X509 is damaged and
+// can't be opened". Meanwhile CI had already produced a properly signed
+// and notarized DMG. Linking the release makes the signed artifact the
+// only one users can reach, and drops the manual copy step that caused
+// the drift.
+//
+// Deliberately /releases/latest rather than a direct asset URL: the
+// asset filename carries the version, so a direct link would 404 on
+// every version bump.
+const RELEASES_URL = `${REPO_URL}/releases/latest`;
 
 export default function DownloadPage() {
-  const dmgState = useDmgAvailability(MACOS_DOWNLOAD_URL, MACOS_BUILD_SIGNED);
   return (
     <main className="min-h-screen pt-28 pb-20 px-6">
       <div className="max-w-4xl mx-auto">
@@ -102,43 +64,25 @@ export default function DownloadPage() {
               macOS
             </h2>
             <p className="text-on-surface-variant text-sm mb-1">
-              Apple Silicon (aarch64)
+              Apple Silicon &amp; Intel
             </p>
             <p className="text-on-surface-variant/60 text-xs mb-6">
-              macOS 12 Monterey or later
+              macOS 12 Monterey or later · signed &amp; notarized
             </p>
-            {dmgState === "available" ? (
-              <a
-                href={MACOS_DOWNLOAD_URL}
-                download={MACOS_DOWNLOAD_FILENAME}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-surface font-headline text-sm font-bold rounded-full transition-transform active:scale-95 hover:shadow-lg hover:shadow-primary/20"
-              >
-                <ArrowDownToLine className="w-4 h-4" />
-                Download for macOS
-              </a>
-            ) : dmgState === "checking" ? (
-              <span className="inline-flex items-center gap-2 px-6 py-3 bg-on-surface/10 text-on-surface-variant font-headline text-sm font-bold rounded-full cursor-wait">
-                <ArrowDownToLine className="w-4 h-4 opacity-50" />
-                Checking…
-              </span>
-            ) : (
-              // No offerable DMG — either the build isn't signed yet
-              // (MACOS_BUILD_SIGNED) or this is a fresh clone where the
-              // operator hasn't run `tauri build` + copy. The card stays
-              // the same height; the message tells them what to do
-              // without sending them to a 404 or a Gatekeeper error.
-              <div className="flex flex-col items-center gap-2">
-                <span className="inline-flex items-center gap-2 px-6 py-3 bg-on-surface/10 text-on-surface-variant font-headline text-sm font-bold rounded-full cursor-not-allowed">
-                  <Clock className="w-4 h-4" />
-                  Signed build coming soon
-                </span>
-                <p className="text-xs text-on-surface-variant/70 max-w-xs">
-                  The notarized installer is still being code-signed. For now,
-                  clone the repo and build &amp; run from source — see{" "}
-                  <strong className="text-on-surface">Run from source</strong> below.
-                </p>
-              </div>
-            )}
+            <a
+              href={RELEASES_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-surface font-headline text-sm font-bold rounded-full transition-transform active:scale-95 hover:shadow-lg hover:shadow-primary/20"
+            >
+              <ArrowDownToLine className="w-4 h-4" />
+              Download for macOS
+            </a>
+            <p className="text-xs text-on-surface-variant/70 mt-3 max-w-xs">
+              Opens the latest release. Pick the{" "}
+              <code className="text-on-surface">aarch64</code> DMG for Apple
+              Silicon, <code className="text-on-surface">x64</code> for Intel.
+            </p>
           </motion.div>
 
           {/* Windows */}

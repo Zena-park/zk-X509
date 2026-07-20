@@ -114,28 +114,65 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "" $KEYCHAIN_PATH
           security list-keychains -d user -s $KEYCHAIN_PATH login.keychain-db
 
-      - name: Build Tauri app
+      # The notarization credentials belong here, not only on the step
+      # below. Given them, Tauri notarizes and staples the .app *before*
+      # folding it into the DMG. Without them the .app inside the DMG
+      # carries no ticket, so it only passes Gatekeeper while the machine
+      # can reach Apple to verify online — copy it to /Applications and
+      # launch it offline and it is refused. Stapling the DMG afterwards
+      # does not fix that: the ticket rides on the disk image, not on the
+      # app extracted from it.
+      - name: Build, sign and notarize Tauri app
         working-directory: desktop
         env:
           PREBUILT_ELF: ${{ github.workspace }}/elf/zk-x509-program
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npx tauri build --target ${{ matrix.target }}
 
-      - name: Notarize app
+      # Staple the disk image too, so the download itself verifies
+      # offline rather than only the app inside it.
+      - name: Notarize and staple DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          set -euo pipefail
           DMG=$(find target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" | head -1)
-          if [ -n "$DMG" ]; then
-            xcrun notarytool submit "$DMG" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait
-            xcrun stapler staple "$DMG"
+          # Previously this was wrapped in `if [ -n "$DMG" ]`, so a
+          # bundling failure skipped notarization silently and the job
+          # still went green — shipping whatever the release step found.
+          # Fail loudly instead.
+          if [ -z "$DMG" ]; then
+            echo "::error::No DMG produced under target/${{ matrix.target }}/release/bundle/dmg"
+            exit 1
           fi
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$DMG"
+
+      # Prove the artifact is actually distributable before it becomes a
+      # release asset. `spctl` is what a user's Gatekeeper runs, and
+      # `stapler validate` is the offline path — an adhoc-signed or
+      # unstapled build fails here instead of in someone's Downloads.
+      - name: Verify signature and notarization
+        run: |
+          set -euo pipefail
+          APP=$(find target/${{ matrix.target }}/release/bundle/macos -name "*.app" -maxdepth 1 | head -1)
+          DMG=$(find target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" | head -1)
+          codesign -dv --verbose=2 "$APP" 2>&1 | grep -q "Authority=Developer ID Application" \
+            || { echo "::error::app is not Developer ID signed"; exit 1; }
+          spctl -a -vv "$APP" 2>&1 | grep -q "source=Notarized Developer ID" \
+            || { echo "::error::app is not notarized"; exit 1; }
+          xcrun stapler validate "$APP"
+          xcrun stapler validate "$DMG"
+          echo "✅ signed, notarized and stapled: $(basename "$DMG")"
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
