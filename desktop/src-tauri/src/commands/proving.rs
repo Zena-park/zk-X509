@@ -8,7 +8,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 
 use super::certificates::IdentityStore;
-use super::settings::check_docker;
+use super::settings::{check_docker, ensure_docker_on_path};
 
 const ZK_X509_ELF: Elf = include_elf!("zk-x509-program");
 
@@ -266,19 +266,32 @@ pub async fn generate_proof(
                 Err(_) => Err(map_proof_error("Overrun")),
             }
         } else {
-            // Re-check Docker here, not just in the Connect step. That
-            // check runs once, and two paths get past it into local
-            // Groth16 anyway: a registry with a delegated prover
-            // configured never blocks Next (the user can still pick
-            // Local in Configure), and Docker can stop between Connect
-            // and Prove. Failing here costs a socket probe; failing
-            // inside SP1 costs the user a minute and an error naming
-            // neither Docker nor a remedy.
+            // SP1 shells out to `docker`, and a Finder-launched .app has
+            // no /usr/local/bin on PATH, so repair PATH before handing
+            // over. Without this the app fails where a terminal run of
+            // the same code succeeds. See ensure_docker_on_path().
+            if !ensure_docker_on_path() {
+                return Err(
+                    "Docker was not found. Local Groth16 proving runs the recursion \
+                     wrap inside Docker — install Docker Desktop and retry, or switch \
+                     to Delegated proving in the Configure step."
+                        .to_string(),
+                );
+            }
+
+            // Then confirm the daemon is actually up. Re-checked here and
+            // not just in the Connect step: that check runs once, and two
+            // paths get past it into local Groth16 anyway — a registry
+            // with a delegated prover configured never blocks Next (the
+            // user can still pick Local in Configure), and Docker can
+            // stop between Connect and Prove. Failing here costs a socket
+            // probe; failing inside SP1 costs the user a minute and an
+            // error naming neither Docker nor a remedy.
             if !check_docker() {
                 return Err(
-                    "Docker is not running. Local Groth16 proving runs the recursion \
-                     wrap inside Docker — start Docker Desktop and retry, or switch \
-                     to Delegated proving in the Configure step."
+                    "Docker is installed but not running. Local Groth16 proving runs \
+                     the recursion wrap inside Docker — start Docker Desktop and retry, \
+                     or switch to Delegated proving in the Configure step."
                         .to_string(),
                 );
             }

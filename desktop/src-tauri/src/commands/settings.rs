@@ -39,6 +39,70 @@ pub async fn configure_settings(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Directories a `docker` CLI is normally installed into, in the order
+/// the docker install docs put them.
+#[cfg(unix)]
+const DOCKER_CLI_DIRS: &[&str] = &[
+    "/usr/local/bin",    // Docker Desktop (Intel + default symlink target)
+    "/opt/homebrew/bin", // Homebrew on Apple Silicon
+    "/usr/bin",          // Linux packages
+];
+
+/// Put the `docker` CLI on PATH for this process, returning false when no
+/// CLI can be found at all.
+///
+/// A GUI app launched from Finder inherits launchd's PATH — on this
+/// machine `/usr/bin:/bin:/usr/sbin:/sbin`, with no `/usr/local/bin`,
+/// because it never runs a login shell. SP1 shells out rather than
+/// talking to the daemon socket:
+///
+///     // sp1-recursion-gnark-ffi/src/ffi/docker.rs
+///     Command::new("docker").arg("info").output()
+///
+/// so Groth16 proving panics inside SP1 with "Failed to run `docker
+/// info`", which resurfaces as the useless "artifact not found". It
+/// works from a terminal and fails from the .app with Docker running the
+/// whole time. Reproduced exactly by re-running the CLI prover under
+/// `env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin`.
+///
+/// check_docker() below can't catch this: it probes the socket directly
+/// (deliberately, for this same PATH reason), so it says "available"
+/// while SP1 still can't find the binary.
+#[cfg(unix)]
+pub fn ensure_docker_on_path() -> bool {
+    use std::path::Path;
+
+    let current = std::env::var("PATH").unwrap_or_default();
+    if current
+        .split(':')
+        .any(|dir| !dir.is_empty() && Path::new(dir).join("docker").is_file())
+    {
+        return true;
+    }
+
+    if let Some(dir) = DOCKER_CLI_DIRS
+        .iter()
+        .find(|dir| Path::new(dir).join("docker").is_file())
+    {
+        let updated = if current.is_empty() {
+            (*dir).to_string()
+        } else {
+            format!("{dir}:{current}")
+        };
+        std::env::set_var("PATH", updated);
+        return true;
+    }
+
+    false
+}
+
+#[cfg(not(unix))]
+pub fn ensure_docker_on_path() -> bool {
+    // Windows resolves docker.exe through the machine PATH, which GUI
+    // processes do inherit, so there is nothing to repair here.
+    true
+}
+
 #[tauri::command]
 pub fn check_docker() -> bool {
     // Detect Docker by connecting directly to its Unix domain socket — this
@@ -188,4 +252,44 @@ pub fn open_docker_desktop() -> Result<(), String> {
     result
         .map(|_| ())
         .map_err(|e| format!("Failed to launch Docker Desktop: {}", e))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    /// Reproduces the launchd PATH a Finder-launched .app inherits, then
+    /// asserts the repair makes `docker` resolvable the way SP1 resolves
+    /// it — `Command::new("docker")`, which is what actually broke.
+    ///
+    /// Serialized by hand (one test touching PATH) because env vars are
+    /// process-global and cargo runs tests on threads.
+    #[test]
+    fn repairs_the_gui_path_so_sp1_can_shell_out() {
+        let original = std::env::var("PATH").unwrap_or_default();
+
+        // Only meaningful if a docker CLI exists somewhere on this box;
+        // otherwise the function is correct to return false.
+        let docker_installed = DOCKER_CLI_DIRS
+            .iter()
+            .any(|dir| std::path::Path::new(dir).join("docker").is_file());
+
+        std::env::set_var("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+        assert!(
+            std::process::Command::new("docker").arg("--version").output().is_err(),
+            "precondition: docker must be unreachable under the launchd PATH"
+        );
+
+        let repaired = ensure_docker_on_path();
+        assert_eq!(repaired, docker_installed);
+
+        if docker_installed {
+            assert!(
+                std::process::Command::new("docker").arg("--version").output().is_ok(),
+                "after repair SP1's `Command::new(\"docker\")` must resolve"
+            );
+        }
+
+        std::env::set_var("PATH", original);
+    }
 }
