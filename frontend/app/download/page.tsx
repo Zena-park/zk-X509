@@ -22,8 +22,19 @@ const stagger = (delay: number) => ({
 // Served as a static asset from frontend/public/downloads/.
 // Bumped when the bundled DMG version changes — keeps the URL explicit
 // about what the user is actually getting (no silent rev'ing).
-const MACOS_DOWNLOAD_URL = "/downloads/zk-X509_0.1.0_aarch64.dmg";
-const MACOS_DOWNLOAD_FILENAME = "zk-X509_0.1.0_aarch64.dmg";
+const MACOS_DOWNLOAD_URL = "/downloads/zk-X509_0.2.0_aarch64.dmg";
+const MACOS_DOWNLOAD_FILENAME = "zk-X509_0.2.0_aarch64.dmg";
+
+// Whether the DMG above is Developer ID-signed AND notarized.
+//
+// `tauri build` with no signing identity emits an adhoc/linker-signed
+// bundle with no Team ID, which Gatekeeper refuses outright — a user who
+// downloads it gets "zk-X509 is damaged and can't be opened", which reads
+// as a broken app rather than a missing signature. File presence alone is
+// therefore NOT enough to offer the download: keep this false until
+// `codesign -dv` reports a Developer ID and `spctl -a` accepts the bundle,
+// so the card falls through to the build-from-source path instead.
+const MACOS_BUILD_SIGNED = false;
 
 // HEAD-probe the DMG on mount so an operator who hasn't run
 // `tauri build && cp …/public/downloads/` yet sees a clear
@@ -31,13 +42,18 @@ const MACOS_DOWNLOAD_FILENAME = "zk-X509_0.1.0_aarch64.dmg";
 // The DMG itself is gitignored (each rebuild is ~24 MB and the repo
 // stays private until release), so a fresh clone always starts in
 // the "missing" state until the operator follows the build steps.
-function useDmgAvailability(url: string) {
+function useDmgAvailability(url: string, enabled: boolean) {
   // States: "checking" until the probe resolves, then "available" if
   // HEAD returns 2xx and the file is non-empty, else "missing".
+  // When `enabled` is false the probe is skipped entirely and the state
+  // pins to "missing" — an unsigned build must never be offered.
   const [state, setState] = useState<"checking" | "available" | "missing">(
-    "checking",
+    enabled ? "checking" : "missing",
   );
   useEffect(() => {
+    // Nothing to probe for an unsigned build — the initial state is
+    // already "missing", so just skip the request.
+    if (!enabled) return;
     let cancelled = false;
     fetch(url, { method: "HEAD" })
       .then((res) => {
@@ -52,12 +68,12 @@ function useDmgAvailability(url: string) {
     return () => {
       cancelled = true;
     };
-  }, [url]);
+  }, [url, enabled]);
   return state;
 }
 
 export default function DownloadPage() {
-  const dmgState = useDmgAvailability(MACOS_DOWNLOAD_URL);
+  const dmgState = useDmgAvailability(MACOS_DOWNLOAD_URL, MACOS_BUILD_SIGNED);
   return (
     <main className="min-h-screen pt-28 pb-20 px-6">
       <div className="max-w-4xl mx-auto">
@@ -106,10 +122,11 @@ export default function DownloadPage() {
                 Checking…
               </span>
             ) : (
-              // DMG missing — most likely a fresh repo clone where the
-              // operator hasn't run `tauri build` + copy yet. The card
-              // stays the same height; the message tells them what to
-              // do without sending them to a 404.
+              // No offerable DMG — either the build isn't signed yet
+              // (MACOS_BUILD_SIGNED) or this is a fresh clone where the
+              // operator hasn't run `tauri build` + copy. The card stays
+              // the same height; the message tells them what to do
+              // without sending them to a 404 or a Gatekeeper error.
               <div className="flex flex-col items-center gap-2">
                 <span className="inline-flex items-center gap-2 px-6 py-3 bg-on-surface/10 text-on-surface-variant font-headline text-sm font-bold rounded-full cursor-not-allowed">
                   <Clock className="w-4 h-4" />
