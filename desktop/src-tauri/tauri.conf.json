@@ -1,6 +1,6 @@
 {
   "productName": "zk-X509",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "network.tokamak.zk-x509",
   "build": {
     "frontendDist": "../dist",
